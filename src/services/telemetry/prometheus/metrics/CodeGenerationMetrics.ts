@@ -6,18 +6,18 @@ interface CodeGenerationMetricsProperties {
 	apiProvider: string
 	modelId: string
 	language: string
-	universalId: string
+	userName: string
 	[key: string]: string | number
 }
 interface TabCompletionProperties {
 	language: string
 	action: string
-	universalId: string
+	userName: string
 	[key: string]: string | number
 }
 class CodeGenerationMetrics extends BaseMetrics {
-	private static readonly CODE_GENERATION_FIELDS = ["mode", "apiProvider", "modelId", "language", "universalId"]
-	private static readonly TAB_COMPLETION_FIELDS = ["language", "action", "universalId"]
+	private static readonly CODE_GENERATION_FIELDS = ["mode", "apiProvider", "modelId", "language", "userName"]
+	private static readonly TAB_COMPLETION_FIELDS = ["language", "action", "userName"]
 
 	private acceptTotalCount!: Counter<string>
 	private acceptLinesDistribution!: Histogram<string>

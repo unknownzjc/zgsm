@@ -8,6 +8,7 @@ import delay from "delay"
 import axios from "axios"
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
+import { jwtDecode } from "jwt-decode"
 
 import {
 	GlobalState,
@@ -66,7 +67,6 @@ import { ReviewTarget, ReviewTargetType } from "../../services/codeReview/types"
 import { IssueStatus, TaskStatus } from "../../shared/codeReview"
 import { ReviewComment } from "../../services/codeReview/reviewComment"
 import { ZgsmCodeBaseSyncService } from "../codebase/client"
-import { parseJwt } from "../../utils/jwt"
 import { getClientId } from "../../utils/getClientId"
 import { CodeBaseError, CodeBaseErrorType } from "../codebase/constants"
 
@@ -1667,8 +1667,8 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			properties.apiProvider = apiConfiguration.apiProvider
 		}
 		if (apiConfiguration?.zgsmApiKey) {
-			const { universal_id } = parseJwt(apiConfiguration.zgsmApiKey)
-			properties.universalId = universal_id ?? ""
+			const { displayName } = jwtDecode(apiConfiguration.zgsmApiKey) as any
+			properties.userName = displayName ?? ""
 		}
 
 		// Add model ID if available

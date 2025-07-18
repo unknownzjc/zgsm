@@ -10,6 +10,7 @@ import { BaseTelemetryClient } from "../BaseTelemetryClient"
 import MetricsRecorder from "./metrics"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { getWorkspacePath } from "../../../utils/path"
+import { Package } from "../../../schemas"
 
 export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	private endpoint: string
@@ -19,7 +20,7 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	constructor(endpoint: string, debug = false) {
 		super(undefined, debug)
 		this.endpoint = endpoint
-		this.logger = createLogger("Shenma")
+		this.logger = createLogger(Package.name)
 		this.registry = new Registry()
 		this.metricsRecorder = new MetricsRecorder(this.registry)
 		this.setupPush()
@@ -82,7 +83,6 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 				event: event.event,
 				properties,
 			})
-			// 代码补全的场景需要立即补全，那边的 trace 已经加了定时了
 			if (event.event === TelemetryEventName.CODE_TAB_COMPLETION) {
 				this.pushAdd()
 			}
