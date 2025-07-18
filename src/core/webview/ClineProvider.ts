@@ -66,7 +66,9 @@ import { ReviewTarget, ReviewTargetType } from "../../services/codeReview/types"
 import { IssueStatus, TaskStatus } from "../../shared/codeReview"
 import { ReviewComment } from "../../services/codeReview/reviewComment"
 import { ZgsmCodeBaseSyncService } from "../codebase/client"
+import { parseJwt } from "../../utils/jwt"
 import { getClientId } from "../../utils/getClientId"
+import { CodeBaseError, CodeBaseErrorType } from "../codebase/constants"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -1664,6 +1666,10 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 		if (apiConfiguration?.apiProvider) {
 			properties.apiProvider = apiConfiguration.apiProvider
 		}
+		if (apiConfiguration?.zgsmApiKey) {
+			const { universal_id } = parseJwt(apiConfiguration.zgsmApiKey)
+			properties.universalId = universal_id ?? ""
+		}
 
 		// Add model ID if available
 		const currentCline = this.getCurrentCline()
@@ -1734,11 +1740,13 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 				} else {
 					if (code === "401") {
 						await this.codeReviewService.handleAuthError()
+						codebaseSyncService.recordError(CodeBaseError.AuthError as CodeBaseErrorType)
 						return
 					}
 					await this.codeReviewService.pushErrorToWebview(
 						new Error(t("common:review.tip.codebase_sync_failed")),
 					)
+					codebaseSyncService.recordError(CodeBaseError.SyncFailed as CodeBaseErrorType)
 				}
 			} catch (error) {
 				await this.codeReviewService.pushErrorToWebview(new Error(t("common:review.tip.service_unavailable")))

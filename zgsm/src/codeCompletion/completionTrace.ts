@@ -15,6 +15,7 @@ import { CompletionCache } from "./completionCache"
 import * as vscode from "vscode"
 import { ClineProvider } from "../../../src/core/webview/ClineProvider"
 import { defaultZgsmAuthConfig } from "../../../src/zgsmAuth/config"
+import { TelemetryService } from "../../../src/services/telemetry"
 
 /**
  * Completion metrics memo
@@ -112,6 +113,15 @@ export class CompletionTrace {
 		if (datas.count > 1) {
 			CompletionCache.erase(datas.count)
 		}
+		datas.data.forEach((item) => {
+			const { language, acception, actual_code, expend_time } = item
+			TelemetryService.instance.captureCodeTabCompletion(
+				language,
+				actual_code.split("\n").length,
+				acception,
+				expend_time,
+			)
+		})
 		// writeLogsSync("completions.log", JSON.stringify(datas));
 		await client
 			.postDatas(url, datas)
@@ -142,7 +152,7 @@ export class CompletionTrace {
 			status: client.errors,
 		}
 		client.context.globalState.update("trace", data)
-		if (client.openApiError == client.lastUploadError) {
+		if (client.openApiError === client.lastUploadError) {
 			return
 		}
 		const baseUrl = await client.getBaseUrl()
