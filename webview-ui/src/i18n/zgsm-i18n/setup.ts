@@ -2,13 +2,13 @@
 export const zgsmTranslations: Record<string, Record<string, any>> = {}
 
 // Dynamically load Costrict locale files
-const zgsmLocaleFiles = import.meta.glob("./zgsm_locales/**/*.json", { eager: true })
+const zgsmLocaleFiles = import.meta.glob("./locales/**/*.json", { eager: true })
 
 // Process all Costrict locale files
 Object.entries(zgsmLocaleFiles).forEach(([path, module]) => {
 	// Extract language and namespace from path
-	// Example path: './zgsm_locales/en/common.json' -> language: 'en', namespace: 'common'
-	const match = path.match(/\.\/zgsm_locales\/([^/]+)\/([^/]+)\.json/)
+	// Example path: './locales/en/common.json' -> language: 'en', namespace: 'common'
+	const match = path.match(/\.\/locales\/([^/]+)\/([^/]+)\.json/)
 
 	if (match) {
 		const [, language, namespace] = match
