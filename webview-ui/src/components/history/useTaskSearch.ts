@@ -11,7 +11,7 @@ export const useTaskSearch = () => {
 	const [searchQuery, setSearchQuery] = useState("")
 	const [sortOption, setSortOption] = useState<SortOption>("newest")
 	const [lastNonRelevantSort, setLastNonRelevantSort] = useState<SortOption | null>("newest")
-	const [showAllWorkspaces, setShowAllWorkspaces] = useState(true)
+	const [showAllWorkspaces, setShowAllWorkspaces] = useState(false)
 
 	useEffect(() => {
 		if (searchQuery && sortOption !== "mostRelevant" && !lastNonRelevantSort) {
@@ -48,7 +48,7 @@ export const useTaskSearch = () => {
 
 				return {
 					...result.item,
-					task: highlightFzfMatch(
+					highlight: highlightFzfMatch(
 						result.item.task,
 						positions.filter((p) => p < taskEndIndex),
 					),

@@ -1,19 +1,28 @@
-import { ModelInfo } from "../schemas"
 import {
 	anthropicDefaultModelId,
 	deepSeekDefaultModelId,
 	geminiDefaultModelId,
 	mistralDefaultModelId,
+	ModelInfo,
 	openAiNativeDefaultModelId,
-	zgsmModelInfos,
-} from "./api"
+	zgsmModels,
+} from "@roo-code/types"
+// import { ModelInfo } from "../schemas"
+// import {
+// 	anthropicDefaultModelId,
+// 	deepSeekDefaultModelId,
+// 	geminiDefaultModelId,
+// 	mistralDefaultModelId,
+// 	openAiNativeDefaultModelId,
+// 	zgsmModelInfos,
+// } from "./api"
 
 export const getZgsmSelectedModelInfo = (modelId: string): ModelInfo => {
 	if (!modelId) {
 		return {} as ModelInfo
 	}
 
-	const ids = Object.keys(zgsmModelInfos as Record<string, ModelInfo>)
+	const ids = Object.keys(zgsmModels as Record<string, ModelInfo>)
 
 	let mastchKey = ids.find((id) => modelId && id.includes(modelId))
 
@@ -31,5 +40,5 @@ export const getZgsmSelectedModelInfo = (modelId: string): ModelInfo => {
 		}
 	}
 
-	return (zgsmModelInfos as Record<string, ModelInfo>)[`${mastchKey}`] || zgsmModelInfos.default
+	return (zgsmModels as Record<string, ModelInfo>)[`${mastchKey}`] || zgsmModels.default
 }

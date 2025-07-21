@@ -5,7 +5,8 @@ import { Info, Download, Upload, TriangleAlert } from "lucide-react"
 
 import { VSCodeCheckbox, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 
-import { TelemetrySetting } from "@roo/shared/TelemetrySetting"
+import { Package } from "@roo/package"
+import { TelemetrySetting } from "@roo/TelemetrySetting"
 
 import { vscode } from "@/utils/vscode"
 import { cn } from "@/lib/utils"
@@ -15,17 +16,21 @@ import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 
 type AboutProps = HTMLAttributes<HTMLDivElement> & {
-	version: string
 	telemetrySetting: TelemetrySetting
 	setTelemetrySetting: (setting: TelemetrySetting) => void
 }
 
-export const About = ({ version, telemetrySetting, setTelemetrySetting, className, ...props }: AboutProps) => {
+export const About = ({ telemetrySetting, setTelemetrySetting, className, ...props }: AboutProps) => {
 	const { t } = useAppTranslation()
 
 	return (
 		<div className={cn("flex flex-col gap-2", className)} {...props}>
-			<SectionHeader description={`Version: ${version}`}>
+			<SectionHeader
+				description={
+					Package.sha
+						? `Version: ${Package.version} (${Package.sha.slice(0, 8)})`
+						: `Version: ${Package.version}`
+				}>
 				<div className="flex items-center gap-2">
 					<Info className="w-4" />
 					<div>{t("settings:sections.about")}</div>
@@ -33,7 +38,7 @@ export const About = ({ version, telemetrySetting, setTelemetrySetting, classNam
 			</SectionHeader>
 
 			<Section>
-				<div style={{ display: "none" }}>
+				<div>
 					<VSCodeCheckbox
 						checked={telemetrySetting === "enabled"}
 						onChange={(e: any) => {
@@ -43,7 +48,12 @@ export const About = ({ version, telemetrySetting, setTelemetrySetting, classNam
 						{t("settings:footer.telemetry.label")}
 					</VSCodeCheckbox>
 					<p className="text-vscode-descriptionForeground text-sm mt-0">
-						{t("settings:footer.telemetry.description")}
+						<Trans
+							i18nKey="settings:footer.telemetry.description"
+							components={{
+								privacyLink: <VSCodeLink href="https://roocode.com/privacy" />,
+							}}
+						/>
 					</p>
 				</div>
 
@@ -51,8 +61,7 @@ export const About = ({ version, telemetrySetting, setTelemetrySetting, classNam
 					<Trans
 						i18nKey="settings:footer.feedback"
 						components={{
-							zgsmGithubLink: <VSCodeLink href="https://github.com/zgsm-ai/costrict" />,
-							githubLink: <VSCodeLink href="https://github.com/RooVetGit/Roo-Code" />,
+							githubLink: <VSCodeLink href="https://github.com/RooCodeInc/Roo-Code" />,
 							redditLink: <VSCodeLink href="https://reddit.com/r/RooCode" />,
 							discordLink: <VSCodeLink href="https://discord.gg/roocode" />,
 						}}

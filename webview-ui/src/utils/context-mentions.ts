@@ -1,8 +1,18 @@
-import { mentionRegex } from "@roo/shared/context-mentions"
 import { Fzf } from "fzf"
-import { ModeConfig } from "@roo/shared/modes"
+
+import type { ModeConfig } from "@roo-code/types"
+
+import { mentionRegex } from "@roo/context-mentions"
 
 import { escapeSpaces } from "./path-mentions"
+
+/**
+ * Gets the description for a mode, prioritizing description > whenToUse > roleDefinition
+ * and taking only the first line
+ */
+function getModeDescription(mode: ModeConfig): string {
+	return (mode.description || mode.whenToUse || mode.roleDefinition).split("\n")[0]
+}
 
 export interface SearchResult {
 	path: string
@@ -95,7 +105,6 @@ export enum ContextMenuOptionType {
 	Git = "git",
 	NoResults = "noResults",
 	Mode = "mode", // Add mode type
-	base64 = "base64",
 }
 
 export interface ContextMenuQueryItem {
@@ -136,13 +145,13 @@ export function getContextMenuOptions(
 					type: ContextMenuOptionType.Mode,
 					value: result.item.original.slug,
 					label: result.item.original.name,
-					description: (result.item.original.whenToUse || result.item.original.roleDefinition).split("\n")[0],
+					description: getModeDescription(result.item.original),
 				}))
 			: modes.map((mode) => ({
 					type: ContextMenuOptionType.Mode,
 					value: mode.slug,
 					label: mode.name,
-					description: (mode.whenToUse || mode.roleDefinition).split("\n")[0],
+					description: getModeDescription(mode),
 				}))
 
 		return matchingModes.length > 0 ? matchingModes : [{ type: ContextMenuOptionType.NoResults }]
@@ -256,7 +265,7 @@ export function getContextMenuOptions(
 	// Convert search results to queryItems format
 	const searchResultItems = dynamicSearchResults.map((result) => {
 		// Ensure paths start with / for consistency
-		let formattedPath = result.path.startsWith("/") ? result.path : `/${result.path}`
+		const formattedPath = result.path.startsWith("/") ? result.path : `/${result.path}`
 
 		// For display purposes, we don't escape spaces in the label or description
 		const displayPath = formattedPath

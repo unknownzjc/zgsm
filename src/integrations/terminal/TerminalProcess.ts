@@ -119,7 +119,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 
 			// Only add the PowerShell counter workaround if enabled
 			if (Terminal.getPowershellCounter()) {
-				commandToExecute += ` ; "(Costrict/PS Workaround: ${this.terminal.cmdCounter++})" > $null`
+				commandToExecute += ` ; "(Roo/PS Workaround: ${this.terminal.cmdCounter++})" > $null`
 			}
 
 			// Only add the sleep command if the command delay is greater than 0
@@ -392,6 +392,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 	// should be carefully considered to ensure they only remove control codes and don't
 	// alter the actual content or behavior of the output stream.
 	private removeEscapeSequences(str: string): string {
+		// eslint-disable-next-line no-control-regex
 		return stripAnsi(str.replace(/\x1b\]633;[^\x07]+\x07/gs, "").replace(/\x1b\]133;[^\x07]+\x07/gs, ""))
 	}
 

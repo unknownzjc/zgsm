@@ -1,4 +1,3 @@
-// Import required modules
 import * as vscode from "vscode"
 import * as os from "os"
 import * as path from "path"
@@ -50,7 +49,7 @@ export const getClientId = (): string => {
 		const newClientId = generateNewClientId()
 		const zgsmDir = getZgsmDirPath()
 
-		// Create .Costrict directory if not exists
+		// Create .zgsm directory if not exists
 		if (!existsSync(zgsmDir)) {
 			mkdirSync(zgsmDir, { recursive: true })
 		}

@@ -1,7 +1,7 @@
 import i18next from "i18next"
 import { initReactI18next } from "react-i18next"
 import { zgsmTranslations, mergeLanguageResources } from "./zgsm-setup"
-import { ZGSM_LANGUAGES } from "@roo/shared/language"
+import { ZGSM_LANGUAGES } from "@roo/language"
 
 // Build translations object
 const translations: Record<string, Record<string, any>> = {}
@@ -19,6 +19,7 @@ Object.entries(localeFiles).forEach(([path, module]) => {
 	if (match) {
 		const [, language, namespace] = match
 		if (!ALLOW_LANGUAGES.includes(language)) return
+
 		// Initialize language object if it doesn't exist
 		if (!translations[language]) {
 			translations[language] = {}
@@ -30,7 +31,6 @@ Object.entries(localeFiles).forEach(([path, module]) => {
 })
 
 console.log("Dynamically loaded translations:", Object.keys(translations))
-
 // Merge Costrict translations
 const mergedTranslations = mergeLanguageResources(translations, zgsmTranslations)
 console.log(`Merged webview-ui translations:`, mergedTranslations)
@@ -41,7 +41,6 @@ i18next.use(initReactI18next).init({
 	lng: "en", // Default language (will be overridden)
 	fallbackLng: "en",
 	debug: false,
-	// resources: translations,
 	resources: mergedTranslations,
 	interpolation: {
 		escapeValue: false, // React already escapes by default
@@ -50,7 +49,6 @@ i18next.use(initReactI18next).init({
 
 export function loadTranslations() {
 	Object.entries(mergedTranslations).forEach(([lang, namespaces]) => {
-		// Object.entries(translations).forEach(([lang, namespaces]) => {
 		try {
 			Object.entries(namespaces).forEach(([namespace, resources]) => {
 				i18next.addResourceBundle(lang, namespace, resources, true, true)

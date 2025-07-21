@@ -12,12 +12,16 @@ export async function processUserContentMentions({
 	cwd,
 	urlContentFetcher,
 	fileContextTracker,
+	rooIgnoreController,
+	showRooIgnoredFiles = true,
 	cline,
 }: {
 	userContent: Anthropic.Messages.ContentBlockParam[]
 	cwd: string
 	urlContentFetcher: UrlContentFetcher
 	fileContextTracker: FileContextTracker
+	rooIgnoreController?: any
+	showRooIgnoredFiles?: boolean
 	cline?: Task
 }) {
 	// Process userContent array, which contains various block types:
@@ -38,7 +42,15 @@ export async function processUserContentMentions({
 				if (shouldProcessMentions(block.text)) {
 					return {
 						...block,
-						text: await parseMentions(block.text, cwd, urlContentFetcher, fileContextTracker, cline),
+						text: await parseMentions(
+							block.text,
+							cwd,
+							urlContentFetcher,
+							fileContextTracker,
+							rooIgnoreController,
+							showRooIgnoredFiles,
+							cline,
+						),
 					}
 				}
 
@@ -53,6 +65,8 @@ export async function processUserContentMentions({
 								cwd,
 								urlContentFetcher,
 								fileContextTracker,
+								rooIgnoreController,
+								showRooIgnoredFiles,
 								cline,
 							),
 						}
@@ -70,6 +84,8 @@ export async function processUserContentMentions({
 										cwd,
 										urlContentFetcher,
 										fileContextTracker,
+										rooIgnoreController,
+										showRooIgnoredFiles,
 										cline,
 									),
 								}

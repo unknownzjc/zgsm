@@ -1,10 +1,11 @@
-import { type ModelInfo, type ProviderSettings, ANTHROPIC_DEFAULT_MAX_TOKENS } from "../../shared/api"
+import { type ModelInfo, type ProviderSettings, ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
 
 import {
 	DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS,
 	DEFAULT_HYBRID_REASONING_MODEL_THINKING_TOKENS,
 	shouldUseReasoningBudget,
 	shouldUseReasoningEffort,
+	getModelMaxOutputTokens,
 } from "../../shared/api"
 
 import {
@@ -18,7 +19,7 @@ import {
 	getOpenRouterReasoning,
 } from "./reasoning"
 
-type Format = "anthropic" | "openai" | "gemini" | "openrouter"
+type Format = "anthropic" | "openai" | "gemini" | "openrouter" | "zgsm"
 
 type GetModelParamsOptions<T extends Format> = {
 	format: T
@@ -55,13 +56,35 @@ type OpenRouterModelParams = {
 	reasoning: OpenRouterReasoningParams | undefined
 } & BaseModelParams
 
-export type ModelParams = AnthropicModelParams | OpenAiModelParams | GeminiModelParams | OpenRouterModelParams
+type ZgsmModelParams = (
+	| {
+			format: "zgsm"
+			reasoning:
+				| AnthropicModelParams["reasoning"]
+				| OpenAiModelParams["reasoning"]
+				| GeminiModelParams["reasoning"]
+				| undefined
+	  }
+	| Omit<AnthropicModelParams, "format">
+	| Omit<OpenAiModelParams, "format">
+	| Omit<GeminiModelParams, "format">
+	| Omit<OpenRouterModelParams, "format">
+) &
+	BaseModelParams
+
+export type ModelParams =
+	| AnthropicModelParams
+	| OpenAiModelParams
+	| GeminiModelParams
+	| OpenRouterModelParams
+	| ZgsmModelParams
 
 // Function overloads for specific return types
 export function getModelParams(options: GetModelParamsOptions<"anthropic">): AnthropicModelParams
 export function getModelParams(options: GetModelParamsOptions<"openai">): OpenAiModelParams
 export function getModelParams(options: GetModelParamsOptions<"gemini">): GeminiModelParams
 export function getModelParams(options: GetModelParamsOptions<"openrouter">): OpenRouterModelParams
+export function getModelParams(options: GetModelParamsOptions<"zgsm">): ZgsmModelParams
 export function getModelParams({
 	format,
 	modelId,
@@ -76,20 +99,25 @@ export function getModelParams({
 		reasoningEffort: customReasoningEffort,
 	} = settings
 
-	let maxTokens = model.maxTokens ?? undefined
+	// Use the centralized logic for computing maxTokens
+	const maxTokens = getModelMaxOutputTokens({
+		modelId,
+		model,
+		settings,
+		format,
+	})
+
 	let temperature = customTemperature ?? defaultTemperature
 	let reasoningBudget: ModelParams["reasoningBudget"] = undefined
 	let reasoningEffort: ModelParams["reasoningEffort"] = undefined
 
 	if (shouldUseReasoningBudget({ model, settings })) {
-		// If `customMaxTokens` is not specified use the default.
-		maxTokens = customMaxTokens ?? DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS
-
 		// If `customMaxThinkingTokens` is not specified use the default.
 		reasoningBudget = customMaxThinkingTokens ?? DEFAULT_HYBRID_REASONING_MODEL_THINKING_TOKENS
 
 		// Reasoning cannot exceed 80% of the `maxTokens` value.
-		if (reasoningBudget > Math.floor(maxTokens * 0.8)) {
+		// maxTokens should always be defined for reasoning budget models, but add a guard just in case
+		if (maxTokens && reasoningBudget > Math.floor(maxTokens * 0.8)) {
 			reasoningBudget = Math.floor(maxTokens * 0.8)
 		}
 
@@ -104,24 +132,6 @@ export function getModelParams({
 	} else if (shouldUseReasoningEffort({ model, settings })) {
 		// "Traditional" reasoning models use the `reasoningEffort` parameter.
 		reasoningEffort = customReasoningEffort ?? model.reasoningEffort
-	}
-
-	// TODO: We should consolidate this logic to compute `maxTokens` with
-	// `getModelMaxOutputTokens` in order to maintain a single source of truth.
-
-	const isAnthropic = format === "anthropic" || (format === "openrouter" && modelId.startsWith("anthropic/"))
-
-	// For "Hybrid" reasoning models, we should discard the model's actual
-	// `maxTokens` value if we're not using reasoning. We do this for Anthropic
-	// models only for now. Should we do this for Gemini too?
-	if (model.supportsReasoningBudget && !reasoningBudget && isAnthropic) {
-		maxTokens = ANTHROPIC_DEFAULT_MAX_TOKENS
-	}
-
-	// For Anthropic models we should always make sure a `maxTokens` value is
-	// set.
-	if (!maxTokens && isAnthropic) {
-		maxTokens = ANTHROPIC_DEFAULT_MAX_TOKENS
 	}
 
 	const params: BaseModelParams = { maxTokens, temperature, reasoningEffort, reasoningBudget }
@@ -149,6 +159,18 @@ export function getModelParams({
 			format,
 			...params,
 			reasoning: getGeminiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+		}
+	} else if (format === "zgsm") {
+		// Special case for o1 and o3-mini, which don't support temperature.
+		// TODO: Add a `supportsTemperature` field to the model info.
+		if (modelId.startsWith("o1") || modelId.startsWith("o3-mini")) {
+			params.temperature = undefined
+		}
+
+		return {
+			format,
+			...params,
+			reasoning: getOpenAiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
 		}
 	} else {
 		// Special case for o1-pro, which doesn't support temperature.

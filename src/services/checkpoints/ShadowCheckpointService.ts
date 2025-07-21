@@ -10,7 +10,6 @@ import pWaitFor from "p-wait-for"
 import { fileExistsAtPath } from "../../utils/fs"
 import { executeRipgrep } from "../../services/search/file-search"
 
-import { GIT_DISABLED_SUFFIX } from "./constants"
 import { CheckpointDiff, CheckpointResult, CheckpointEventMap } from "./types"
 import { getExcludePatterns } from "./excludes"
 
@@ -63,6 +62,15 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 	public async initShadowGit(onInit?: () => Promise<void>) {
 		if (this.git) {
 			throw new Error("Shadow git repo already initialized")
+		}
+
+		const hasNestedGitRepos = await this.hasNestedGitRepositories()
+
+		if (hasNestedGitRepos) {
+			throw new Error(
+				"Checkpoints are disabled because nested git repositories were detected in the workspace. " +
+					"Please remove or relocate nested git repositories to use the checkpoints feature.",
+			)
 		}
 
 		await fs.mkdir(this.checkpointsDir, { recursive: true })
@@ -132,71 +140,43 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 	}
 
 	private async stageAll(git: SimpleGit) {
-		await this.renameNestedGitRepos(true)
-
 		try {
 			await git.add(".")
 		} catch (error) {
 			this.log(
 				`[${this.constructor.name}#stageAll] failed to add files to git: ${error instanceof Error ? error.message : String(error)}`,
 			)
-		} finally {
-			await this.renameNestedGitRepos(false)
 		}
 	}
 
-	// Since we use git to track checkpoints, we need to temporarily disable
-	// nested git repos to work around git's requirement of using submodules for
-	// nested repos.
-	private async renameNestedGitRepos(disable: boolean) {
+	private async hasNestedGitRepositories(): Promise<boolean> {
 		try {
 			// Find all .git directories that are not at the root level.
-			const gitDir = ".git" + (disable ? "" : GIT_DISABLED_SUFFIX)
-			const args = ["--files", "--hidden", "--follow", "-g", `**/${gitDir}/HEAD`, this.workspaceDir]
+			const args = ["--files", "--hidden", "--follow", "-g", "**/.git/HEAD", this.workspaceDir]
 
-			const gitPaths = await (
-				await executeRipgrep({ args, workspacePath: this.workspaceDir })
-			).filter(({ type, path }) => type === "folder" && path.includes(".git") && !path.startsWith(".git"))
+			const gitPaths = await executeRipgrep({ args, workspacePath: this.workspaceDir })
 
-			// For each nested .git directory, rename it based on operation.
-			for (const gitPath of gitPaths) {
-				if (gitPath.path.startsWith(".git")) {
-					continue
-				}
+			// Filter to only include nested git directories (not the root .git).
+			const nestedGitPaths = gitPaths.filter(
+				({ type, path }) =>
+					type === "folder" && path.includes(".git") && !path.startsWith(".git") && path !== ".git",
+			)
 
-				const currentPath = path.join(this.workspaceDir, gitPath.path)
-				let newPath: string
-
-				if (disable) {
-					newPath = !currentPath.endsWith(GIT_DISABLED_SUFFIX)
-						? currentPath + GIT_DISABLED_SUFFIX
-						: currentPath
-				} else {
-					newPath = currentPath.endsWith(GIT_DISABLED_SUFFIX)
-						? currentPath.slice(0, -GIT_DISABLED_SUFFIX.length)
-						: currentPath
-				}
-
-				if (currentPath === newPath) {
-					continue
-				}
-
-				try {
-					await fs.rename(currentPath, newPath)
-
-					this.log(
-						`[${this.constructor.name}#renameNestedGitRepos] ${disable ? "disabled" : "enabled"} nested git repo ${currentPath}`,
-					)
-				} catch (error) {
-					this.log(
-						`[${this.constructor.name}#renameNestedGitRepos] failed to ${disable ? "disable" : "enable"} nested git repo ${currentPath}: ${error instanceof Error ? error.message : String(error)}`,
-					)
-				}
+			if (nestedGitPaths.length > 0) {
+				this.log(
+					`[${this.constructor.name}#hasNestedGitRepositories] found ${nestedGitPaths.length} nested git repositories: ${nestedGitPaths.map((p) => p.path).join(", ")}`,
+				)
+				return true
 			}
+
+			return false
 		} catch (error) {
 			this.log(
-				`[${this.constructor.name}#renameNestedGitRepos] failed to ${disable ? "disable" : "enable"} nested git repos: ${error instanceof Error ? error.message : String(error)}`,
+				`[${this.constructor.name}#hasNestedGitRepositories] failed to check for nested git repos: ${error instanceof Error ? error.message : String(error)}`,
 			)
+
+			// If we can't check, assume there are no nested repos to avoid blocking the feature.
+			return false
 		}
 	}
 
@@ -214,9 +194,14 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		return this.shadowGitConfigWorktree
 	}
 
-	public async saveCheckpoint(message: string): Promise<CheckpointResult | undefined> {
+	public async saveCheckpoint(
+		message: string,
+		options?: { allowEmpty?: boolean },
+	): Promise<CheckpointResult | undefined> {
 		try {
-			this.log(`[${this.constructor.name}#saveCheckpoint] starting checkpoint save`)
+			this.log(
+				`[${this.constructor.name}#saveCheckpoint] starting checkpoint save (allowEmpty: ${options?.allowEmpty ?? false})`,
+			)
 
 			if (!this.git) {
 				throw new Error("Shadow git repo not initialized")
@@ -224,7 +209,8 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 
 			const startTime = Date.now()
 			await this.stageAll(this.git)
-			const result = await this.git.commit(message)
+			const commitArgs = options?.allowEmpty ? { "--allow-empty": null } : undefined
+			const result = await this.git.commit(message, commitArgs)
 			const isFirst = this._checkpoints.length === 0
 			const fromHash = this._checkpoints[this._checkpoints.length - 1] ?? this.baseHash!
 			const toHash = result.commit || fromHash
@@ -262,9 +248,7 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 
 			const start = Date.now()
 			await this.git.clean("f", ["-d", "-f"])
-			// Clean up commit hash by removing any non-alphanumeric characters
-			const cleanCommitHash = commitHash.replace(/[^a-f0-9]/g, "")
-			await this.git.reset(["--hard", cleanCommitHash, "--"])
+			await this.git.reset(["--hard", commitHash])
 
 			// Remove all checkpoints after the specified commitHash.
 			const checkpointIndex = this._checkpoints.indexOf(commitHash)
@@ -299,43 +283,18 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		await this.stageAll(this.git)
 
 		this.log(`[${this.constructor.name}#getDiff] diffing ${to ? `${from}..${to}` : `${from}..HEAD`}`)
-		// Clean up commit hashes by removing any non-alphanumeric characters
-		const cleanFrom = from.replace(/[^a-f0-9]/g, "")
-		const cleanTo = to?.replace(/[^a-f0-9]/g, "")
-		const diffOptions = ["-U0"] // 确保获取完整内容
-		const { files } = cleanTo
-			? await this.git.diffSummary([...diffOptions, `${cleanFrom}..${cleanTo}`, "--"])
-			: await this.git.diffSummary([...diffOptions, cleanFrom, "--"])
+		const { files } = to ? await this.git.diffSummary([`${from}..${to}`]) : await this.git.diffSummary([from])
 
 		const cwdPath = (await this.getShadowGitConfigWorktree(this.git)) || this.workspaceDir || ""
 
 		for (const file of files) {
 			const relPath = file.file
 			const absPath = path.join(cwdPath, relPath)
-			this.log(`[${this.constructor.name}#getDiff] getting before content for ${from}:${relPath}`)
-			const before = await this.git.show([`${from}:${relPath}`]).catch((e) => {
-				this.log(
-					`[${this.constructor.name}#getDiff] failed to get before content for ${relPath}: ${e instanceof Error ? e.message : String(e)}`,
-				)
-				return ""
-			})
+			const before = await this.git.show([`${from}:${relPath}`]).catch(() => "")
 
-			this.log(
-				`[${this.constructor.name}#getDiff] getting after content for ${to ? `${to}:${relPath}` : absPath}`,
-			)
 			const after = to
-				? await this.git.show([`${to}:${relPath}`]).catch((e) => {
-						this.log(
-							`[${this.constructor.name}#getDiff] failed to get after content for ${relPath}: ${e instanceof Error ? e.message : String(e)}`,
-						)
-						return ""
-					})
-				: await fs.readFile(absPath, "utf8").catch((e) => {
-						this.log(
-							`[${this.constructor.name}#getDiff] failed to read file ${absPath}: ${e instanceof Error ? e.message : String(e)}`,
-						)
-						return ""
-					})
+				? await this.git.show([`${to}:${relPath}`]).catch(() => "")
+				: await fs.readFile(absPath, "utf8").catch(() => "")
 
 			result.push({ paths: { relative: relPath, absolute: absPath }, content: { before, after } })
 		}

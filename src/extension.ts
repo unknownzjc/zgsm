@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 import * as dotenvx from "@dotenvx/dotenvx"
 import * as path from "path"
-import * as zgsm from "../zgsm/src/extension"
+import * as ZgsmCore from "./core/zgsm-base"
 
 // Load environment variables from .env file
 try {
@@ -13,20 +13,25 @@ try {
 	console.warn("Failed to load environment variables:", e)
 }
 
-import "./utils/path" // Necessary to have access to String.prototype.toPosix.
+import { CloudService } from "@roo-code/cloud"
+import { TelemetryService, PostHogTelemetryClient } from "@roo-code/telemetry"
 
-import { Package, ProviderSettings } from "./schemas"
+import "./utils/path" // Necessary to have access to String.prototype.toPosix.
+import { createOutputChannelLogger, createDualLogger } from "./utils/outputChannelLogger"
+
+import { Package } from "./shared/package"
+import { formatLanguage } from "./shared/language"
 import { ContextProxy } from "./core/config/ContextProxy"
 import { ClineProvider } from "./core/webview/ClineProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { McpServerManager } from "./services/mcp/McpServerManager"
-import { telemetryService } from "./services/telemetry/TelemetryService"
-import { CodeReviewService } from "./services/codeReview/codeReviewService"
-import { CommentService } from "./integrations/comment"
-import { API } from "./exports/api"
+import { CodeIndexManager } from "./services/code-index/manager"
+import { MdmService } from "./services/mdm/MdmService"
 import { migrateSettings } from "./utils/migrateSettings"
-import { formatLanguage } from "./shared/language"
+import { autoImportSettings } from "./utils/autoImportSettings"
+import { API } from "./extension/api"
+import { ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService } from "./core/zgsm-auth/index"
 
 import {
 	handleUri,
@@ -36,17 +41,11 @@ import {
 	CodeActionProvider,
 } from "./activate"
 import { initializeI18n } from "./i18n"
-import { getCommand } from "./utils/commands"
-import { defaultLang } from "./utils/language"
-import { InstallType, PluginLifecycleManager } from "./core/tools/pluginLifecycleManager"
-import { ZgsmLoginManager } from "./zgsmAuth/zgsmLoginManager"
-import { createLogger, deactivate as loggerDeactivate } from "./utils/logger"
-import { startIPCServer, stopIPCServer } from "./zgsmAuth/ipc/server"
-import { connectIPC, disconnectIPC, onTokensUpdate } from "./zgsmAuth/ipc/client"
-import { ZgsmCodeBaseSyncService } from "./core/codebase/client"
-import { defaultZgsmAuthConfig } from "./zgsmAuth/config"
-import { initZgsmCodeBase } from "./core/codebase"
-import { parseJwt } from "./utils/jwt"
+import { startIPCServer, stopIPCServer } from "./core/zgsm-auth/ipc/server"
+import { connectIPC, disconnectIPC, onZgsmTokensUpdate, onZgsmLogout } from "./core/zgsm-auth/ipc/client"
+import { initZgsmCodeBase } from "./core/zgsm-codebase"
+import { ZgsmCodeBaseSyncService } from "./core/zgsm-codebase/client"
+import { getClientId } from "./utils/getClientId"
 
 /**
  * Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -58,36 +57,42 @@ import { parseJwt } from "./utils/jwt"
 
 let outputChannel: vscode.OutputChannel
 let extensionContext: vscode.ExtensionContext
+let zgsmAuthCommands: ZgsmAuthCommands
 
 // This method is called when your extension is activated.
 // Your extension is activated the very first time the command is executed.
 export async function activate(context: vscode.ExtensionContext) {
-	const hasReloaded = context.globalState.get<boolean>("hasReloadedOnUpgrade") ?? false
-	const allCommands = await vscode.commands.getCommands(true)
-
-	if (!allCommands.includes(getCommand("SidebarProvider.focus"))) {
-		await context.globalState.update("hasReloadedOnUpgrade", true)
-
-		!hasReloaded && (await vscode.commands.executeCommand("workbench.action.reloadWindow"))
-		return
-	}
-
-	await context.globalState.update("hasReloadedOnUpgrade", false)
-
 	extensionContext = context
 	outputChannel = vscode.window.createOutputChannel(Package.outputChannel)
-	createLogger(Package.outputChannel, { channel: outputChannel })
 	context.subscriptions.push(outputChannel)
-	outputChannel.appendLine(`${Package.name} extension activated`)
+	outputChannel.appendLine(`${Package.name} extension activated - ${JSON.stringify(Package)}`)
 
 	// Migrate old settings to new
 	await migrateSettings(context, outputChannel)
 
-	// // Initialize telemetry service after environment variables are loaded.
-	// telemetryService.initialize()
+	// Initialize telemetry service.
+	const telemetryService = TelemetryService.createInstance()
+
+	try {
+		telemetryService.register(new PostHogTelemetryClient())
+	} catch (error) {
+		console.warn("Failed to register PostHogTelemetryClient:", error)
+	}
+
+	// Create logger for cloud services
+	const cloudLogger = createDualLogger(createOutputChannelLogger(outputChannel))
+
+	// Initialize Roo Code Cloud service.
+	await CloudService.createInstance(context, {
+		stateChanged: () => ClineProvider.getVisibleInstance()?.postStateToWebview(),
+		log: cloudLogger,
+	})
+
+	// Initialize MDM service
+	const mdmService = await MdmService.createInstance(cloudLogger)
 
 	// Initialize i18n for internationalization support
-	initializeI18n(context.globalState.get("language") ?? formatLanguage(await defaultLang()))
+	initializeI18n(context.globalState.get("language") ?? formatLanguage(vscode.env.language))
 
 	// Initialize terminal shell execution handlers.
 	TerminalRegistry.initialize()
@@ -101,56 +106,44 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	const contextProxy = await ContextProxy.getInstance(context)
-	const provider = new ClineProvider(
-		context,
-		outputChannel,
-		"sidebar",
-		contextProxy,
-		async (providerSettings: ProviderSettings): Promise<ProviderSettings> => {
-			if (typeof providerSettings.zgsmApiKeyUpdatedAt !== "string") {
-				providerSettings.zgsmApiKeyUpdatedAt = `${providerSettings.zgsmApiKeyUpdatedAt}`
-			}
+	const codeIndexManager = CodeIndexManager.getInstance(context)
 
-			if (typeof providerSettings.zgsmApiKeyExpiredAt !== "string") {
-				providerSettings.zgsmApiKeyExpiredAt = `${providerSettings.zgsmApiKeyExpiredAt}`
-			}
+	try {
+		await codeIndexManager?.initialize(contextProxy)
+	} catch (error) {
+		outputChannel.appendLine(
+			`[CodeIndexManager] Error during background CodeIndexManager configuration/indexing: ${error.message || error}`,
+		)
+	}
 
-			return providerSettings
-		},
-	)
-	telemetryService.setProvider(provider)
-	await zgsm.activate(context, provider)
+	const provider = new ClineProvider(context, outputChannel, "sidebar", contextProxy, codeIndexManager, mdmService)
+	TelemetryService.instance.setProvider(provider)
 	ZgsmCodeBaseSyncService.setProvider(provider)
-	const zgsmApiKey = provider.getValue("zgsmApiKey")
-	const zgsmBaseUrl = provider.getValue("zgsmBaseUrl") || defaultZgsmAuthConfig.baseUrl
-	const commentService = CommentService.getInstance()
-	const codeReviewService = CodeReviewService.getInstance()
-	codeReviewService.setProvider(provider)
-	codeReviewService.setCommentService(commentService)
+
+	if (codeIndexManager) {
+		context.subscriptions.push(codeIndexManager)
+	}
+
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(ClineProvider.sideBarId, provider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}),
 	)
 
-	registerCommands({ context, outputChannel, provider })
-
-	// Check if this is a new installation or upgrade
-	const lifecycle = new PluginLifecycleManager(context)
-
-	const installType = await lifecycle.getInstallType()
-
-	// If this is a new installation, reinstall or upgrade, automatically open the sidebar
-	switch (installType) {
-		case InstallType.First:
-		case InstallType.Upgrade:
-		case InstallType.Reinstall:
-			// open the sidebar
-			await vscode.commands.executeCommand(getCommand("SidebarProvider.focus"))
-			break
-		case InstallType.Unchanged:
-			break
+	// Auto-import configuration if specified in settings
+	try {
+		await autoImportSettings(outputChannel, {
+			providerSettingsManager: provider.providerSettingsManager,
+			contextProxy: provider.contextProxy,
+			customModesManager: provider.customModesManager,
+		})
+	} catch (error) {
+		outputChannel.appendLine(
+			`[AutoImport] Error during auto-import: ${error instanceof Error ? error.message : String(error)}`,
+		)
 	}
+
+	registerCommands({ context, outputChannel, provider })
 
 	/**
 	 * We use the text document content provider API to show the left side for diff
@@ -191,72 +184,111 @@ export async function activate(context: vscode.ExtensionContext) {
 	registerTerminalActions(context)
 
 	// Allows other extensions to activate once Roo is ready.
-	vscode.commands.executeCommand(getCommand("activationCompleted"))
-	// vscode.commands.executeCommand(`${Package.name}.activationCompleted`)
+	vscode.commands.executeCommand(`${Package.name}.activationCompleted`)
 
 	// Implements the `RooCodeAPI` interface.
 	const socketPath = process.env.ROO_CODE_IPC_SOCKET_PATH
 	const enableLogging = typeof socketPath === "string"
 
-	// Watch the core files and automatically reload the extension host
-	const enableCoreAutoReload = process.env?.NODE_ENV === "development"
-	if (enableCoreAutoReload) {
-		console.log(`♻️♻️♻️ Core auto-reloading is ENABLED!`)
-		const watcher = vscode.workspace.createFileSystemWatcher(
-			new vscode.RelativePattern(context.extensionPath, "src/**/*.ts"),
+	// Watch the core files and automatically reload the extension host.
+	if (process.env.NODE_ENV === "development") {
+		const pattern = "**/*.ts"
+
+		const watchPaths = [
+			{ path: context.extensionPath, name: "extension" },
+			{ path: path.join(context.extensionPath, "../packages/types"), name: "types" },
+			{ path: path.join(context.extensionPath, "../packages/telemetry"), name: "telemetry" },
+			{ path: path.join(context.extensionPath, "../packages/cloud"), name: "cloud" },
+		]
+
+		console.log(
+			`♻️♻️♻️ Core auto-reloading is ENABLED. Watching for changes in: ${watchPaths.map(({ name }) => name).join(", ")}`,
 		)
-		watcher.onDidChange((uri) => {
-			console.log(`♻️ File changed: ${uri.fsPath}. Reloading host…`)
-			vscode.commands.executeCommand("workbench.action.reloadWindow")
+
+		watchPaths.forEach(({ path: watchPath, name }) => {
+			const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(watchPath, pattern))
+
+			watcher.onDidChange((uri) => {
+				console.log(`♻️ ${name} file changed: ${uri.fsPath}. Reloading host…`)
+				vscode.commands.executeCommand("workbench.action.reloadWindow")
+			})
+
+			context.subscriptions.push(watcher)
 		})
-		context.subscriptions.push(watcher)
 	}
 
-	startIPCServer()
-	connectIPC()
-
-	ZgsmLoginManager.setProvider(provider)
-	context.subscriptions.push(ZgsmLoginManager.getInstance())
-
-	context.subscriptions.push(
-		onTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
-			ZgsmLoginManager.getInstance().saveTokens(tokens.state, tokens.access_token, tokens.refresh_token)
-			provider.log(`new token from other window: ${tokens.access_token}`)
-		}),
-	)
-
-	if (zgsmApiKey) {
-		try {
-			const { exp } = parseJwt(zgsmApiKey)
-			const needlogin = exp * 1000 <= Date.now()
-
-			if (needlogin) {
-				ZgsmLoginManager.getInstance().openStatusBarloginDialog()
-			} else {
-				ZgsmLoginManager.getInstance().startRefreshToken(zgsmApiKey)
-			}
-		} catch (error) {
-			provider.log(`Failed to parse zgsmRefreshToken: ${error.message}`)
-		}
-		initZgsmCodeBase(zgsmBaseUrl, zgsmApiKey)
-	}
+	zgsmInitialize(context, provider)
 
 	return new API(outputChannel, provider, socketPath, enableLogging)
 }
 
 // This method is called when your extension is deactivated.
 export async function deactivate() {
-	await ZgsmCodeBaseSyncService.stopSync()
-	await zgsm.deactivate()
+	ZgsmCodeBaseSyncService.stopSync()
+	ZgsmCore.deactivate()
 
 	// Clean up IPC connections
 	disconnectIPC()
 	stopIPCServer()
-
-	// Clean up MCP server manager
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
 	await McpServerManager.cleanup(extensionContext)
-	telemetryService.shutdown()
+	TelemetryService.instance.shutdown()
 	TerminalRegistry.cleanup()
-	loggerDeactivate()
+}
+
+async function zgsmInitialize(context: vscode.ExtensionContext, provider: ClineProvider) {
+	startIPCServer()
+	connectIPC()
+
+	ZgsmAuthService.initialize(provider)
+	context.subscriptions.push(ZgsmAuthService.getInstance())
+	context.subscriptions.push(
+		onZgsmTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
+			ZgsmAuthService.getInstance().saveTokens(tokens)
+			provider.log(`new token from other window: ${tokens.access_token}`)
+		}),
+		onZgsmLogout((sessionId: string) => {
+			if (vscode.env.sessionId === sessionId) return
+			ZgsmAuthService.getInstance().logout(true)
+			provider.log(`logout from other window`)
+		}),
+	)
+	//  🔑 关键：初始化认证服务单例，插件启动时检查登录状态
+	ZgsmAuthCommands.initialize(provider)
+	context.subscriptions.push(ZgsmAuthCommands.getInstance())
+
+	zgsmAuthCommands = ZgsmAuthCommands.getInstance()
+	zgsmAuthCommands.registerCommands(context)
+
+	provider.setZgsmAuthCommands(zgsmAuthCommands)
+
+	/**
+	 * 插件启动时检查登录状态
+	 */
+	try {
+		const isLoggedIn = await ZgsmAuthService.getInstance().checkLoginStatusOnStartup()
+
+		if (isLoggedIn) {
+			provider.log("插件启动时检测到登录状态：有效")
+			ZgsmAuthService.getInstance()
+				.getTokens()
+				.then((tokens) => {
+					if (!tokens) {
+						return
+					}
+					initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
+
+					ZgsmAuthService.getInstance().startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
+					ZgsmAuthService.getInstance().updateUserInfo(tokens.access_token)
+				})
+			// 开始token刷新定时器
+		} else {
+			ZgsmAuthService.openStatusBarLoginTip()
+			provider.log("插件启动时检测到登录状态：无效")
+		}
+	} catch (error) {
+		provider.log("启动时检查登录状态失败: " + error.message)
+	}
+
+	await ZgsmCore.activate(context, provider)
 }

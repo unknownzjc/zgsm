@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 
-import type { ProviderSettings } from "@roo/shared/api"
+import type { ProviderSettings } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
@@ -39,7 +39,6 @@ export const GeminiCli = ({ apiConfiguration, setApiConfigurationField }: Gemini
 			<div className="text-sm text-vscode-descriptionForeground -mt-2">
 				{t("settings:providers.geminiCli.oauthPathDescription")}
 			</div>
-
 			<VSCodeTextField
 				value={apiConfiguration?.geminiCliProjectId || ""}
 				onInput={handleInputChange("geminiCliProjectId")}
@@ -50,7 +49,6 @@ export const GeminiCli = ({ apiConfiguration, setApiConfigurationField }: Gemini
 			<div className="text-sm text-vscode-descriptionForeground -mt-2">
 				{t("settings:providers.geminiCli.projectIdDescription")}
 			</div>
-
 			<div className="text-sm text-vscode-descriptionForeground mt-3">
 				{t("settings:providers.geminiCli.description")}
 			</div>

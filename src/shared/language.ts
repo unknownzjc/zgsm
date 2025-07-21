@@ -1,10 +1,7 @@
-import { type Language, isLanguage } from "../schemas"
-const isTestEnv = process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined
-
-export { type Language, isLanguage }
+import { type Language, isLanguage } from "@roo-code/types"
 
 /**
- * Language name mapping from ISO codes to full language names
+ * Language name mapping from ISO codes to full language names.
  */
 
 export const LANGUAGES: Record<Language, string> = {
@@ -14,6 +11,7 @@ export const LANGUAGES: Record<Language, string> = {
 	es: "Español",
 	fr: "Français",
 	hi: "हिन्दी",
+	id: "Bahasa Indonesia",
 	it: "Italiano",
 	ja: "日本語",
 	ko: "한국어",
@@ -26,20 +24,11 @@ export const LANGUAGES: Record<Language, string> = {
 	"zh-CN": "简体中文",
 	"zh-TW": "繁體中文",
 }
-
 export const ZGSM_LANGUAGES = {
 	en: LANGUAGES.en,
 	"zh-CN": LANGUAGES["zh-CN"],
 	"zh-TW": LANGUAGES["zh-TW"],
 } as Record<Language, string>
-
-if (isTestEnv) {
-	Object.assign(ZGSM_LANGUAGES, {
-		es: "Español",
-		fr: "Français",
-	})
-}
-
 /**
  * Formats a VSCode locale string to ensure the region code is uppercase.
  * For example, transforms "en-us" to "en-US" or "fr-ca" to "fr-CA".

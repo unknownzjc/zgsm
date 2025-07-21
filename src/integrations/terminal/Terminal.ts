@@ -17,7 +17,7 @@ export class Terminal extends BaseTerminal {
 
 		const env = Terminal.getEnv()
 		const iconPath = new vscode.ThemeIcon("rocket")
-		this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Costrict", iconPath, env })
+		this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env })
 
 		if (Terminal.getTerminalZdotdir()) {
 			ShellIntegrationManager.terminalTmpDirs.set(id, env.ZDOTDIR)
@@ -152,7 +152,7 @@ export class Terminal extends BaseTerminal {
 
 	public static getEnv(): Record<string, string> {
 		const env: Record<string, string> = {
-			PAGER: "cat",
+			PAGER: process.platform === "win32" ? "" : "cat",
 
 			// VTE must be disabled because it prevents the prompt command from executing
 			// See https://wiki.gnome.org/Apps/Terminal/VTE

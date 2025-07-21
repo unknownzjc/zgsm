@@ -6,15 +6,8 @@ import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
 import { useRooPortal } from "./hooks/useRooPortal"
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui"
+import { StandardTooltip } from "@/components/ui"
 
 export enum DropdownOptionType {
 	ITEM = "item",
@@ -29,7 +22,6 @@ export interface DropdownOption {
 	disabled?: boolean
 	type?: DropdownOptionType
 	pinned?: boolean
-	tooltip?: string
 }
 
 export interface SelectDropdownProps {
@@ -46,7 +38,7 @@ export interface SelectDropdownProps {
 	placeholder?: string
 	shortcutText?: string
 	renderItem?: (option: DropdownOption) => React.ReactNode
-	needSearch?: boolean
+	disableSearch?: boolean
 }
 
 export const SelectDropdown = React.memo(
@@ -66,7 +58,7 @@ export const SelectDropdown = React.memo(
 				placeholder = "",
 				shortcutText = "",
 				renderItem,
-				needSearch = true,
+				disableSearch = false,
 			},
 			ref,
 		) => {
@@ -128,8 +120,8 @@ export const SelectDropdown = React.memo(
 
 			// Filter options based on search value using memoized Fzf instance
 			const filteredOptions = React.useMemo(() => {
-				// If no search value, return all options without filtering
-				if (!searchValue) return options
+				// If search is disabled or no search value, return all options without filtering
+				if (disableSearch || !searchValue) return options
 
 				// Get fuzzy matching items - only perform search if we have a search value
 				const matchingItems = fzfInstance.find(searchValue).map((result) => result.item.original)
@@ -143,7 +135,7 @@ export const SelectDropdown = React.memo(
 					// Include if it's in the matching items
 					return matchingItems.some((item) => item.value === option.value)
 				})
-			}, [options, searchValue, fzfInstance])
+			}, [options, searchValue, fzfInstance, disableSearch])
 
 			// Group options by type and handle separators
 			const groupedOptions = React.useMemo(() => {
@@ -194,72 +186,28 @@ export const SelectDropdown = React.memo(
 				[onChange, options],
 			)
 
-			const SelectDropDownItem = ({ option }: { option: DropdownOption }) => {
-				return (
-					<TooltipProvider delayDuration={0}>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div
-									onClick={() => !option.disabled && handleSelect(option.value)}
-									className={cn(
-										"px-3 py-1.5 text-sm cursor-pointer flex items-center",
-										option.disabled
-											? "opacity-50 cursor-not-allowed"
-											: "hover:bg-vscode-list-hoverBackground",
-										option.value === value
-											? "bg-vscode-list-activeSelectionBackground text-vscode-list-activeSelectionForeground"
-											: "",
-										itemClassName,
-									)}
-									data-testid="dropdown-item">
-									{renderItem ? (
-										renderItem(option)
-									) : (
-										<>
-											<span>{option.label}</span>
-											{option.value === value && <Check className="ml-auto size-4 p-0.5" />}
-										</>
-									)}
-								</div>
-							</TooltipTrigger>
-							{option.tooltip && (
-								<TooltipContent
-									side="top"
-									align="center"
-									sideOffset={16}
-									style={{
-										maxWidth: "334px",
-										color: "#fff",
-										padding: "5px",
-										border: "1px solid rgba(255, 255, 255, 0.3)",
-									}}>
-									{option.tooltip}
-								</TooltipContent>
-							)}
-						</Tooltip>
-					</TooltipProvider>
-				)
-			}
+			const triggerContent = (
+				<PopoverTrigger
+					ref={ref}
+					disabled={disabled}
+					data-testid="dropdown-trigger"
+					className={cn(
+						"w-full min-w-0 max-w-full inline-flex items-center gap-1.5 relative whitespace-nowrap px-1.5 py-1 text-xs",
+						"bg-transparent border border-[rgba(255,255,255,0.08)] rounded-md text-vscode-foreground w-auto",
+						"transition-all duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder focus-visible:ring-inset",
+						disabled
+							? "opacity-50 cursor-not-allowed"
+							: "opacity-90 hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
+						triggerClassName,
+					)}>
+					<CaretUpIcon className="pointer-events-none opacity-80 flex-shrink-0 size-3" />
+					<span className="truncate">{displayText}</span>
+				</PopoverTrigger>
+			)
 
 			return (
 				<Popover open={open} onOpenChange={onOpenChange} data-testid="dropdown-root">
-					<PopoverTrigger
-						ref={ref}
-						disabled={disabled}
-						title={title}
-						data-testid="dropdown-trigger"
-						className={cn(
-							"w-full min-w-0 max-w-full inline-flex items-center gap-1.5 relative whitespace-nowrap px-1.5 py-1 text-xs",
-							"bg-transparent border border-[rgba(255,255,255,0.08)] rounded-md text-vscode-foreground w-auto",
-							"transition-all duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder focus-visible:ring-inset",
-							disabled
-								? "opacity-50 cursor-not-allowed"
-								: "opacity-90 hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
-							triggerClassName,
-						)}>
-						<CaretUpIcon className="pointer-events-none opacity-80 flex-shrink-0 size-3" />
-						<span className="truncate">{displayText}</span>
-					</PopoverTrigger>
+					{title ? <StandardTooltip content={title}>{triggerContent}</StandardTooltip> : triggerContent}
 					<PopoverContent
 						align={align}
 						sideOffset={sideOffset}
@@ -267,7 +215,7 @@ export const SelectDropdown = React.memo(
 						className={cn("p-0 overflow-hidden", contentClassName)}>
 						<div className="flex flex-col w-full">
 							{/* Search input */}
-							{needSearch && (
+							{!disableSearch && (
 								<div className="relative p-2 border-b border-vscode-dropdown-border">
 									<input
 										aria-label="Search"
@@ -322,7 +270,33 @@ export const SelectDropdown = React.memo(
 											// Use stable keys for better reconciliation
 											const itemKey = `item-${option.value || option.label || index}`
 
-											return <SelectDropDownItem key={itemKey} option={option} />
+											return (
+												<div
+													key={itemKey}
+													onClick={() => !option.disabled && handleSelect(option.value)}
+													className={cn(
+														"px-3 py-1.5 text-sm cursor-pointer flex items-center",
+														option.disabled
+															? "opacity-50 cursor-not-allowed"
+															: "hover:bg-vscode-list-hoverBackground",
+														option.value === value
+															? "bg-vscode-list-activeSelectionBackground text-vscode-list-activeSelectionForeground"
+															: "",
+														itemClassName,
+													)}
+													data-testid="dropdown-item">
+													{renderItem ? (
+														renderItem(option)
+													) : (
+														<>
+															<span>{option.label}</span>
+															{option.value === value && (
+																<Check className="ml-auto size-4 p-0.5" />
+															)}
+														</>
+													)}
+												</div>
+											)
 										})}
 									</div>
 								)}

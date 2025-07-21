@@ -2,10 +2,10 @@ import React, { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, us
 import { useEvent } from "react-use"
 import DynamicTextArea from "react-textarea-autosize"
 
-import { mentionRegex, mentionRegexGlobal, unescapeSpaces } from "@roo/shared/context-mentions"
-import { WebviewMessage } from "@roo/shared/WebviewMessage"
-import { Mode, getAllModes } from "@roo/shared/modes"
-import { ExtensionMessage } from "@roo/shared/ExtensionMessage"
+import { mentionRegex, mentionRegexGlobal, unescapeSpaces } from "@roo/context-mentions"
+import { WebviewMessage } from "@roo/WebviewMessage"
+import { Mode, getAllModes } from "@roo/modes"
+import { ExtensionMessage } from "@roo/ExtensionMessage"
 
 import { vscode } from "@/utils/vscode"
 import { useExtensionState } from "@/context/ExtensionStateContext"
@@ -19,15 +19,18 @@ import {
 	SearchResult,
 } from "@src/utils/context-mentions"
 import { convertToMentionPath } from "@/utils/path-mentions"
-import { SelectDropdown, DropdownOptionType, Button } from "@/components/ui"
+import { SelectDropdown, DropdownOptionType, Button, StandardTooltip } from "@/components/ui"
 
+import Thumbnails from "../common/Thumbnails"
+import ModeSelector from "./ModeSelector"
 import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
-import { VolumeX, Pin, Check } from "lucide-react"
-import { IconButton } from "./IconButton"
+import { VolumeX, Pin, Check, Image, WandSparkles, SendHorizontal } from "lucide-react"
+import { IndexingStatusBadge } from "./IndexingStatusBadge"
 import { cn } from "@/lib/utils"
-import styled from "styled-components"
-import { getIconForFilePath, getIconUrlByName, getIconForDirectoryPath } from "vscode-material-icons"
+import { usePromptHistory } from "./hooks/usePromptHistory"
+import { EditModeControls } from "./EditModeControls"
+// import { getModelId } from "@roo-code/types"
 
 interface ChatTextAreaProps {
 	inputValue: string
@@ -44,43 +47,10 @@ interface ChatTextAreaProps {
 	mode: Mode
 	setMode: (value: Mode) => void
 	modeShortcutText: string
+	// Edit mode props
+	isEditMode?: boolean
+	onCancel?: () => void
 }
-
-interface InputMapArrayProps {
-	className?: string
-	title?: string
-	type: "text" | "highlight" | "br" | "base64"
-	value?: string
-	contextType?: ContextMenuOptionType | null
-	isMostVisible?: boolean
-	base64Path?: string
-}
-
-const TextareaWrapper = styled.div`
-	position: relative;
-	textarea {
-		padding: 0;
-		border: none;
-		margin-top: 2px;
-		font-size: 12px;
-
-		&:focus {
-			border: none;
-			outline: none;
-		}
-	}
-`
-
-const ChatAreaWrapper = styled.div`
-	display: flex;
-	flex-wrap: wrap;
-	overflow: hidden;
-	max-height: 45px;
-	span {
-		margin-right: 4px;
-		margin-bottom: 4px;
-	}
-`
 
 const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 	(
@@ -99,6 +69,8 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			mode,
 			setMode,
 			modeShortcutText,
+			isEditMode = false,
+			onCancel,
 		},
 		ref,
 	) => {
@@ -109,9 +81,13 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			currentApiConfigName,
 			listApiConfigMeta,
 			customModes,
+			customModePrompts,
 			cwd,
+			// apiConfiguration,
 			pinnedApiConfigs,
 			togglePinnedApiConfig,
+			taskHistory,
+			clineMessages,
 		} = useExtensionState()
 
 		// Find the ID and display text for the currently selected API configuration
@@ -147,8 +123,25 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				const message = event.data
 
 				if (message.type === "enhancedPrompt") {
-					if (message.text) {
-						setInputValue(message.text)
+					if (message.text && textAreaRef.current) {
+						try {
+							// Use execCommand to replace text while preserving undo history
+							if (document.execCommand) {
+								// Use native browser methods to preserve undo stack
+								const textarea = textAreaRef.current
+
+								// Focus the textarea to ensure it's the active element
+								textarea.focus()
+
+								// Select all text first
+								textarea.select()
+								document.execCommand("insertText", false, message.text)
+							} else {
+								setInputValue(message.text)
+							}
+						} catch {
+							setInputValue(message.text)
+						}
 					}
 
 					setIsEnhancingPrompt(false)
@@ -189,17 +182,15 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const contextMenuContainerRef = useRef<HTMLDivElement>(null)
 		const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false)
 		const [isFocused, setIsFocused] = useState(false)
-		const [inputMapArr, setInputMapArr] = useState<InputMapArrayProps[]>([])
 
-		const [hoveredIconIndex, setHoveredIconIndex] = useState(-1)
-		const clampedContentRef = useRef(null)
-
-		const highlightArr = useMemo(() => {
-			return (
-				inputMapArr.filter((item) => item.type === "highlight" || item.type === ContextMenuOptionType.base64) ||
-				[]
-			)
-		}, [inputMapArr])
+		// Use custom hook for prompt history navigation
+		const { handleHistoryNavigation, resetHistoryNavigation, resetOnInputChange } = usePromptHistory({
+			clineMessages,
+			taskHistory,
+			cwd,
+			inputValue,
+			setInputValue,
+		})
 
 		// Fetch git commits when Git is selected or when typing a hash.
 		useEffect(() => {
@@ -226,6 +217,8 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				setInputValue(t("chat:enhancePromptDescription"))
 			}
 		}, [inputValue, sendingDisabled, setInputValue, t])
+
+		const allModes = useMemo(() => getAllModes(customModes), [customModes])
 
 		const queryItems = useMemo(() => {
 			return [
@@ -356,7 +349,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								selectedType,
 								queryItems,
 								fileSearchResults,
-								getAllModes(customModes),
+								allModes,
 							)
 							const optionsLength = options.length
 
@@ -393,7 +386,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							selectedType,
 							queryItems,
 							fileSearchResults,
-							getAllModes(customModes),
+							allModes,
 						)[selectedMenuIndex]
 						if (
 							selectedOption &&
@@ -408,10 +401,17 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 				const isComposing = event.nativeEvent?.isComposing ?? false
 
+				// Handle prompt history navigation using custom hook
+				if (handleHistoryNavigation(event, showContextMenu, isComposing)) {
+					return
+				}
+
 				if (event.key === "Enter" && !event.shiftKey && !isComposing) {
 					event.preventDefault()
 
 					if (!sendingDisabled) {
+						// Reset history navigation state when sending
+						resetHistoryNavigation()
 						onSend()
 					}
 				}
@@ -447,24 +447,6 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					} else if (justDeletedSpaceAfterMention) {
 						const { newText, newPosition } = removeMention(inputValue, cursorPosition)
 
-						// Detect removed image references
-						const oldImageRefs: string[] = inputValue.match(/@\/image:[^\s]+/g) || []
-						const newImageRefs =
-							newText !== inputValue ? newText.match(/@\/image:[^\s]+/g) || [] : oldImageRefs
-
-						if (oldImageRefs.length > newImageRefs.length) {
-							// Collect deleted image references and their original indexes
-							const deletedIndices: number[] = []
-							oldImageRefs.forEach((ref, index) => {
-								if (!newImageRefs.includes(ref)) {
-									deletedIndices.push(index)
-								}
-							})
-
-							// Remove images from selectedImages by index
-							setSelectedImages((prev) => prev.filter((_, idx) => !deletedIndices.includes(idx)))
-						}
-
 						if (newText !== inputValue) {
 							event.preventDefault()
 							setInputValue(newText)
@@ -491,9 +473,10 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				setInputValue,
 				justDeletedSpaceAfterMention,
 				queryItems,
-				customModes,
+				allModes,
 				fileSearchResults,
-				setSelectedImages,
+				handleHistoryNavigation,
+				resetHistoryNavigation,
 			],
 		)
 
@@ -511,6 +494,9 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			(e: React.ChangeEvent<HTMLTextAreaElement>) => {
 				const newValue = e.target.value
 				setInputValue(newValue)
+
+				// Reset history navigation when user types
+				resetOnInputChange()
 
 				const newCursorPosition = e.target.selectionStart
 				setCursorPosition(newCursorPosition)
@@ -566,7 +552,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					setFileSearchResults([]) // Clear file search results.
 				}
 			},
-			[setInputValue, setSearchRequestId, setFileSearchResults, setSearchLoading],
+			[setInputValue, setSearchRequestId, setFileSearchResults, setSearchLoading, resetOnInputChange],
 		)
 
 		useEffect(() => {
@@ -587,7 +573,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const handlePaste = useCallback(
 			async (e: React.ClipboardEvent) => {
 				const items = e.clipboardData.items
-				const files = Array.from(e.clipboardData.files) || []
+
 				const pastedText = e.clipboardData.getData("text")
 				// Check if the pasted content is a URL, add space after so user
 				// can easily delete if they don't want it.
@@ -654,12 +640,6 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 					if (dataUrls.length > 0) {
 						setSelectedImages((prevImages) => [...prevImages, ...dataUrls].slice(0, MAX_IMAGES_PER_MESSAGE))
-
-						const imageTags = imageItems.map((item, index) => `@/image:${files[index].name} `).join("")
-						const newValue = inputValue ? `${inputValue}${imageTags}` : imageTags
-						setInputValue(newValue)
-						setCursorPosition(newValue.length)
-						setIntendedCursorPosition(newValue.length)
 					} else {
 						console.warn(t("chat:noValidImages"))
 					}
@@ -684,74 +664,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 			highlightLayerRef.current.scrollTop = textAreaRef.current.scrollTop
 			highlightLayerRef.current.scrollLeft = textAreaRef.current.scrollLeft
-
-			const layerSpamClass = cn("inline-block", "rounded-sm", "py-px px-1")
-
-			const segments: InputMapArrayProps[] = []
-
-			const lines = text.split(" ")
-			lines.forEach((line, lineIndex) => {
-				// Add a line break before each line except the first one
-				if (lineIndex > 0) {
-					segments.push({ type: "br" })
-				}
-
-				let lineLastIndex = 0
-				let lineMatch
-				const currentLineRegex = new RegExp(mentionRegexGlobal.source, "g")
-
-				while ((lineMatch = currentLineRegex.exec(line)) !== null) {
-					// Append the regular text that comes before the @mention match
-					if (lineMatch.index > lineLastIndex) {
-						segments.push({ type: "text", value: line.substring(lineLastIndex, lineMatch.index) })
-					}
-
-					// Handle the content matched by @mention
-					const fullMatch = lineMatch[0]
-					const MAX_LENGTH = 20
-					// Actual display content length (excluding the length of '...')
-					const DISPLAY_TRUNCATED_LENGTH = MAX_LENGTH - 3
-
-					const displayContent =
-						fullMatch.length > MAX_LENGTH
-							? `${fullMatch.substring(0, DISPLAY_TRUNCATED_LENGTH)}...`
-							: fullMatch
-
-					let contextType: ContextMenuOptionType | undefined = undefined
-					if (fullMatch.startsWith("@/image:")) {
-						contextType = ContextMenuOptionType.base64
-					} else if (fullMatch.startsWith("@problems")) {
-						contextType = ContextMenuOptionType.Problems
-					} else if (fullMatch.startsWith("@terminal")) {
-						contextType = ContextMenuOptionType.Terminal
-					} else if (fullMatch.startsWith("@mode:")) {
-						contextType = ContextMenuOptionType.Mode
-					} else if (fullMatch.includes("/") && fullMatch.endsWith("/")) {
-						contextType = ContextMenuOptionType.Folder
-					} else if (fullMatch.includes("/")) {
-						contextType = ContextMenuOptionType.File
-					} else if (fullMatch.match(/^@[a-f0-9]{7,40}$/i)) {
-						contextType = ContextMenuOptionType.Git
-					}
-
-					segments.push({
-						type: contextType === ContextMenuOptionType.base64 ? ContextMenuOptionType.base64 : "highlight",
-						value: displayContent,
-						className: layerSpamClass,
-						title: fullMatch,
-						contextType,
-						base64Path: selectedImages[lineIndex],
-					})
-					lineLastIndex = currentLineRegex.lastIndex
-				}
-				// Add all plain text after the last @mention in the current line
-				if (lineLastIndex < line.length) {
-					segments.push({ type: "text", value: line.substring(lineLastIndex) })
-				}
-			})
-
-			setInputMapArr(segments)
-		}, [selectedImages])
+		}, [])
 
 		useLayoutEffect(() => {
 			updateHighlights()
@@ -858,12 +771,6 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							if (typeof vscode !== "undefined") {
 								vscode.postMessage({ type: "draggedImages", dataUrls: dataUrls })
 							}
-
-							const imageTags = imageFiles.map((item) => `@/image:${item.name} `).join("")
-							const newValue = inputValue ? `${inputValue}${imageTags}` : imageTags
-							setInputValue(newValue)
-							setCursorPosition(newValue.length)
-							setIntendedCursorPosition(newValue.length)
 						} else {
 							console.warn(t("chat:noValidImages"))
 						}
@@ -895,10 +802,385 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			}
 		})
 
-		const [imagesBaseUri] = useState(() => {
-			const w = window as any
-			return w.IMAGES_BASE_URI || ""
-		})
+		const placeholderBottomText = `\n(${t("chat:addContext")}${shouldDisableImages ? `, ${t("chat:dragFiles")}` : `, ${t("chat:dragFilesImages")}`})`
+
+		// Common mode selector handler
+		const handleModeChange = useCallback(
+			(value: Mode) => {
+				setMode(value)
+				vscode.postMessage({ type: "mode", text: value })
+			},
+			[setMode],
+		)
+
+		// Helper function to render mode selector
+		const renderModeSelector = () => (
+			<ModeSelector
+				value={mode}
+				title={t("chat:selectMode")}
+				onChange={handleModeChange}
+				triggerClassName="w-full"
+				modeShortcutText={modeShortcutText}
+				customModes={customModes}
+				customModePrompts={customModePrompts}
+			/>
+		)
+
+		// Helper function to get API config dropdown options
+		const getApiConfigOptions = useMemo(() => {
+			const pinnedConfigs = (listApiConfigMeta || [])
+				.filter((config) => pinnedApiConfigs && pinnedApiConfigs[config.id])
+				.map((config) => ({
+					value: config.id,
+					label: config.name,
+					name: config.name,
+					type: DropdownOptionType.ITEM,
+					pinned: true,
+				}))
+				.sort((a, b) => a.label.localeCompare(b.label))
+
+			const unpinnedConfigs = (listApiConfigMeta || [])
+				.filter((config) => !pinnedApiConfigs || !pinnedApiConfigs[config.id])
+				.map((config) => ({
+					value: config.id,
+					label: config.name,
+					name: config.name,
+					type: DropdownOptionType.ITEM,
+					pinned: false,
+				}))
+				.sort((a, b) => a.label.localeCompare(b.label))
+
+			const hasPinnedAndUnpinned = pinnedConfigs.length > 0 && unpinnedConfigs.length > 0
+
+			return [
+				...pinnedConfigs,
+				...(hasPinnedAndUnpinned
+					? [
+							{
+								value: "sep-pinned",
+								label: t("chat:separator"),
+								type: DropdownOptionType.SEPARATOR,
+							},
+						]
+					: []),
+				...unpinnedConfigs,
+				{
+					value: "sep-2",
+					label: t("chat:separator"),
+					type: DropdownOptionType.SEPARATOR,
+				},
+				{
+					value: "settingsButtonClicked",
+					label: t("chat:edit"),
+					type: DropdownOptionType.ACTION,
+				},
+			]
+		}, [listApiConfigMeta, pinnedApiConfigs, t])
+
+		// Helper function to handle API config change
+		const handleApiConfigChange = useCallback((value: string) => {
+			if (value === "settingsButtonClicked") {
+				vscode.postMessage({
+					type: "loadApiConfiguration",
+					text: value,
+					values: { section: "providers" },
+				})
+			} else {
+				vscode.postMessage({ type: "loadApiConfigurationById", text: value })
+			}
+		}, [])
+
+		// Helper function to render API config item
+		const renderApiConfigItem = useCallback(
+			({ type, value, label, pinned }: any) => {
+				if (type !== DropdownOptionType.ITEM) {
+					return label
+				}
+
+				const config = listApiConfigMeta?.find((c) => c.id === value)
+				const isCurrentConfig = config?.name === currentApiConfigName
+
+				return (
+					<div className="flex justify-between gap-2 w-full h-5">
+						<div
+							className={cn("truncate min-w-0 overflow-hidden", {
+								"font-medium": isCurrentConfig,
+							})}>
+							{label}
+						</div>
+						<div className="flex justify-end w-10 flex-shrink-0">
+							<div
+								className={cn("size-5 p-1", {
+									"block group-hover:hidden": !pinned,
+									hidden: !isCurrentConfig,
+								})}>
+								<Check className="size-3" />
+							</div>
+							<StandardTooltip content={pinned ? t("chat:unpin") : t("chat:pin")}>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={(e) => {
+										e.stopPropagation()
+										togglePinnedApiConfig(value)
+										vscode.postMessage({
+											type: "toggleApiConfigPin",
+											text: value,
+										})
+									}}
+									className={cn("size-5", {
+										"hidden group-hover:flex": !pinned,
+										"bg-accent": pinned,
+									})}>
+									<Pin className="size-3 p-0.5 opacity-50" />
+								</Button>
+							</StandardTooltip>
+						</div>
+					</div>
+				)
+			},
+			[listApiConfigMeta, currentApiConfigName, t, togglePinnedApiConfig],
+		)
+
+		// Helper function to render non-edit mode controls
+		const renderNonEditModeControls = () => (
+			<div className={cn("flex", "justify-between", "items-center", "mt-auto")}>
+				<div className={cn("flex", "items-center", "gap-1", "min-w-0")}>
+					<div className="shrink-0">{renderModeSelector()}</div>
+
+					<div className={cn("flex-1", "min-w-0", "overflow-hidden")}>
+						<SelectDropdown
+							value={currentConfigId}
+							disabled={selectApiConfigDisabled}
+							title={t("chat:selectApiConfig")}
+							disableSearch={false}
+							placeholder={displayName}
+							options={getApiConfigOptions}
+							onChange={handleApiConfigChange}
+							triggerClassName="w-full text-ellipsis overflow-hidden"
+							itemClassName="group"
+							renderItem={renderApiConfigItem}
+						/>
+					</div>
+				</div>
+
+				<div className={cn("flex", "items-center", "gap-0.5", "shrink-0")}>
+					{/* {apiConfiguration?.apiProvider === "zgsm" && (
+						<span
+							className={`text-xs text-vscode-descriptionForeground hover:text-vscode-foreground transition-colors cursor-pointer px-2 py-1 rounded border border-vscode-panel-border hover:border-vscode-focusBorder`}>
+							{getModelId(apiConfiguration)}
+						</span>
+					)} */}
+					{isTtsPlaying && (
+						<StandardTooltip content={t("chat:stopTts")}>
+							<button
+								aria-label={t("chat:stopTts")}
+								onClick={() => vscode.postMessage({ type: "stopTts" })}
+								className={cn(
+									"relative inline-flex items-center justify-center",
+									"bg-transparent border-none p-1.5",
+									"rounded-md min-w-[28px] min-h-[28px]",
+									"text-vscode-foreground opacity-85",
+									"transition-all duration-150",
+									"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+									"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+									"active:bg-[rgba(255,255,255,0.1)]",
+									"cursor-pointer",
+								)}>
+								<VolumeX className="w-4 h-4" />
+							</button>
+						</StandardTooltip>
+					)}
+					<IndexingStatusBadge />
+					<StandardTooltip content={t("chat:addImages")}>
+						<button
+							aria-label={t("chat:addImages")}
+							disabled={shouldDisableImages}
+							onClick={!shouldDisableImages ? onSelectImages : undefined}
+							className={cn(
+								"relative inline-flex items-center justify-center",
+								"bg-transparent border-none p-1.5",
+								"rounded-md min-w-[28px] min-h-[28px]",
+								"text-vscode-foreground opacity-85",
+								"transition-all duration-150",
+								"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+								"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+								"active:bg-[rgba(255,255,255,0.1)]",
+								!shouldDisableImages && "cursor-pointer",
+								shouldDisableImages &&
+									"opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
+								"mr-1",
+							)}>
+							<Image className="w-4 h-4" />
+						</button>
+					</StandardTooltip>
+				</div>
+			</div>
+		)
+
+		// Helper function to render the text area section
+		const renderTextAreaSection = () => (
+			<div
+				className={cn(
+					"relative",
+					"flex-1",
+					"flex",
+					"flex-col-reverse",
+					"min-h-0",
+					"overflow-hidden",
+					"rounded",
+				)}>
+				<div
+					ref={highlightLayerRef}
+					className={cn(
+						"absolute",
+						"inset-0",
+						"pointer-events-none",
+						"whitespace-pre-wrap",
+						"break-words",
+						"text-transparent",
+						"overflow-hidden",
+						"font-vscode-font-family",
+						"text-vscode-editor-font-size",
+						"leading-vscode-editor-line-height",
+						"py-2",
+						"px-[9px]",
+						"z-10",
+						"forced-color-adjust-none",
+					)}
+					style={{
+						color: "transparent",
+					}}
+				/>
+				<DynamicTextArea
+					ref={(el) => {
+						if (typeof ref === "function") {
+							ref(el)
+						} else if (ref) {
+							ref.current = el
+						}
+						textAreaRef.current = el
+					}}
+					value={inputValue}
+					onChange={(e) => {
+						handleInputChange(e)
+						updateHighlights()
+					}}
+					onFocus={() => setIsFocused(true)}
+					onKeyDown={handleKeyDown}
+					onKeyUp={handleKeyUp}
+					onBlur={handleBlur}
+					onPaste={handlePaste}
+					onSelect={updateCursorPosition}
+					onMouseUp={updateCursorPosition}
+					onHeightChange={(height) => {
+						if (textAreaBaseHeight === undefined || height < textAreaBaseHeight) {
+							setTextAreaBaseHeight(height)
+						}
+
+						onHeightChange?.(height)
+					}}
+					placeholder={placeholderText}
+					minRows={3}
+					maxRows={15}
+					autoFocus={true}
+					className={cn(
+						"w-full",
+						"text-vscode-input-foreground",
+						"font-vscode-font-family",
+						"text-vscode-editor-font-size",
+						"leading-vscode-editor-line-height",
+						"cursor-text",
+						isEditMode ? "pt-1.5 pb-10 px-2" : "py-1.5 px-2",
+						isFocused
+							? "border border-vscode-focusBorder outline outline-vscode-focusBorder"
+							: isDraggingOver
+								? "border-2 border-dashed border-vscode-focusBorder"
+								: "border border-transparent",
+						isDraggingOver
+							? "bg-[color-mix(in_srgb,var(--vscode-input-background)_95%,var(--vscode-focusBorder))]"
+							: "bg-vscode-input-background",
+						"transition-background-color duration-150 ease-in-out",
+						"will-change-background-color",
+						"min-h-[90px]",
+						"box-border",
+						"rounded",
+						"resize-none",
+						"overflow-x-hidden",
+						"overflow-y-auto",
+						"pr-9",
+						"flex-none flex-grow",
+						"z-[2]",
+						"scrollbar-none",
+						"scrollbar-hide",
+					)}
+					onScroll={() => updateHighlights()}
+				/>
+
+				<div className="absolute top-1 right-1 z-30">
+					<StandardTooltip content={t("chat:enhancePrompt")}>
+						<button
+							aria-label={t("chat:enhancePrompt")}
+							disabled={sendingDisabled}
+							onClick={!sendingDisabled ? handleEnhancePrompt : undefined}
+							className={cn(
+								"relative inline-flex items-center justify-center",
+								"bg-transparent border-none p-1.5",
+								"rounded-md min-w-[28px] min-h-[28px]",
+								"opacity-60 hover:opacity-100 text-vscode-descriptionForeground hover:text-vscode-foreground",
+								"transition-all duration-150",
+								"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+								"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+								"active:bg-[rgba(255,255,255,0.1)]",
+								!sendingDisabled && "cursor-pointer",
+								sendingDisabled &&
+									"opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
+							)}>
+							<WandSparkles className={cn("w-4 h-4", isEnhancingPrompt && "animate-spin")} />
+						</button>
+					</StandardTooltip>
+				</div>
+
+				{!isEditMode && (
+					<div className="absolute bottom-1 right-1 z-30">
+						<StandardTooltip content={t("chat:sendMessage")}>
+							<button
+								aria-label={t("chat:sendMessage")}
+								disabled={sendingDisabled}
+								onClick={!sendingDisabled ? onSend : undefined}
+								className={cn(
+									"relative inline-flex items-center justify-center",
+									"bg-transparent border-none p-1.5",
+									"rounded-md min-w-[28px] min-h-[28px]",
+									"opacity-60 hover:opacity-100 text-vscode-descriptionForeground hover:text-vscode-foreground",
+									"transition-all duration-150",
+									"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+									"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+									"active:bg-[rgba(255,255,255,0.1)]",
+									!sendingDisabled && "cursor-pointer",
+									sendingDisabled &&
+										"opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
+								)}>
+								<SendHorizontal className="w-4 h-4" />
+							</button>
+						</StandardTooltip>
+					</div>
+				)}
+
+				{!inputValue && !isEditMode && (
+					<div
+						className="absolute left-2 z-30 pr-9 flex items-center h-8"
+						style={{
+							bottom: "0.25rem",
+							color: "var(--vscode-tab-inactiveForeground)",
+							userSelect: "none",
+							pointerEvents: "none",
+						}}>
+						{placeholderBottomText}
+					</div>
+				)}
+			</div>
+		)
 
 		return (
 			<div
@@ -906,14 +1188,14 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					"relative",
 					"flex",
 					"flex-col",
-					"gap-2",
+					"gap-1",
 					"bg-editor-background",
-					"m-2 mt-1",
-					"p-1.5",
+					isEditMode ? "px-0" : "px-1.5",
+					"pb-1",
 					"outline-none",
 					"border",
 					"border-none",
-					"w-[calc(100%-16px)]",
+					isEditMode ? "w-full" : "w-[calc(100%-16px)]",
 					"ml-auto",
 					"mr-auto",
 					"box-border",
@@ -968,471 +1250,45 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									setSelectedIndex={setSelectedMenuIndex}
 									selectedType={selectedType}
 									queryItems={queryItems}
-									modes={getAllModes(customModes)}
+									modes={allModes}
 									loading={searchLoading}
 									dynamicSearchResults={fileSearchResults}
 								/>
 							</div>
 						)}
-						<div
-							className={cn(
-								"relative",
-								"flex-1",
-								"flex",
-								"flex-col-reverse",
-								"min-h-0",
-								"overflow-hidden",
-								"rounded",
-							)}>
-							<div
-								className="chat-area"
-								style={{
-									backgroundColor: "var(--color-vscode-input-background)",
-									padding: "10px",
-								}}>
-								{/* Add context */}
-								<div className={cn("text-xs", "z-11", "rounded-sm", "inline-block")}>
-									<ChatAreaWrapper ref={clampedContentRef} className="relative">
-										<span
-											className={cn("py-px px-1", "rounded-sm", "cursor-pointer", "inline-block")}
-											style={{
-												border: "1px solid rgba(255, 255, 255, 0.1)",
-											}}
-											onClick={(e) => {
-												e.preventDefault()
-												e.stopPropagation()
-												if (textAreaRef.current) {
-													const originalValue = textAreaRef.current.value
-													const newValue = originalValue + "@"
-													const newCursorPos = newValue.length
 
-													setInputValue(newValue)
-													setCursorPosition(newCursorPos)
-													setIntendedCursorPosition(newCursorPos)
-
-													setShowContextMenu(true)
-													setSearchQuery("")
-													setSelectedMenuIndex(3)
-
-													setTimeout(() => {
-														if (textAreaRef.current) {
-															textAreaRef.current.blur()
-															textAreaRef.current.focus()
-														}
-													}, 0)
-												}
-											}}>
-											{highlightArr.length ? "@" : t("chat:addContextBtn")}
-										</span>
-										{highlightArr.map((item, index) => {
-											const getIconUrl = () => {
-												if (item.type === ContextMenuOptionType.base64) {
-													return item.base64Path
-												}
-												if (
-													item.contextType === ContextMenuOptionType.File ||
-													item.contextType === ContextMenuOptionType.OpenedFile ||
-													item.contextType === ContextMenuOptionType.Folder
-												) {
-													const name = item.title?.split("/").filter(Boolean).at(-1) ?? ""
-													const iconName =
-														item.contextType === ContextMenuOptionType.Folder
-															? getIconForDirectoryPath(name)
-															: getIconForFilePath(name)
-													const baseUri = (window as any).MATERIAL_ICONS_BASE_URI || ""
-													return getIconUrlByName(iconName, baseUri)
-												}
-												return ""
-											}
-
-											const getIconClass = () => {
-												if (
-													item.contextType === ContextMenuOptionType.File ||
-													item.contextType === ContextMenuOptionType.OpenedFile ||
-													item.contextType === ContextMenuOptionType.Folder
-												) {
-													return ""
-												}
-												switch (item.contextType) {
-													case ContextMenuOptionType.Mode:
-														return "codicon codicon-symbol-misc"
-													case ContextMenuOptionType.Problems:
-														return "codicon codicon-warning"
-													case ContextMenuOptionType.Terminal:
-														return "codicon codicon-terminal"
-													case ContextMenuOptionType.Git:
-														return "codicon codicon-git-commit"
-													default:
-														return ""
-												}
-											}
-
-											const iconUrl = getIconUrl()
-
-											const escapeRegExp = (string: string): string => {
-												return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-											}
-
-											const deleteHighlight = (index: number) => {
-												if (!item.title) return
-
-												const escapedTitle = escapeRegExp(item.title)
-
-												const regex = new RegExp(`\\s*${escapedTitle}\\s*`)
-
-												const newInputValue = inputValue.replace(regex, " ").trimStart()
-
-												setInputValue(newInputValue)
-
-												const newInputMapArr = inputMapArr.filter(
-													(mapItem) =>
-														!(
-															(mapItem.type === "highlight" ||
-																mapItem.type === ContextMenuOptionType.base64) &&
-															mapItem.value === item.value
-														),
-												)
-												setInputMapArr(newInputMapArr)
-												// If it's a base64 image, sync removal from selectedImages
-												if (item.type === ContextMenuOptionType.base64 && item.base64Path) {
-													setSelectedImages(() =>
-														selectedImages.filter((_, i) => i !== index),
-													)
-												}
-											}
-
-											return (
-												<span
-													className={item.className}
-													key={index}
-													style={{
-														border: "1px solid rgba(255, 255, 255, 0.1)",
-														display: "inline-flex",
-														alignItems: "center",
-													}}
-													title={item.title}
-													onMouseEnter={() => setHoveredIconIndex(index)}
-													onMouseLeave={() => setHoveredIconIndex(-1)}>
-													{item.contextType &&
-														(hoveredIconIndex === index ? (
-															<i
-																className="codicon codicon-close cursor-pointer"
-																style={{
-																	fontSize: "12px",
-																	marginRight: "2px",
-																	color: "#fff",
-																}}
-																onClick={() => deleteHighlight(index)}
-															/>
-														) : iconUrl ? (
-															<img
-																src={iconUrl}
-																alt=""
-																style={{
-																	width: "12px",
-																	height: "12px",
-																	marginRight: "2px",
-																}}
-															/>
-														) : (
-															<i
-																className={getIconClass()}
-																style={{ fontSize: "12px", marginRight: "2px" }}
-															/>
-														))}
-													{item.value}
-												</span>
-											)
-										})}
-									</ChatAreaWrapper>
-								</div>
-
-								<TextareaWrapper>
-									<div
-										ref={highlightLayerRef}
-										className={cn(
-											"absolute",
-											"inset-0",
-											"pointer-events-none",
-											"whitespace-pre-wrap",
-											"break-words",
-											"text-transparent",
-											"overflow-hidden",
-											"font-vscode-font-family",
-											"text-[12px]",
-											"leading-vscode-editor-line-height",
-											"py-[2px]",
-											"z-10",
-											"forced-color-adjust-none",
-										)}
-										style={{
-											color: "transparent",
-										}}
-									/>
-									<DynamicTextArea
-										ref={(el) => {
-											if (typeof ref === "function") {
-												ref(el)
-											} else if (ref) {
-												ref.current = el
-											}
-											textAreaRef.current = el
-										}}
-										value={inputValue}
-										onChange={(e) => {
-											handleInputChange(e)
-											updateHighlights()
-										}}
-										onFocus={() => setIsFocused(true)}
-										onKeyDown={handleKeyDown}
-										onKeyUp={handleKeyUp}
-										onBlur={handleBlur}
-										onPaste={handlePaste}
-										onSelect={updateCursorPosition}
-										onMouseUp={updateCursorPosition}
-										onHeightChange={(height) => {
-											if (textAreaBaseHeight === undefined || height < textAreaBaseHeight) {
-												setTextAreaBaseHeight(height)
-											}
-
-											onHeightChange?.(height)
-										}}
-										placeholder={placeholderText}
-										minRows={3}
-										maxRows={15}
-										autoFocus={true}
-										className={cn(
-											"w-full",
-											"text-vscode-input-foreground",
-											"font-vscode-font-family",
-											"text-vscode-editor-font-size",
-											"leading-vscode-editor-line-height",
-											"cursor-text",
-											"py-1.5 px-2",
-											isFocused
-												? "border border-vscode-focusBorder outline outline-vscode-focusBorder"
-												: isDraggingOver
-													? "border-2 border-dashed border-vscode-focusBorder"
-													: "border border-transparent",
-											isDraggingOver
-												? "bg-[color-mix(in_srgb,var(--vscode-input-background)_95%,var(--vscode-focusBorder))]"
-												: "bg-vscode-input-background",
-											"transition-background-color duration-150 ease-in-out",
-											"will-change-background-color",
-											"min-h-[50px]",
-											"box-border",
-											"rounded",
-											"resize-none",
-											"overflow-x-hidden",
-											"overflow-y-auto",
-											"pr-2",
-											"flex-none flex-grow",
-											"z-[2]",
-											"scrollbar-none",
-										)}
-										onScroll={() => updateHighlights()}></DynamicTextArea>
-								</TextareaWrapper>
-
-								<div className={cn("flex", "justify-between", "items-center", "mt-auto", "pt-0.5")}>
-									<div className={cn("flex", "items-center", "gap-1", "min-w-0")}>
-										<div className="shrink-0">
-											<SelectDropdown
-												value={mode}
-												title={t("chat:selectMode")}
-												options={[
-													...getAllModes(customModes).map((mode) => ({
-														value: mode.slug,
-														label: mode.name,
-														type: DropdownOptionType.ITEM,
-														tooltip: mode.tooltip || "",
-													})),
-													{
-														value: "sep-1",
-														label: t("chat:separator"),
-														type: DropdownOptionType.SEPARATOR,
-													},
-												]}
-												onChange={(value) => {
-													setMode(value as Mode)
-													vscode.postMessage({ type: "mode", text: value })
-												}}
-												shortcutText={modeShortcutText}
-												triggerClassName="w-full"
-												needSearch={false}
-											/>
-										</div>
-
-										<div className={cn("flex-1", "min-w-0", "overflow-hidden")}>
-											<SelectDropdown
-												value={currentConfigId}
-												disabled={selectApiConfigDisabled}
-												title={t("chat:selectApiConfig")}
-												placeholder={displayName}
-												options={[
-													// Pinned items first.
-													...(listApiConfigMeta || [])
-														.filter(
-															(config) => pinnedApiConfigs && pinnedApiConfigs[config.id],
-														)
-														.map((config) => ({
-															value: config.id,
-															label: config.name,
-															name: config.name, // Keep name for comparison with currentApiConfigName.
-															type: DropdownOptionType.ITEM,
-															pinned: true,
-														}))
-														.sort((a, b) => a.label.localeCompare(b.label)),
-													// If we have pinned items and unpinned items, add a separator.
-													...(pinnedApiConfigs &&
-													Object.keys(pinnedApiConfigs).length > 0 &&
-													(listApiConfigMeta || []).some(
-														(config) => !pinnedApiConfigs[config.id],
-													)
-														? [
-																{
-																	value: "sep-pinned",
-																	label: t("chat:separator"),
-																	type: DropdownOptionType.SEPARATOR,
-																},
-															]
-														: []),
-													// Unpinned items sorted alphabetically.
-													...(listApiConfigMeta || [])
-														.filter(
-															(config) =>
-																!pinnedApiConfigs || !pinnedApiConfigs[config.id],
-														)
-														.map((config) => ({
-															value: config.id,
-															label: config.name,
-															name: config.name, // Keep name for comparison with currentApiConfigName.
-															type: DropdownOptionType.ITEM,
-															pinned: false,
-														}))
-														.sort((a, b) => a.label.localeCompare(b.label)),
-													{
-														value: "sep-2",
-														label: t("chat:separator"),
-														type: DropdownOptionType.SEPARATOR,
-													},
-													{
-														value: "settingsButtonClicked",
-														label: t("chat:edit"),
-														type: DropdownOptionType.ACTION,
-													},
-												]}
-												onChange={(value) => {
-													if (value === "settingsButtonClicked") {
-														vscode.postMessage({
-															type: "loadApiConfiguration",
-															text: value,
-															values: { section: "providers" },
-														})
-													} else {
-														vscode.postMessage({
-															type: "loadApiConfigurationById",
-															text: value,
-														})
-													}
-												}}
-												triggerClassName="w-full text-ellipsis overflow-hidden"
-												itemClassName="group"
-												renderItem={({ type, value, label, pinned }) => {
-													if (type !== DropdownOptionType.ITEM) {
-														return label
-													}
-
-													const config = listApiConfigMeta?.find((c) => c.id === value)
-													const isCurrentConfig = config?.name === currentApiConfigName
-
-													return (
-														<div className="flex justify-between gap-2 w-full h-5">
-															<div
-																className={cn("truncate min-w-0 overflow-hidden", {
-																	"font-medium": isCurrentConfig,
-																})}
-																title={label}>
-																{label}
-															</div>
-															<div className="flex justify-end w-10 flex-shrink-0">
-																<div
-																	className={cn("size-5 p-1", {
-																		"block group-hover:hidden": !pinned,
-																		hidden: !isCurrentConfig,
-																	})}>
-																	<Check className="size-3" />
-																</div>
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	title={pinned ? t("chat:unpin") : t("chat:pin")}
-																	onClick={(e) => {
-																		e.stopPropagation()
-																		togglePinnedApiConfig(value)
-																		vscode.postMessage({
-																			type: "toggleApiConfigPin",
-																			text: value,
-																		})
-																	}}
-																	className={cn("size-5", {
-																		"hidden group-hover:flex": !pinned,
-																		"bg-accent": pinned,
-																	})}>
-																	<Pin className="size-3 p-0.5 opacity-50" />
-																</Button>
-															</div>
-														</div>
-													)
-												}}
-											/>
-										</div>
-									</div>
-
-									<div className={cn("flex", "items-center", "gap-0.5", "shrink-0")}>
-										<IconButton
-											iconClass={isEnhancingPrompt ? "codicon-loading" : "codicon-sparkle"}
-											title={t("chat:enhancePrompt")}
-											disabled={sendingDisabled}
-											isLoading={isEnhancingPrompt}
-											onClick={handleEnhancePrompt}
-										/>
-										<IconButton
-											iconClass="codicon-device-camera"
-											title={t("chat:addImages")}
-											disabled={shouldDisableImages}
-											onClick={onSelectImages}
-											opacity={shouldDisableImages ? 0.5 : 1}
-										/>
-										<IconButton
-											title={t("chat:sendMessage")}
-											disabled={sendingDisabled || !inputValue}
-											onClick={onSend}
-											icon={`${imagesBaseUri}/send.svg`}
-											iconAlt="Send"
-											opacity={!inputValue ? 0.5 : 1}
-											style={{
-												borderRadius: "2px",
-												background: "#2F6298",
-												minHeight: "16px",
-												padding: "0 6px",
-											}}
-										/>
-									</div>
-								</div>
-							</div>
-
-							{isTtsPlaying && (
-								<Button
-									variant="ghost"
-									size="icon"
-									className="absolute top-0 right-0 opacity-25 hover:opacity-100 z-10"
-									onClick={() => vscode.postMessage({ type: "stopTts" })}>
-									<VolumeX className="size-4" />
-								</Button>
-							)}
-						</div>
+						{renderTextAreaSection()}
 					</div>
+
+					{isEditMode && (
+						<EditModeControls
+							mode={mode}
+							onModeChange={handleModeChange}
+							modeShortcutText={modeShortcutText}
+							customModes={customModes}
+							customModePrompts={customModePrompts}
+							onCancel={onCancel}
+							onSend={onSend}
+							onSelectImages={onSelectImages}
+							sendingDisabled={sendingDisabled}
+							shouldDisableImages={shouldDisableImages}
+						/>
+					)}
 				</div>
+
+				{selectedImages.length > 0 && (
+					<Thumbnails
+						images={selectedImages}
+						setImages={setSelectedImages}
+						style={{
+							left: "16px",
+							zIndex: 2,
+							marginBottom: 0,
+						}}
+					/>
+				)}
+
+				{!isEditMode && renderNonEditModeControls()}
 			</div>
 		)
 	},

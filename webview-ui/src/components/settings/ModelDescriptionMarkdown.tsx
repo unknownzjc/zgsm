@@ -10,12 +10,12 @@ import { StyledMarkdown } from "./styles"
 export const ModelDescriptionMarkdown = memo(
 	({
 		markdown = "",
-		keyId,
+		key,
 		isExpanded,
 		setIsExpanded,
 	}: {
 		markdown?: string
-		keyId: string
+		key: string
 		isExpanded: boolean
 		setIsExpanded: (isExpanded: boolean) => void
 	}) => {
@@ -36,7 +36,7 @@ export const ModelDescriptionMarkdown = memo(
 			<Collapsible open={isExpanded} onOpenChange={setIsExpanded} className="relative">
 				<div ref={textContainerRef} className={cn({ "line-clamp-3": !isExpanded })}>
 					<div ref={textRef}>
-						<StyledMarkdown key={keyId}>{content}</StyledMarkdown>
+						<StyledMarkdown key={key}>{content}</StyledMarkdown>
 					</div>
 				</div>
 				<CollapsibleTrigger asChild className={cn({ hidden: !isExpandable })}>

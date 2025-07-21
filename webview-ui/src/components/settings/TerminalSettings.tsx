@@ -7,7 +7,7 @@ import { Trans } from "react-i18next"
 import { buildDocLink } from "@src/utils/docLinks"
 import { useEvent, useMount } from "react-use"
 
-import { ExtensionMessage } from "@roo/shared/ExtensionMessage"
+import { ExtensionMessage } from "@roo/ExtensionMessage"
 
 import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui"
@@ -18,6 +18,7 @@ import { Section } from "./Section"
 
 type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	terminalOutputLineLimit?: number
+	terminalOutputCharacterLimit?: number
 	terminalShellIntegrationTimeout?: number
 	terminalShellIntegrationDisabled?: boolean
 	terminalCommandDelay?: number
@@ -29,6 +30,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	terminalCompressProgressBar?: boolean
 	setCachedStateField: SetCachedStateField<
 		| "terminalOutputLineLimit"
+		| "terminalOutputCharacterLimit"
 		| "terminalShellIntegrationTimeout"
 		| "terminalShellIntegrationDisabled"
 		| "terminalCommandDelay"
@@ -43,6 +45,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 export const TerminalSettings = ({
 	terminalOutputLineLimit,
+	terminalOutputCharacterLimit,
 	terminalShellIntegrationTimeout,
 	terminalShellIntegrationDisabled,
 	terminalCommandDelay,
@@ -123,7 +126,37 @@ export const TerminalSettings = ({
 											"features/shell-integration#terminal-output-limit",
 											"settings_terminal_output_limit",
 										)}
-										style={{ display: "none" }}>
+										style={{ display: "inline" }}>
+										{" "}
+									</VSCodeLink>
+								</Trans>
+							</div>
+						</div>
+						<div>
+							<label className="block font-medium mb-1">
+								{t("settings:terminal.outputCharacterLimit.label")}
+							</label>
+							<div className="flex items-center gap-2">
+								<Slider
+									min={1000}
+									max={100000}
+									step={1000}
+									value={[terminalOutputCharacterLimit ?? 50000]}
+									onValueChange={([value]) =>
+										setCachedStateField("terminalOutputCharacterLimit", value)
+									}
+									data-testid="terminal-output-character-limit-slider"
+								/>
+								<span className="w-16">{terminalOutputCharacterLimit ?? 50000}</span>
+							</div>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								<Trans i18nKey="settings:terminal.outputCharacterLimit.description">
+									<VSCodeLink
+										href={buildDocLink(
+											"features/shell-integration#terminal-output-limit",
+											"settings_terminal_output_character_limit",
+										)}
+										style={{ display: "inline" }}>
 										{" "}
 									</VSCodeLink>
 								</Trans>
@@ -145,7 +178,7 @@ export const TerminalSettings = ({
 											"features/shell-integration#compress-progress-bar-output",
 											"settings_terminal_compress_progress_bar",
 										)}
-										style={{ display: "none" }}>
+										style={{ display: "inline" }}>
 										{" "}
 									</VSCodeLink>
 								</Trans>
@@ -187,7 +220,7 @@ export const TerminalSettings = ({
 											"features/shell-integration#inherit-environment-variables",
 											"settings_terminal_inherit_env",
 										)}
-										style={{ display: "none" }}>
+										style={{ display: "inline" }}>
 										{" "}
 									</VSCodeLink>
 								</Trans>
@@ -211,7 +244,7 @@ export const TerminalSettings = ({
 											"features/shell-integration#disable-terminal-shell-integration",
 											"settings_terminal_shell_integration_disabled",
 										)}
-										style={{ display: "none" }}>
+										style={{ display: "inline" }}>
 										{" "}
 									</VSCodeLink>
 								</Trans>
@@ -248,7 +281,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#terminal-shell-integration-timeout",
 													"settings_terminal_shell_integration_timeout",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -281,7 +314,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#terminal-command-delay",
 													"settings_terminal_command_delay",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -306,7 +339,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#enable-powershell-counter-workaround",
 													"settings_terminal_powershell_counter",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -331,7 +364,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#clear-zsh-eol-mark",
 													"settings_terminal_zsh_clear_eol_mark",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -352,7 +385,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#enable-oh-my-zsh-integration",
 													"settings_terminal_zsh_oh_my",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -373,7 +406,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#enable-powerlevel10k-integration",
 													"settings_terminal_zsh_p10k",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>
@@ -394,7 +427,7 @@ export const TerminalSettings = ({
 													"features/shell-integration#enable-zdotdir-handling",
 													"settings_terminal_zdotdir",
 												)}
-												style={{ display: "none" }}>
+												style={{ display: "inline" }}>
 												{" "}
 											</VSCodeLink>
 										</Trans>

@@ -1,36 +1,5 @@
-/**
- * Utility functions for working with language models and tokens
- */
+import { ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
 
-/**
- * Default maximum tokens for thinking-capable models when no specific value is provided
- */
-export const DEFAULT_THINKING_MODEL_MAX_TOKENS = 16_384
-
-/**
- * Model information interface with properties used in token calculations
- */
-export interface ModelInfo {
-	/**
-	 * Maximum number of tokens the model can process
-	 */
-	maxTokens?: number | null
-
-	/**
-	 * Whether the model supports thinking/reasoning capabilities
-	 */
-	thinking?: boolean
-}
-
-/**
- * API configuration interface with token-related settings
- */
-export interface ApiConfig {
-	/**
-	 * Maximum tokens to use for model responses
-	 */
-	modelMaxTokens?: number
-}
 /**
  * Result of token distribution calculation
  */
@@ -62,31 +31,12 @@ export interface TokenDistributionResult {
 }
 
 /**
- * Determines the maximum tokens based on model configuration
- * If the model supports thinking, prioritize the API configuration's modelMaxTokens,
- * falling back to the model's own maxTokens. Otherwise, just use the model's maxTokens.
- *
- * @param modelInfo The model information object with properties like maxTokens and thinking
- * @param apiConfig The API configuration object with properties like modelMaxTokens
- * @returns The maximum tokens value or undefined if no valid value is available
- */
-export const getMaxTokensForModel = (
-	modelInfo: ModelInfo | undefined,
-	apiConfig: ApiConfig | undefined,
-): number | undefined => {
-	if (modelInfo?.thinking) {
-		return apiConfig?.modelMaxTokens || DEFAULT_THINKING_MODEL_MAX_TOKENS
-	}
-	return modelInfo?.maxTokens ?? undefined
-}
-
-/**
  * Calculates distribution of tokens within the context window
  * This is used for visualizing the token distribution in the UI
  *
  * @param contextWindow The total size of the context window
  * @param contextTokens The number of tokens currently used
- * @param maxTokens Optional override for tokens reserved for model output (otherwise uses 20% of window)
+ * @param maxTokens Optional override for tokens reserved for model output (otherwise uses 8192)
  * @returns Distribution of tokens with percentages and raw numbers
  */
 export const calculateTokenDistribution = (
@@ -99,9 +49,9 @@ export const calculateTokenDistribution = (
 	const safeContextTokens = Math.max(0, contextTokens)
 
 	// Get the actual max tokens value from the model
-	// If maxTokens is valid, use it, otherwise reserve 20% of the context window as a default
+	// If maxTokens is valid (positive and not equal to context window), use it, otherwise reserve 8192 tokens as a default
 	const reservedForOutput =
-		maxTokens && maxTokens > 0 && maxTokens !== safeContextWindow ? maxTokens : Math.ceil(safeContextWindow * 0.2)
+		maxTokens && maxTokens > 0 && maxTokens !== safeContextWindow ? maxTokens : ANTHROPIC_DEFAULT_MAX_TOKENS
 
 	// Calculate sizes directly without buffer display
 	const availableSize = Math.max(0, safeContextWindow - safeContextTokens - reservedForOutput)

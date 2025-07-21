@@ -1,4 +1,4 @@
-// import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { useTranslation } from "react-i18next"
 import { useState, useEffect } from "react"
 import clsx from "clsx"
@@ -32,15 +32,21 @@ const RooTips = ({ cycle = false }: RooTipsProps) => {
 	useEffect(() => {
 		if (!cycle) return
 
+		let timeoutId: NodeJS.Timeout | undefined = undefined
 		const intervalId = setInterval(() => {
 			setIsFading(true) // Start fade out
-			setTimeout(() => {
+			timeoutId = setTimeout(() => {
 				setCurrentTipIndex((prevIndex) => (prevIndex + 1) % tips.length)
 				setIsFading(false) // Start fade in
 			}, 1000) // Fade duration
 		}, 11000) // 10s display + 1s fade
 
-		return () => clearInterval(intervalId) // Cleanup on unmount
+		return () => {
+			clearInterval(intervalId)
+			if (timeoutId) {
+				clearTimeout(timeoutId)
+			}
+		}
 	}, [cycle])
 
 	const currentTip = tips[currentTipIndex]
@@ -58,13 +64,13 @@ const RooTips = ({ cycle = false }: RooTipsProps) => {
 					<div className="opacity-70 pb-1"> Did you know about...</div>
 					<div
 						className={clsx(
-							"flex items-center gap-2 text-vscode-editor-foreground font-vscode max-w-[280px] transition-opacity duration-1000 ease-in-out",
+							"flex items-center gap-2 text-vscode-editor-foreground font-vscode max-w-[250px] transition-opacity duration-1000 ease-in-out",
 							isFading ? "opacity-0" : "opacity-70",
 						)}>
 						{" "}
 						<span className={`codicon ${currentTip.icon}`}></span>
 						<span>
-							{/* <VSCodeLink href={currentTip.href} style={{ display: "none" }}>{t(currentTip.titleKey)}</VSCodeLink>:{" "} */}
+							<VSCodeLink href={currentTip.href}>{t(currentTip.titleKey)}</VSCodeLink>:{" "}
 							{t(currentTip.descriptionKey)}
 						</span>
 					</div>
@@ -73,14 +79,13 @@ const RooTips = ({ cycle = false }: RooTipsProps) => {
 				topTwoTips.map((tip) => (
 					<div
 						key={tip.titleKey}
-						className="flex items-center gap-2 text-vscode-editor-foreground font-vscode max-w-[280px]">
+						className="flex items-center gap-2 text-vscode-editor-foreground font-vscode max-w-[250px]">
 						<span className={`codicon ${tip.icon}`}></span>
 						<span>
-							{/* <VSCodeLink className="forced-color-adjust-none" style={{ display: "none" }} href={tip.href}>
+							<VSCodeLink className="forced-color-adjust-none" href={tip.href}>
 								{t(tip.titleKey)}
-							</VSCodeLink> */}
-							{/* : {t(tip.descriptionKey)} */}
-							{t(tip.descriptionKey)}
+							</VSCodeLink>
+							: {t(tip.descriptionKey)}
 						</span>
 					</div>
 				))

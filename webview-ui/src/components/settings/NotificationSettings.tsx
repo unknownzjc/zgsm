@@ -6,16 +6,13 @@ import { Bell } from "lucide-react"
 import { SetCachedStateField } from "./types"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
-import { ProviderSettings } from "@roo/schemas"
 import { Slider } from "../ui"
-import { zgsmProviderKey } from "@roo/shared/api"
 
 type NotificationSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	ttsEnabled?: boolean
 	ttsSpeed?: number
 	soundEnabled?: boolean
 	soundVolume?: number
-	apiConfiguration: ProviderSettings
 	setCachedStateField: SetCachedStateField<"ttsEnabled" | "ttsSpeed" | "soundEnabled" | "soundVolume">
 }
 
@@ -24,7 +21,6 @@ export const NotificationSettings = ({
 	ttsSpeed,
 	soundEnabled,
 	soundVolume,
-	apiConfiguration,
 	setCachedStateField,
 	...props
 }: NotificationSettingsProps) => {
@@ -51,7 +47,7 @@ export const NotificationSettings = ({
 					</div>
 				</div>
 
-				{ttsEnabled && apiConfiguration.apiProvider !== zgsmProviderKey && (
+				{ttsEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
 						<div>
 							<label className="block font-medium mb-1">
@@ -84,7 +80,7 @@ export const NotificationSettings = ({
 					</div>
 				</div>
 
-				{soundEnabled && apiConfiguration.apiProvider !== zgsmProviderKey && (
+				{soundEnabled && (
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
 						<div>
 							<label className="block font-medium mb-1">

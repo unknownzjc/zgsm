@@ -1,17 +1,23 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { Stream as AnthropicStream } from "@anthropic-ai/sdk/streaming"
 import { CacheControlEphemeral } from "@anthropic-ai/sdk/resources"
+
 import {
+	type ModelInfo,
+	type AnthropicModelId,
 	anthropicDefaultModelId,
-	AnthropicModelId,
 	anthropicModels,
-	ApiHandlerOptions,
-	ModelInfo,
-} from "../../shared/api"
+	ANTHROPIC_DEFAULT_MAX_TOKENS,
+} from "@roo-code/types"
+
+import type { ApiHandlerOptions } from "../../shared/api"
+
 import { ApiStream } from "../transform/stream"
+import { getModelParams } from "../transform/model-params"
+
 import { BaseProvider } from "./base-provider"
-import { ANTHROPIC_DEFAULT_MAX_TOKENS } from "./constants"
-import { SingleCompletionHandler, getModelParams } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import { calculateApiCostAnthropic } from "../../shared/cost"
 
 export class AnthropicHandler extends BaseProvider implements SingleCompletionHandler {
 	private options: ApiHandlerOptions
@@ -30,12 +36,18 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		})
 	}
 
-	async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+	async *createMessage(
+		systemPrompt: string,
+		messages: Anthropic.Messages.MessageParam[],
+		metadata?: ApiHandlerCreateMessageMetadata,
+	): ApiStream {
 		let stream: AnthropicStream<Anthropic.Messages.RawMessageStreamEvent>
 		const cacheControl: CacheControlEphemeral = { type: "ephemeral" }
-		let { id: modelId, maxTokens, thinking, temperature, virtualId } = this.getModel()
+		let { id: modelId, betas = [], maxTokens, temperature, reasoning: thinking } = this.getModel()
 
 		switch (modelId) {
+			case "claude-sonnet-4-20250514":
+			case "claude-opus-4-20250514":
 			case "claude-3-7-sonnet-20250219":
 			case "claude-3-5-sonnet-20241022":
 			case "claude-3-5-haiku-20241022":
@@ -90,15 +102,10 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 						// https://github.com/anthropics/anthropic-sdk-typescript?tab=readme-ov-file#default-headers
 						// https://github.com/anthropics/anthropic-sdk-typescript/commit/c920b77fc67bd839bfeb6716ceab9d7c9bbe7393
 
-						const betas = []
-
-						// Check for the thinking-128k variant first
-						if (virtualId === "claude-3-7-sonnet-20250219:thinking") {
-							betas.push("output-128k-2025-02-19")
-						}
-
 						// Then check for models that support prompt caching
 						switch (modelId) {
+							case "claude-sonnet-4-20250514":
+							case "claude-opus-4-20250514":
 							case "claude-3-7-sonnet-20250219":
 							case "claude-3-5-sonnet-20241022":
 							case "claude-3-5-haiku-20241022":
@@ -126,21 +133,37 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			}
 		}
 
+		let inputTokens = 0
+		let outputTokens = 0
+		let cacheWriteTokens = 0
+		let cacheReadTokens = 0
+
 		for await (const chunk of stream) {
 			switch (chunk.type) {
-				case "message_start":
+				case "message_start": {
 					// Tells us cache reads/writes/input/output.
-					const usage = chunk.message.usage
+					const {
+						input_tokens = 0,
+						output_tokens = 0,
+						cache_creation_input_tokens,
+						cache_read_input_tokens,
+					} = chunk.message.usage
 
 					yield {
 						type: "usage",
-						inputTokens: usage.input_tokens || 0,
-						outputTokens: usage.output_tokens || 0,
-						cacheWriteTokens: usage.cache_creation_input_tokens || undefined,
-						cacheReadTokens: usage.cache_read_input_tokens || undefined,
+						inputTokens: input_tokens,
+						outputTokens: output_tokens,
+						cacheWriteTokens: cache_creation_input_tokens || undefined,
+						cacheReadTokens: cache_read_input_tokens || undefined,
 					}
 
+					inputTokens += input_tokens
+					outputTokens += output_tokens
+					cacheWriteTokens += cache_creation_input_tokens || 0
+					cacheReadTokens += cache_read_input_tokens || 0
+
 					break
+				}
 				case "message_delta":
 					// Tells us stop_reason, stop_sequence, and output tokens
 					// along the way and at the end of the message.
@@ -191,6 +214,21 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					break
 			}
 		}
+
+		if (inputTokens > 0 || outputTokens > 0 || cacheWriteTokens > 0 || cacheReadTokens > 0) {
+			yield {
+				type: "usage",
+				inputTokens: 0,
+				outputTokens: 0,
+				totalCost: calculateApiCostAnthropic(
+					this.getModel().info,
+					inputTokens,
+					outputTokens,
+					cacheWriteTokens,
+					cacheReadTokens,
+				),
+			}
+		}
 	}
 
 	getModel() {
@@ -198,21 +236,22 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
 		const info: ModelInfo = anthropicModels[id]
 
-		// Track the original model ID for special variant handling
-		const virtualId = id
+		const params = getModelParams({
+			format: "anthropic",
+			modelId: id,
+			model: info,
+			settings: this.options,
+		})
 
-		// The `:thinking` variant is a virtual identifier for the
-		// `claude-3-7-sonnet-20250219` model with a thinking budget.
-		// We can handle this more elegantly in the future.
-		if (id === "claude-3-7-sonnet-20250219:thinking") {
-			id = "claude-3-7-sonnet-20250219"
-		}
-
+		// The `:thinking` suffix indicates that the model is a "Hybrid"
+		// reasoning model and that reasoning is required to be enabled.
+		// The actual model ID honored by Anthropic's API does not have this
+		// suffix.
 		return {
-			id,
+			id: id === "claude-3-7-sonnet-20250219:thinking" ? "claude-3-7-sonnet-20250219" : id,
 			info,
-			virtualId, // Include the original ID to use for header selection
-			...getModelParams({ options: this.options, model: info, defaultMaxTokens: ANTHROPIC_DEFAULT_MAX_TOKENS }),
+			betas: id === "claude-3-7-sonnet-20250219:thinking" ? ["output-128k-2025-02-19"] : undefined,
+			...params,
 		}
 	}
 

@@ -1,16 +1,16 @@
 import * as vscode from "vscode"
 
-import { CodeActionId, CodeActionName } from "../schemas"
+import { CodeActionId, CodeActionName } from "@roo-code/types"
+
 import { getCodeActionCommand } from "../utils/commands"
 import { EditorUtils } from "../integrations/editor/EditorUtils"
 import { ClineProvider } from "../core/webview/ClineProvider"
-import { COMMAND_IDS } from "./CodeActionProvider"
 
 export const registerCodeActions = (context: vscode.ExtensionContext) => {
-	registerCodeAction(context, COMMAND_IDS.EXPLAIN as CodeActionId, "EXPLAIN")
-	registerCodeAction(context, COMMAND_IDS.FIX as CodeActionId, "FIX")
-	registerCodeAction(context, COMMAND_IDS.IMPROVE as CodeActionId, "IMPROVE")
-	registerCodeAction(context, COMMAND_IDS.ADD_TO_CONTEXT as CodeActionId, "ADD_TO_CONTEXT")
+	registerCodeAction(context, "explainCode", "EXPLAIN")
+	registerCodeAction(context, "fixCode", "FIX")
+	registerCodeAction(context, "improveCode", "IMPROVE")
+	registerCodeAction(context, "addToContext", "ADD_TO_CONTEXT")
 }
 
 export const registerCodeAction = (
@@ -18,7 +18,6 @@ export const registerCodeAction = (
 	command: CodeActionId,
 	promptType: CodeActionName,
 ) => {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let userInput: string | undefined
 
 	context.subscriptions.push(
@@ -49,7 +48,7 @@ export const registerCodeAction = (
 				...(startLine !== undefined ? { startLine: startLine.toString() } : {}),
 				...(endLine !== undefined ? { endLine: endLine.toString() } : {}),
 				...(diagnostics ? { diagnostics } : {}),
-				// ...(userInput ? { userInput } : {}),
+				...(userInput ? { userInput } : {}),
 			}
 
 			await ClineProvider.handleCodeAction(command, promptType, params)

@@ -117,7 +117,7 @@ export const BrowserSettings = ({
 						<Trans i18nKey="settings:browser.enable.description">
 							<VSCodeLink
 								href={buildDocLink("features/browser-use", "settings_browser_tool")}
-								style={{ display: "none" }}>
+								style={{ display: "inline" }}>
 								{" "}
 							</VSCodeLink>
 						</Trans>

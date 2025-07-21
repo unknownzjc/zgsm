@@ -38,7 +38,7 @@ export const CheckpointSettings = ({ enableCheckpoints, setCachedStateField, ...
 						<Trans i18nKey="settings:checkpoints.enable.description">
 							<VSCodeLink
 								href={buildDocLink("features/checkpoints", "settings_checkpoints")}
-								style={{ display: "none" }}>
+								style={{ display: "inline" }}>
 								{" "}
 							</VSCodeLink>
 						</Trans>

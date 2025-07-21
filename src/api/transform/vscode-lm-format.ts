@@ -18,12 +18,12 @@ function asObjectSafe(value: any): object {
 
 		// Handle pre-existing objects
 		if (typeof value === "object") {
-			return Object.assign({}, value)
+			return { ...value }
 		}
 
 		return {}
 	} catch (error) {
-		console.warn("Costrict <Language Model API>: Failed to parse object:", error)
+		console.warn("Roo Code <Language Model API>: Failed to parse object:", error)
 		return {}
 	}
 }

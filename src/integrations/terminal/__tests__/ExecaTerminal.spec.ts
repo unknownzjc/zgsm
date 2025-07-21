@@ -1,7 +1,5 @@
 // npx vitest run src/integrations/terminal/__tests__/ExecaTerminal.spec.ts
 
-import { vi, describe, it, expect } from "vitest"
-
 import { RooTerminalCallbacks } from "../types"
 import { ExecaTerminal } from "../ExecaTerminal"
 
@@ -22,7 +20,7 @@ describe("ExecaTerminal", () => {
 			onShellExecutionComplete: vi.fn(),
 		}
 
-		const subprocess = terminal.runCommand("LANG=en_US.UTF-8 ls -al", callbacks)
+		const subprocess = terminal.runCommand("ls -al", callbacks)
 		await subprocess
 
 		expect(callbacks.onLine).toHaveBeenCalled()
@@ -30,6 +28,6 @@ describe("ExecaTerminal", () => {
 		expect(callbacks.onShellExecutionComplete).toHaveBeenCalled()
 
 		expect(result).toBeTypeOf("string")
-		expect(result).toMatch(/total|总计/)
+		expect(result).toContain("total")
 	})
 })

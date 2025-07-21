@@ -1,7 +1,6 @@
 import {
 	type ProviderName,
 	type ProviderSettings,
-	type RouterModels,
 	type ModelInfo,
 	anthropicDefaultModelId,
 	anthropicModels,
@@ -11,8 +10,6 @@ import {
 	deepSeekModels,
 	geminiDefaultModelId,
 	geminiModels,
-	geminiCliDefaultModelId,
-	geminiCliModels,
 	mistralDefaultModelId,
 	mistralModels,
 	openAiModelInfoSaneDefaults,
@@ -33,15 +30,21 @@ import {
 	glamaDefaultModelId,
 	unboundDefaultModelId,
 	litellmDefaultModelId,
-	zgsmProviderKey,
-} from "@roo/shared/api"
+	claudeCodeDefaultModelId,
+	claudeCodeModels,
+	zgsmDefaultModelId,
+	geminiCliDefaultModelId,
+	geminiCliModels,
+} from "@roo-code/types"
+
+import type { RouterModels } from "@roo/api"
 
 import { useRouterModels } from "./useRouterModels"
 import { useOpenRouterModelProviders } from "./useOpenRouterModelProviders"
-import { getZgsmSelectedModelInfo } from "@roo/shared/getZgsmSelectedModelInfo"
+import { getZgsmSelectedModelInfo } from "@roo/getZgsmSelectedModelInfo"
 
 export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
-	const provider = apiConfiguration?.apiProvider || zgsmProviderKey
+	const provider = apiConfiguration?.apiProvider || "zgsm"
 	const openRouterModelId = provider === "openrouter" ? apiConfiguration?.openRouterModelId : undefined
 
 	const routerModels = useRouterModels()
@@ -49,18 +52,15 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 
 	const { id, info } =
 		apiConfiguration &&
-		(provider === zgsmProviderKey ||
-			(typeof routerModels.data !== "undefined" && typeof openRouterModelProviders.data !== "undefined"))
+		typeof routerModels.data !== "undefined" &&
+		typeof openRouterModelProviders.data !== "undefined"
 			? getSelectedModel({
 					provider,
 					apiConfiguration,
-					routerModels: routerModels.data as RouterModels,
-					openRouterModelProviders: openRouterModelProviders.data as Record<string, ModelInfo>,
+					routerModels: routerModels.data,
+					openRouterModelProviders: openRouterModelProviders.data,
 				})
-			: {
-					id: apiConfiguration?.zgsmModelId || apiConfiguration?.zgsmDefaultModelId || "deepseek-v3",
-					info: undefined,
-				}
+			: { id: zgsmDefaultModelId, info: undefined }
 
 	return {
 		provider,
@@ -81,61 +81,66 @@ function getSelectedModel({
 	apiConfiguration: ProviderSettings
 	routerModels: RouterModels
 	openRouterModelProviders: Record<string, ModelInfo>
-}): { id: string; info: ModelInfo } {
+}): { id: string; info: ModelInfo | undefined } {
+	// the `undefined` case are used to show the invalid selection to prevent
+	// users from seeing the default model if their selection is invalid
+	// this gives a better UX than showing the default model
 	switch (provider) {
+		case "zgsm": {
+			const id = apiConfiguration.zgsmModelId ?? zgsmDefaultModelId
+			const info = getZgsmSelectedModelInfo(id)
+			return { id, info }
+		}
 		case "openrouter": {
 			const id = apiConfiguration.openRouterModelId ?? openRouterDefaultModelId
 			let info = routerModels.openrouter[id]
 			const specificProvider = apiConfiguration.openRouterSpecificProvider
 
 			if (specificProvider && openRouterModelProviders[specificProvider]) {
-				info = openRouterModelProviders[specificProvider]
+				// Overwrite the info with the specific provider info. Some
+				// fields are missing the model info for `openRouterModelProviders`
+				// so we need to merge the two.
+				info = info
+					? { ...info, ...openRouterModelProviders[specificProvider] }
+					: openRouterModelProviders[specificProvider]
 			}
 
-			return info
-				? { id, info }
-				: { id: openRouterDefaultModelId, info: routerModels.openrouter[openRouterDefaultModelId] }
+			return { id, info }
 		}
 		case "requesty": {
 			const id = apiConfiguration.requestyModelId ?? requestyDefaultModelId
 			const info = routerModels.requesty[id]
-			return info
-				? { id, info }
-				: { id: requestyDefaultModelId, info: routerModels.requesty[requestyDefaultModelId] }
+			return { id, info }
 		}
 		case "glama": {
 			const id = apiConfiguration.glamaModelId ?? glamaDefaultModelId
 			const info = routerModels.glama[id]
-			return info ? { id, info } : { id: glamaDefaultModelId, info: routerModels.glama[glamaDefaultModelId] }
+			return { id, info }
 		}
 		case "unbound": {
 			const id = apiConfiguration.unboundModelId ?? unboundDefaultModelId
 			const info = routerModels.unbound[id]
-			return info
-				? { id, info }
-				: { id: unboundDefaultModelId, info: routerModels.unbound[unboundDefaultModelId] }
+			return { id, info }
 		}
 		case "litellm": {
 			const id = apiConfiguration.litellmModelId ?? litellmDefaultModelId
 			const info = routerModels.litellm[id]
-			return info
-				? { id, info }
-				: { id: litellmDefaultModelId, info: routerModels.litellm[litellmDefaultModelId] }
+			return { id, info }
 		}
 		case "xai": {
 			const id = apiConfiguration.apiModelId ?? xaiDefaultModelId
 			const info = xaiModels[id as keyof typeof xaiModels]
-			return info ? { id, info } : { id: xaiDefaultModelId, info: xaiModels[xaiDefaultModelId] }
+			return info ? { id, info } : { id, info: undefined }
 		}
 		case "groq": {
 			const id = apiConfiguration.apiModelId ?? groqDefaultModelId
 			const info = groqModels[id as keyof typeof groqModels]
-			return info ? { id, info } : { id: groqDefaultModelId, info: groqModels[groqDefaultModelId] }
+			return { id, info }
 		}
 		case "chutes": {
 			const id = apiConfiguration.apiModelId ?? chutesDefaultModelId
 			const info = chutesModels[id as keyof typeof chutesModels]
-			return info ? { id, info } : { id: chutesDefaultModelId, info: chutesModels[chutesDefaultModelId] }
+			return { id, info }
 		}
 		case "bedrock": {
 			const id = apiConfiguration.apiModelId ?? bedrockDefaultModelId
@@ -149,17 +154,17 @@ function getSelectedModel({
 				}
 			}
 
-			return info ? { id, info } : { id: bedrockDefaultModelId, info: bedrockModels[bedrockDefaultModelId] }
+			return { id, info }
 		}
 		case "vertex": {
 			const id = apiConfiguration.apiModelId ?? vertexDefaultModelId
 			const info = vertexModels[id as keyof typeof vertexModels]
-			return info ? { id, info } : { id: vertexDefaultModelId, info: vertexModels[vertexDefaultModelId] }
+			return { id, info }
 		}
 		case "gemini": {
 			const id = apiConfiguration.apiModelId ?? geminiDefaultModelId
 			const info = geminiModels[id as keyof typeof geminiModels]
-			return info ? { id, info } : { id: geminiDefaultModelId, info: geminiModels[geminiDefaultModelId] }
+			return { id, info }
 		}
 		case "gemini-cli": {
 			const id = apiConfiguration.apiModelId ?? geminiCliDefaultModelId
@@ -169,39 +174,38 @@ function getSelectedModel({
 		case "deepseek": {
 			const id = apiConfiguration.apiModelId ?? deepSeekDefaultModelId
 			const info = deepSeekModels[id as keyof typeof deepSeekModels]
-			return info ? { id, info } : { id: deepSeekDefaultModelId, info: deepSeekModels[deepSeekDefaultModelId] }
+			return { id, info }
 		}
 		case "openai-native": {
 			const id = apiConfiguration.apiModelId ?? openAiNativeDefaultModelId
 			const info = openAiNativeModels[id as keyof typeof openAiNativeModels]
-			return info
-				? { id, info }
-				: { id: openAiNativeDefaultModelId, info: openAiNativeModels[openAiNativeDefaultModelId] }
+			return { id, info }
 		}
 		case "mistral": {
 			const id = apiConfiguration.apiModelId ?? mistralDefaultModelId
 			const info = mistralModels[id as keyof typeof mistralModels]
-			return info ? { id, info } : { id: mistralDefaultModelId, info: mistralModels[mistralDefaultModelId] }
+			return { id, info }
 		}
 		case "openai": {
 			const id = apiConfiguration.openAiModelId ?? ""
 			const info = apiConfiguration?.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults
 			return { id, info }
 		}
-		case "zgsm": {
-			const id = (apiConfiguration.zgsmModelId || apiConfiguration.zgsmDefaultModelId) ?? ""
-			const info = getZgsmSelectedModelInfo(id)
-			return { id, info }
-		}
 		case "ollama": {
 			const id = apiConfiguration.ollamaModelId ?? ""
-			const info = openAiModelInfoSaneDefaults
-			return { id, info }
+			const info = routerModels.ollama && routerModels.ollama[id]
+			return {
+				id,
+				info: info || undefined,
+			}
 		}
 		case "lmstudio": {
 			const id = apiConfiguration.lmStudioModelId ?? ""
-			const info = openAiModelInfoSaneDefaults
-			return { id, info }
+			const info = routerModels.lmstudio && routerModels.lmstudio[id]
+			return {
+				id,
+				info: info || undefined,
+			}
 		}
 		case "vscode-lm": {
 			const id = apiConfiguration?.vsCodeLmModelSelector
@@ -211,13 +215,19 @@ function getSelectedModel({
 			const info = vscodeLlmModels[modelFamily as keyof typeof vscodeLlmModels]
 			return { id, info: { ...openAiModelInfoSaneDefaults, ...info, supportsImages: false } } // VSCode LM API currently doesn't support images.
 		}
+		case "claude-code": {
+			// Claude Code models extend anthropic models but with images and prompt caching disabled
+			const id = apiConfiguration.apiModelId ?? claudeCodeDefaultModelId
+			const info = claudeCodeModels[id as keyof typeof claudeCodeModels]
+			return { id, info: { ...openAiModelInfoSaneDefaults, ...info } }
+		}
 		// case "anthropic":
 		// case "human-relay":
 		// case "fake-ai":
 		default: {
 			const id = apiConfiguration.apiModelId ?? anthropicDefaultModelId
 			const info = anthropicModels[id as keyof typeof anthropicModels]
-			return info ? { id, info } : { id: anthropicDefaultModelId, info: anthropicModels[anthropicDefaultModelId] }
+			return { id, info }
 		}
 	}
 }

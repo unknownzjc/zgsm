@@ -1,27 +1,23 @@
 import {
-	ProviderName,
-	ModelInfo,
+	type ProviderName,
+	type ModelInfo,
 	anthropicModels,
 	bedrockModels,
+	claudeCodeModels,
 	deepSeekModels,
 	geminiModels,
-	geminiCliModels,
 	mistralModels,
 	openAiNativeModels,
 	vertexModels,
-	zgsmProviderKey,
 	xaiModels,
 	groqModels,
 	chutesModels,
-} from "@roo/shared/api"
-import i18next from "i18next"
-
-export { REASONING_MODELS, PROMPT_CACHING_MODELS } from "@roo/shared/api"
-
-export { AWS_REGIONS } from "@roo/shared/aws_regions"
+	geminiCliModels,
+} from "@roo-code/types"
 
 export const MODELS_BY_PROVIDER: Partial<Record<ProviderName, Record<string, ModelInfo>>> = {
 	anthropic: anthropicModels,
+	"claude-code": claudeCodeModels,
 	bedrock: bedrockModels,
 	deepseek: deepSeekModels,
 	gemini: geminiModels,
@@ -35,8 +31,10 @@ export const MODELS_BY_PROVIDER: Partial<Record<ProviderName, Record<string, Mod
 }
 
 export const PROVIDERS = [
+	{ value: "zgsm", label: "诸葛神码" },
 	{ value: "openrouter", label: "OpenRouter" },
 	{ value: "anthropic", label: "Anthropic" },
+	{ value: "claude-code", label: "Claude Code" },
 	{ value: "gemini", label: "Google Gemini" },
 	{ value: "gemini-cli", label: "Gemini CLI" },
 	{ value: "deepseek", label: "DeepSeek" },
@@ -57,18 +55,3 @@ export const PROVIDERS = [
 	{ value: "chutes", label: "Chutes AI" },
 	{ value: "litellm", label: "LiteLLM" },
 ].sort((a, b) => a.label.localeCompare(b.label))
-
-PROVIDERS.unshift({
-	value: zgsmProviderKey,
-	get label() {
-		return i18next.t("settings:providers.zgsm")
-	},
-})
-
-export const VERTEX_REGIONS = [
-	{ value: "us-east5", label: "us-east5" },
-	{ value: "us-central1", label: "us-central1" },
-	{ value: "europe-west1", label: "europe-west1" },
-	{ value: "europe-west4", label: "europe-west4" },
-	{ value: "asia-southeast1", label: "asia-southeast1" },
-]

@@ -3,13 +3,14 @@ import { OAuth2Client } from "google-auth-library"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as os from "os"
+import axios from "axios"
 
-import { type ModelInfo, type GeminiCliModelId, geminiCliDefaultModelId, geminiCliModels } from "../../shared/api"
+import { type ModelInfo, type GeminiCliModelId, geminiCliDefaultModelId, geminiCliModels } from "@roo-code/types"
 
 import type { ApiHandlerOptions } from "../../shared/api"
 import { t } from "../../i18n"
 
-import { convertAnthropicMessageToGemini } from "../transform/gemini-format"
+import { convertAnthropicContentToGemini, convertAnthropicMessageToGemini } from "../transform/gemini-format"
 import type { ApiStream } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
@@ -229,12 +230,12 @@ export class GeminiCliHandler extends BaseProvider implements SingleCompletionHa
 	async *createMessage(
 		systemInstruction: string,
 		messages: Anthropic.Messages.MessageParam[],
-		_metadata?: ApiHandlerCreateMessageMetadata,
+		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
 		await this.ensureAuthenticated()
 		const projectId = await this.discoverProjectId()
 
-		const { id: model, reasoning: thinkingConfig, maxTokens } = this.getModel()
+		const { id: model, info, reasoning: thinkingConfig, maxTokens } = this.getModel()
 
 		// Convert messages to Gemini format
 		const contents = messages.map(convertAnthropicMessageToGemini)

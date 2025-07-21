@@ -59,9 +59,10 @@ export class TerminalRegistry {
 
 					if (terminal) {
 						terminal.setActiveStream(stream)
+						terminal.busy = true // Mark terminal as busy when shell execution starts
 					} else {
 						console.error(
-							"[onDidStartTerminalShellExecution] Shell execution started, but not from a Costrict-registered terminal:",
+							"[onDidStartTerminalShellExecution] Shell execution started, but not from a Roo-registered terminal:",
 							e,
 						)
 					}
@@ -86,7 +87,7 @@ export class TerminalRegistry {
 
 					if (!terminal) {
 						console.error(
-							"[onDidEndTerminalShellExecution] Shell execution ended, but not from a Costrict-registered terminal:",
+							"[onDidEndTerminalShellExecution] Shell execution ended, but not from a Roo-registered terminal:",
 							e,
 						)
 
@@ -99,6 +100,7 @@ export class TerminalRegistry {
 							{ terminalId: terminal?.id, command: process?.command, exitCode: e.exitCode },
 						)
 
+						terminal.busy = false
 						return
 					}
 
@@ -113,6 +115,7 @@ export class TerminalRegistry {
 
 					// Signal completion to any waiting processes.
 					terminal.shellExecutionComplete(exitDetails)
+					terminal.busy = false // Mark terminal as not busy when shell execution ends
 				},
 			)
 

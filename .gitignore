@@ -3,14 +3,15 @@ dist
 out
 out-*
 node_modules
+package-lock.json
 coverage/
 mock/
-
+.history
 .DS_Store
 
 # IDEs
 .idea
-.history
+
 # Builds
 bin/
 *.vsix
@@ -30,16 +31,18 @@ docs/_site/
 .env.*
 !.env.*.sample
 
-
-#Local lint config
-.eslintrc.local.json
-
-#Logging
+# Logging
 logs
+*.log
 
 # Vite development
 .vite-port
 
+# Turborepo
+.turbo
+
 # IntelliJ and Qodo plugin folders
 .idea/
 .qodo/
+.vercel
+.roo/mcp.json
