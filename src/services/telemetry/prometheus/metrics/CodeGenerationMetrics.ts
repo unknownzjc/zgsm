@@ -1,6 +1,6 @@
 import BaseMetrics from "./BaseMetrics"
 import { Counter, Histogram, Registry } from "prom-client"
-import { pick } from "lodash-es"
+import { pick } from "lodash"
 interface CodeGenerationMetricsProperties {
 	mode: string
 	apiProvider: string

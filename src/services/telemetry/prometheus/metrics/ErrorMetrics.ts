@@ -1,6 +1,6 @@
 import { Counter, Registry } from "prom-client"
 import BaseMetrics from "./BaseMetrics"
-import { pick } from "lodash-es"
+import { pick } from "lodash"
 interface ErrorMetricsProperties {
 	error_type: string
 	[key: string]: string | number
