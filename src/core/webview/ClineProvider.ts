@@ -69,6 +69,7 @@ import { ReviewComment } from "../../services/codeReview/reviewComment"
 import { ZgsmCodeBaseSyncService } from "../codebase/client"
 import { getClientId } from "../../utils/getClientId"
 import { CodeBaseError, CodeBaseErrorType } from "../codebase/constants"
+import { createLogger } from "../../utils/logger"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -1608,10 +1609,8 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 	// logging
 
 	public log(message: string) {
-		const time = new Date().toLocaleString()
-		const msg = `[${time}] ${message}`
-		this.outputChannel.appendLine(msg)
-		console.log(msg)
+		const logger = createLogger(Package.outputChannel)
+		logger.info(message)
 	}
 
 	// integration tests

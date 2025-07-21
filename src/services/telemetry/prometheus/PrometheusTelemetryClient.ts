@@ -3,7 +3,7 @@ import delay from "delay"
 import crypto from "crypto"
 import retry from "async-retry"
 
-import { type TelemetryEvent, TelemetryEventName } from "../types"
+import { type TelemetryEvent } from "../types"
 import { ClineProvider } from "../../../core/webview/ClineProvider"
 
 import { BaseTelemetryClient } from "../BaseTelemetryClient"
@@ -20,7 +20,7 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	constructor(endpoint: string, debug = false) {
 		super(undefined, debug)
 		this.endpoint = endpoint
-		this.logger = createLogger(Package.name)
+		this.logger = createLogger(Package.outputChannel)
 		this.registry = new Registry()
 		this.metricsRecorder = new MetricsRecorder(this.registry)
 		this.setupPush()
@@ -83,9 +83,6 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 				event: event.event,
 				properties,
 			})
-			if (event.event === TelemetryEventName.CODE_TAB_COMPLETION) {
-				this.pushAdd()
-			}
 			if (this.debug) {
 				this.logger.debug(`[PrometheusTelemetryClient#capture] ${event.event}`)
 			}

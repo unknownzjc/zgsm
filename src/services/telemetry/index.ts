@@ -2,6 +2,7 @@ import { ZodError } from "zod"
 export { PrometheusTelemetryClient } from "./prometheus/PrometheusTelemetryClient"
 import { type TelemetryClient, type TelemetryPropertiesProvider, TelemetryEventName } from "./types"
 import { createLogger, ILogger } from "../../utils/logger"
+import { Package } from "../../schemas"
 
 /**
  * TelemetryService wrapper class that defers initialization.
@@ -11,7 +12,7 @@ import { createLogger, ILogger } from "../../utils/logger"
 export class TelemetryService {
 	private logger: ILogger
 	constructor(private clients: TelemetryClient[]) {
-		this.logger = createLogger("Shenma")
+		this.logger = createLogger(Package.outputChannel)
 	}
 
 	public register(client: TelemetryClient): void {
