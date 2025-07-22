@@ -91,7 +91,7 @@ import { ApiMessage } from "../task-persistence/apiMessages"
 import { getMessagesSinceLastSummary, summarizeConversation } from "../condense"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 import { restoreTodoListForTask } from "../tools/updateTodoListTool"
-import { ZgsmAuthService } from "../zgsm-auth"
+import { ZgsmAuthService } from "../costrict/auth"
 
 // Constants
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes

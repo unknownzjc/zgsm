@@ -168,10 +168,10 @@ export function copyWasms(srcDir: string, distDir: string): void {
 
 export function copyLocales(srcDir: string, distDir: string): void {
 	const destDir = path.join(distDir, "i18n", "locales")
-	const zgsmDestDir = path.join(distDir, "i18n", "zgsm-i18n", "locales")
+	const zgsmDestDir = path.join(distDir, "i18n", "costrict-i18n", "locales")
 	const dirs = [
 		[destDir, path.join(srcDir, "i18n", "locales")],
-		[zgsmDestDir, path.join(srcDir, "i18n", "zgsm-i18n", "locales")],
+		[zgsmDestDir, path.join(srcDir, "i18n", "costrict-i18n", "locales")],
 	] as Array<[string, string]>
 
 	for (const dirInfo of dirs) {

@@ -14,7 +14,7 @@ import { readLines } from "../../integrations/misc/read-lines"
 import { extractTextFromFile, addLineNumbers, getSupportedBinaryFormats } from "../../integrations/misc/extract-text"
 import { parseSourceCodeDefinitionsForFile } from "../../services/tree-sitter"
 import { parseXml } from "../../utils/xml"
-import { truncateContent } from "../zgsm-base"
+import { truncateContent } from "../costrict/base"
 
 export function getReadFileToolDescription(blockName: string, blockParams: any): string {
 	// Handle both single path and multiple files via args

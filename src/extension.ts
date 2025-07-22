@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 import * as dotenvx from "@dotenvx/dotenvx"
 import * as path from "path"
-import * as ZgsmCore from "./core/zgsm-base"
+import * as ZgsmCore from "./core/costrict/base"
 
 // Load environment variables from .env file
 try {
@@ -31,7 +31,7 @@ import { MdmService } from "./services/mdm/MdmService"
 import { migrateSettings } from "./utils/migrateSettings"
 import { autoImportSettings } from "./utils/autoImportSettings"
 import { API } from "./extension/api"
-import { ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService } from "./core/zgsm-auth/index"
+import { ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService } from "./core/costrict/auth/index"
 
 import {
 	handleUri,
@@ -41,10 +41,10 @@ import {
 	CodeActionProvider,
 } from "./activate"
 import { initializeI18n } from "./i18n"
-import { startIPCServer, stopIPCServer } from "./core/zgsm-auth/ipc/server"
-import { connectIPC, disconnectIPC, onZgsmTokensUpdate, onZgsmLogout } from "./core/zgsm-auth/ipc/client"
-import { initZgsmCodeBase } from "./core/zgsm-codebase"
-import { ZgsmCodeBaseSyncService } from "./core/zgsm-codebase/client"
+import { startIPCServer, stopIPCServer } from "./core/costrict/auth/ipc/server"
+import { connectIPC, disconnectIPC, onZgsmTokensUpdate, onZgsmLogout } from "./core/costrict/auth/ipc/client"
+import { initZgsmCodeBase } from "./core/costrict/codebase"
+import { ZgsmCodeBaseSyncService } from "./core/costrict/codebase/client"
 import { getClientId } from "./utils/getClientId"
 
 /**

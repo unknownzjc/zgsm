@@ -21,7 +21,7 @@ import { RooIgnoreController } from "../ignore/RooIgnoreController"
 
 import { t } from "../../i18n"
 import { Task } from "../task/Task"
-import { truncateContent } from "../zgsm-base"
+import { truncateContent } from "../costrict/base"
 
 function getUrlErrorMessage(error: unknown): string {
 	const errorMessage = error instanceof Error ? error.message : String(error)

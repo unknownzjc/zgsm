@@ -55,7 +55,7 @@ const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
-import { ZgsmAuthConfig } from "../zgsm-auth"
+import { ZgsmAuthConfig } from "../costrict/auth"
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
