@@ -14,11 +14,13 @@
 
 # zgsm-i18n
 
-- [`*/zgsm-i18n/locales` 语言包目录](zgsm-i18n/README.md)
+- [`*/zgsm-i18n/locales` 基础语言包目录](zgsm-i18n/README.md)
+- `src/package.nls.*.json 其他配置国际化
 
 # 插件配置文件
 
 - `src/package.json`
+
 
 # 入口文件
 
