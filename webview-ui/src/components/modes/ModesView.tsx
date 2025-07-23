@@ -48,6 +48,8 @@ import {
 	StandardTooltip,
 } from "@src/components/ui"
 import { DeleteModeDialog } from "@src/components/modes/DeleteModeDialog"
+import { useEvent } from "react-use"
+import { ExtensionMessage } from "@roo/ExtensionMessage"
 
 // Get all available groups that should show in prompts view
 const availableGroups = (Object.keys(TOOL_GROUPS) as ToolGroup[]).filter((group) => !TOOL_GROUPS[group].alwaysAvailable)
@@ -500,6 +502,23 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 			customPrompt: updatedPrompt,
 		})
 	}
+
+	const onMessage = useCallback(
+		(event: MessageEvent) => {
+			const message: ExtensionMessage = event.data
+
+			switch (message.type) {
+				case "action":
+					if (message.action === "openCreateModeDialog") {
+						openCreateModeDialog()
+					}
+					break
+			}
+		},
+		[openCreateModeDialog],
+	)
+
+	useEvent("message", onMessage)
 
 	return (
 		<Tab>

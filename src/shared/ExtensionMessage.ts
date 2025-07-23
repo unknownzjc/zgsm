@@ -119,6 +119,7 @@ export interface ExtensionMessage {
 		| "chatButtonClicked"
 		| "mcpButtonClicked"
 		| "settingsButtonClicked"
+		| "openCreateModeDialog"
 		| "historyButtonClicked"
 		| "promptsButtonClicked"
 		| "marketplaceButtonClicked"
