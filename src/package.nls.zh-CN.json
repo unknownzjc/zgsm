@@ -26,6 +26,8 @@
 	"command.settings.title": "设置",
 	"command.documentation.title": "文档",
 	"command.shortKeyCut.title": "Costrict代码补全快捷键",
+	"command.codeReview.title": "代码审查",
+	"command.reviewRepo.title": "扫描仓库",
 
 	"intelligentCodeCompletion.enabled.description": "启用智能代码补全",
 	"intelligentCodeCompletion.betaMode.description": "启用测试版功能以获取早期访问权限。请查看版本说明了解功能列表。",

@@ -71,7 +71,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel = vscode.window.createOutputChannel(Package.outputChannel)
 	context.subscriptions.push(outputChannel)
 	outputChannel.appendLine(`${Package.name} extension activated - ${JSON.stringify(Package)}`)
-
 	// Migrate old settings to new
 	await migrateSettings(context, outputChannel)
 
@@ -222,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	}
 
-	zgsmInitialize(context, provider)
+	zgsmInitialize(context, provider, outputChannel)
 
 	return new API(outputChannel, provider, socketPath, enableLogging)
 }
@@ -241,7 +240,11 @@ export async function deactivate() {
 	TerminalRegistry.cleanup()
 }
 
-async function zgsmInitialize(context: vscode.ExtensionContext, provider: ClineProvider) {
+async function zgsmInitialize(
+	context: vscode.ExtensionContext,
+	provider: ClineProvider,
+	outputChannel: vscode.OutputChannel,
+) {
 	startIPCServer()
 	connectIPC()
 
@@ -295,5 +298,5 @@ async function zgsmInitialize(context: vscode.ExtensionContext, provider: ClineP
 		provider.log("启动时检查登录状态失败: " + error.message)
 	}
 
-	await ZgsmCore.activate(context, provider)
+	await ZgsmCore.activate(context, provider, outputChannel)
 }

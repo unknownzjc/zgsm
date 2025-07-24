@@ -56,6 +56,7 @@ const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
+import { CodeReviewService } from "../costrict/code-review"
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
@@ -2300,5 +2301,11 @@ export const webviewMessageHandler = async (
 			await provider.cancelTask()
 			break
 		}
+		case "checkReviewSuggestion":
+			await CodeReviewService.getInstance().setActiveIssue(message.issueId!)
+			break
+		case "cancelReviewTask":
+			await CodeReviewService.getInstance().cancelCurrentTask()
+			break
 	}
 }

@@ -23,6 +23,7 @@ import { RouterModels } from "@roo/api"
 import { vscode } from "@src/utils/vscode"
 import { convertTextMateToHljs } from "@src/utils/textMateToHljs"
 import { defaultCodebaseIndexEnabled } from "../../../src/services/code-index/constants"
+import { ReviewTaskPayload, TaskStatus } from "@roo/codeReview"
 
 export interface ExtensionStateContextType extends ExtensionState {
 	historyPreviewCollapsed?: boolean // Add the new state property
@@ -40,6 +41,7 @@ export interface ExtensionStateContextType extends ExtensionState {
 	maxConcurrentFileReads?: number
 	mdmCompliant?: boolean
 	hasOpenedModeSelector: boolean // New property to track if user has opened mode selector
+	reviewTask: ReviewTaskPayload
 	setHasOpenedModeSelector: (value: boolean) => void // Setter for the new property
 	alwaysAllowFollowupQuestions: boolean // New property for follow-up questions auto-approve
 	setAlwaysAllowFollowupQuestions: (value: boolean) => void // Setter for the new property
@@ -250,6 +252,13 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		project: {},
 		global: {},
 	})
+	const [reviewTask, setReviewTask] = useState<ReviewTaskPayload>({
+		status: TaskStatus.INITIAL,
+		data: {
+			issues: [],
+			progress: 0,
+		},
+	})
 
 	const setListApiConfigMeta = useCallback(
 		(value: ProviderSettingsEntry[]) => setState((prevState) => ({ ...prevState, listApiConfigMeta: value })),
@@ -347,6 +356,24 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 					}
 					break
 				}
+				case "reviewTaskUpdate": {
+					setReviewTask(message.values as ReviewTaskPayload)
+					break
+				}
+				case "issueStatusUpdated": {
+					const { issueId, status } = message.values || {}
+					if (issueId && status !== undefined) {
+						setReviewTask((prevTask) => ({
+							...prevTask,
+							data: {
+								...prevTask.data,
+								issues: prevTask.data.issues.map((issue) =>
+									issue.id === issueId ? { ...issue, status } : issue,
+								),
+							},
+						}))
+					}
+				}
 			}
 		},
 		[setListApiConfigMeta],
@@ -384,6 +411,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		profileThresholds: state.profileThresholds ?? {},
 		alwaysAllowFollowupQuestions,
 		followupAutoApproveTimeoutMs,
+		reviewTask,
 		setExperimentEnabled: (id, enabled) =>
 			setState((prevState) => ({ ...prevState, experiments: { ...prevState.experiments, [id]: enabled } })),
 		setApiConfiguration,

@@ -26,6 +26,8 @@
 	"command.settings.title": "設定",
 	"command.documentation.title": "文件",
 	"command.shortKeyCut.title": "Costrict程式碼補全快捷鍵",
+	"command.codeReview.title": "程式碼審查",
+	"command.reviewRepo.title": "掃描倉庫",
 
 	"intelligentCodeCompletion.enabled.description": "啟用智慧程式碼補全",
 	"intelligentCodeCompletion.betaMode.description": "啟用測試版功能以獲得早期存取權。請查看版本說明了解功能列表。",

@@ -113,6 +113,8 @@ export interface ExtensionMessage {
 		| "codeIndexSecretStatus"
 		| "showDeleteMessageDialog"
 		| "showEditMessageDialog"
+		| "reviewTaskUpdate"
+		| "issueStatusUpdated"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	action?:
@@ -128,6 +130,7 @@ export interface ExtensionMessage {
 		| "didBecomeVisible"
 		| "focusInput"
 		| "switchTab"
+		| "codeReviewButtonClicked"
 	invoke?: "newChat" | "sendMessage" | "primaryButtonClick" | "secondaryButtonClick" | "setChatBoxMessage"
 	state?: ExtensionState
 	images?: string[]

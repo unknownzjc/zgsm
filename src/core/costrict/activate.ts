@@ -35,6 +35,9 @@ import {
 	loadLocalLanguageExtensions,
 } from "./base/common"
 import { ZgsmAuthStorage } from "./auth"
+import { initCodeReview } from "./code-review"
+import { Package } from "../../shared/package"
+import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
 
 // import { registerCodeAction } from "../../activate/registerCodeActions"
 
@@ -70,9 +73,14 @@ async function initialize(provider: ClineProvider) {
 /**
  * Entry function when the ZGSM extension is activated
  */
-export async function activate(context: vscode.ExtensionContext, provider: ClineProvider) {
+export async function activate(
+	context: vscode.ExtensionContext,
+	provider: ClineProvider,
+	outputChannel: vscode.OutputChannel,
+) {
 	await initialize(provider)
-
+	createLogger(Package.outputChannel, { channel: outputChannel })
+	initCodeReview(context, provider, outputChannel)
 	CompletionStatusBar.create(context)
 
 	// context.subscriptions.push(
@@ -156,4 +164,5 @@ export async function activate(context: vscode.ExtensionContext, provider: Cline
  */
 export function deactivate() {
 	// Currently no specific cleanup needed
+	loggerDeactivate()
 }
