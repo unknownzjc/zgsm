@@ -162,6 +162,10 @@ export type RooCodeSettings = GlobalSettings & ProviderSettings
  * SecretState
  */
 export const SECRET_STATE_KEYS = [
+	// zgsm
+	"zgsmAccessToken",
+	"zgsmRefreshToken",
+
 	"apiKey",
 	"glamaApiKey",
 	"openRouterApiKey",
@@ -185,9 +189,7 @@ export const SECRET_STATE_KEYS = [
 	"codebaseIndexOpenAiCompatibleApiKey",
 	"codebaseIndexGeminiApiKey",
 	"codebaseIndexMistralApiKey",
-	// zgsm
-	"zgsmAccessToken",
-	"zgsmRefreshToken",
+	"huggingFaceApiKey",
 ] as const satisfies readonly (keyof ProviderSettings)[]
 export type SecretState = Pick<ProviderSettings, (typeof SECRET_STATE_KEYS)[number]>
 
