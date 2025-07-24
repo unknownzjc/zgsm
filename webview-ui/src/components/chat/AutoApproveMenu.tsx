@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from "react"
 import { Trans } from "react-i18next"
-import { VSCodeLink, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox, VSCodeLink, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
-import { AutoApproveToggle, AutoApproveSetting } from "../settings/AutoApproveToggle"
-// import { StandardTooltip } from "@src/components/ui"
+import { AutoApproveToggle, AutoApproveSetting, autoApproveSettingsConfig } from "../settings/AutoApproveToggle"
+import { StandardTooltip } from "@src/components/ui"
 import { useAutoApprovalState } from "@src/hooks/useAutoApprovalState"
 import { useAutoApprovalToggles } from "@src/hooks/useAutoApprovalToggles"
 
@@ -15,10 +15,11 @@ interface AutoApproveMenuProps {
 }
 
 const AutoApproveMenu = ({ style }: AutoApproveMenuProps) => {
-	const [isExpanded] = useState(false)
+	const [isExpanded, setIsExpanded] = useState(false)
 
 	const {
 		autoApprovalEnabled,
+		showAutoApproveSettingsAtChat,
 		setAutoApprovalEnabled,
 		alwaysApproveResubmit,
 		allowedMaxRequests,
@@ -48,7 +49,7 @@ const AutoApproveMenu = ({ style }: AutoApproveMenuProps) => {
 		[baseToggles, alwaysApproveResubmit],
 	)
 
-	const { hasEnabledOptions } = useAutoApprovalState(toggles, autoApprovalEnabled)
+	const { hasEnabledOptions, effectiveAutoApprovalEnabled } = useAutoApprovalState(toggles, autoApprovalEnabled)
 
 	const onAutoApproveToggle = useCallback(
 		(key: AutoApproveSetting, value: boolean) => {
@@ -125,27 +126,27 @@ const AutoApproveMenu = ({ style }: AutoApproveMenuProps) => {
 		],
 	)
 
-	// const toggleExpanded = useCallback(() => {
-	// 	setIsExpanded((prev) => !prev)
-	// }, [])
+	const toggleExpanded = useCallback(() => {
+		setIsExpanded((prev) => !prev)
+	}, [])
 
 	// Disable main checkbox while menu is open or no options selected
-	// const isCheckboxDisabled = useMemo(() => {
-	// 	return !hasEnabledOptions || isExpanded
-	// }, [hasEnabledOptions, isExpanded])
+	const isCheckboxDisabled = useMemo(() => {
+		return !hasEnabledOptions || isExpanded
+	}, [hasEnabledOptions, isExpanded])
 
-	// const enabledActionsList = Object.entries(toggles)
-	// 	.filter(([_key, value]) => !!value)
-	// 	.map(([key]) => t(autoApproveSettingsConfig[key as AutoApproveSetting].labelKey))
-	// 	.join(", ")
+	const enabledActionsList = Object.entries(toggles)
+		.filter(([_key, value]) => !!value)
+		.map(([key]) => t(autoApproveSettingsConfig[key as AutoApproveSetting].labelKey))
+		.join(", ")
 
 	// Update displayed text logic
-	// const displayText = useMemo(() => {
-	// 	if (!effectiveAutoApprovalEnabled || !hasEnabledOptions) {
-	// 		return t("chat:autoApprove.none")
-	// 	}
-	// 	return enabledActionsList || t("chat:autoApprove.none")
-	// }, [effectiveAutoApprovalEnabled, hasEnabledOptions, enabledActionsList, t])
+	const displayText = useMemo(() => {
+		if (!effectiveAutoApprovalEnabled || !hasEnabledOptions) {
+			return t("chat:autoApprove.none")
+		}
+		return enabledActionsList || t("chat:autoApprove.none")
+	}, [effectiveAutoApprovalEnabled, hasEnabledOptions, enabledActionsList, t])
 
 	const handleOpenSettings = useCallback(
 		() =>
@@ -164,9 +165,9 @@ const AutoApproveMenu = ({ style }: AutoApproveMenuProps) => {
 				overflowY: "auto",
 				...style,
 			}}>
-			{/* <div
+			<div
 				style={{
-					display: "flex",
+					display: showAutoApproveSettingsAtChat ? "flex" : "none",
 					alignItems: "center",
 					gap: "8px",
 					padding: isExpanded ? "8px 0" : "2px 0 0 0",
@@ -229,7 +230,7 @@ const AutoApproveMenu = ({ style }: AutoApproveMenuProps) => {
 						}}
 					/>
 				</div>
-			</div> */}
+			</div>
 
 			{isExpanded && (
 				<div className="flex flex-col gap-2">

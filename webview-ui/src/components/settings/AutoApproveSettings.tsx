@@ -20,7 +20,6 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	alwaysAllowWrite?: boolean
 	alwaysAllowWriteOutsideWorkspace?: boolean
 	alwaysAllowWriteProtected?: boolean
-	writeDelayMs: number
 	alwaysAllowBrowser?: boolean
 	alwaysApproveResubmit?: boolean
 	requestDelaySeconds: number
@@ -39,7 +38,6 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "alwaysAllowWrite"
 		| "alwaysAllowWriteOutsideWorkspace"
 		| "alwaysAllowWriteProtected"
-		| "writeDelayMs"
 		| "alwaysAllowBrowser"
 		| "alwaysApproveResubmit"
 		| "requestDelaySeconds"
@@ -61,7 +59,6 @@ export const AutoApproveSettings = ({
 	alwaysAllowWrite,
 	alwaysAllowWriteOutsideWorkspace,
 	alwaysAllowWriteProtected,
-	writeDelayMs,
 	alwaysAllowBrowser,
 	alwaysApproveResubmit,
 	requestDelaySeconds,
@@ -80,11 +77,17 @@ export const AutoApproveSettings = ({
 	const { t } = useAppTranslation()
 	const [commandInput, setCommandInput] = useState("")
 	const [deniedCommandInput, setDeniedCommandInput] = useState("")
-	const { autoApprovalEnabled, setAutoApprovalEnabled } = useExtensionState()
+	const {
+		showAutoApproveSettingsAtChat,
+		setShowAutoApproveSettingsAtChat,
+		autoApprovalEnabled,
+		setAutoApprovalEnabled,
+	} = useExtensionState()
 
 	const toggles = useAutoApprovalToggles()
 
-	const { hasEnabledOptions, effectiveAutoApprovalEnabled } = useAutoApprovalState(toggles, autoApprovalEnabled)
+	const { hasEnabledOptions, effectiveAutoApprovalEnabled, effectiveShowAutoApproveSettingsAtChat } =
+		useAutoApprovalState(toggles, autoApprovalEnabled, showAutoApproveSettingsAtChat)
 
 	const handleAddCommand = () => {
 		const currentCommands = allowedCommands ?? []
@@ -110,6 +113,19 @@ export const AutoApproveSettings = ({
 
 	return (
 		<div {...props}>
+			<SectionHeader>
+				<div className="flex items-center gap-2">
+					<VSCodeCheckbox
+						checked={effectiveShowAutoApproveSettingsAtChat}
+						onChange={() => {
+							const newValue = !(showAutoApproveSettingsAtChat ?? false)
+							setShowAutoApproveSettingsAtChat(newValue)
+							vscode.postMessage({ type: "showAutoApproveSettingsAtChat", bool: newValue })
+						}}
+					/>
+					<div>{t("settings:autoApprove.showAtChat")}</div>
+				</div>
+			</SectionHeader>
 			<SectionHeader description={t("settings:autoApprove.description")}>
 				<div className="flex items-center gap-2">
 					{!hasEnabledOptions ? (
@@ -214,22 +230,6 @@ export const AutoApproveSettings = ({
 							</VSCodeCheckbox>
 							<div className="text-vscode-descriptionForeground text-sm mt-1 mb-3">
 								{t("settings:autoApprove.write.protected.description")}
-							</div>
-						</div>
-						<div>
-							<div className="flex items-center gap-2">
-								<Slider
-									min={0}
-									max={5000}
-									step={100}
-									value={[writeDelayMs]}
-									onValueChange={([value]) => setCachedStateField("writeDelayMs", value)}
-									data-testid="write-delay-slider"
-								/>
-								<span className="w-20">{writeDelayMs}ms</span>
-							</div>
-							<div className="text-vscode-descriptionForeground text-sm mt-1">
-								{t("settings:autoApprove.write.delayLabel")}
 							</div>
 						</div>
 					</div>

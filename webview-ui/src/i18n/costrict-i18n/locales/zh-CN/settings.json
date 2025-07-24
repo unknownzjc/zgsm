@@ -9,6 +9,7 @@
 	},
 	"autoApprove": {
 		"description": "允许Costrict自动执行操作而无需批准。只有在您完全信任AI并了解相关安全风险的情况下才启用这些设置。",
+		"showAtChat": "在聊天框上方显示选项",
 		"readOnly": {
 			"description": "启用后，Costrict将自动查看目录内容和读取文件，无需您点击批准按钮。",
 			"outsideWorkspace": {

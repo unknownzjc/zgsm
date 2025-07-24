@@ -50,6 +50,7 @@ const mockPostMessage = vscode.postMessage as ReturnType<typeof vi.fn>
 describe("AutoApproveMenu", () => {
 	const defaultExtensionState = {
 		autoApprovalEnabled: true,
+		showAutoApproveSettingsAtChat: true,
 		alwaysAllowReadOnly: false,
 		alwaysAllowReadOnlyOutsideWorkspace: false,
 		alwaysAllowWrite: false,

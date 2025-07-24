@@ -13,7 +13,11 @@ interface AutoApprovalToggles {
 	alwaysAllowUpdateTodoList?: boolean
 }
 
-export function useAutoApprovalState(toggles: AutoApprovalToggles, autoApprovalEnabled?: boolean) {
+export function useAutoApprovalState(
+	toggles: AutoApprovalToggles,
+	autoApprovalEnabled?: boolean,
+	showAutoApproveSettingsAtChat?: boolean,
+) {
 	const hasEnabledOptions = useMemo(() => {
 		return Object.values(toggles).some((value) => !!value)
 	}, [toggles])
@@ -22,8 +26,13 @@ export function useAutoApprovalState(toggles: AutoApprovalToggles, autoApprovalE
 		return hasEnabledOptions && (autoApprovalEnabled ?? false)
 	}, [hasEnabledOptions, autoApprovalEnabled])
 
+	const effectiveShowAutoApproveSettingsAtChat = useMemo(() => {
+		return showAutoApproveSettingsAtChat ?? false
+	}, [showAutoApproveSettingsAtChat])
+
 	return {
 		hasEnabledOptions,
 		effectiveAutoApprovalEnabled,
+		effectiveShowAutoApproveSettingsAtChat,
 	}
 }
