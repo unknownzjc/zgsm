@@ -15,6 +15,7 @@ import { detectCodeOmission } from "../../integrations/editor/detect-omission"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
 import { TelemetryService } from "../../services/telemetry"
 import { getLanguage } from "../../utils/file"
+import { getDiffLines } from "../../utils/diffLines"
 import { autoCommit } from "../../utils/git"
 
 export async function writeToFileTool(
@@ -205,7 +206,9 @@ export async function writeToFileTool(
 			} satisfies ClineSayTool)
 			const didApprove = await askApproval("tool", completeMessage)
 			const language = await getLanguage(relPath)
-			const lines = newContent.split("\n").length
+			const lines = fileExists
+				? getDiffLines(cline.diffViewProvider.originalContent || "", newContent)
+				: newContent.split("\n").length
 			if (!didApprove) {
 				await cline.diffViewProvider.revertChanges()
 				TelemetryService.instance.captureCodeReject(language, lines)
