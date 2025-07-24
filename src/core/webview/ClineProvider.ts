@@ -658,6 +658,7 @@ export class ClineProvider
 		])
 
 		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "codicons", "codicon.css"])
+		const costrictUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "costrict"])
 		const materialIconsUri = getUri(webview, this.contextProxy.extensionUri, [
 			"assets",
 			"vscode-material-icons",
@@ -700,6 +701,7 @@ export class ClineProvider
 					<link href="${codiconsUri}" rel="stylesheet" />
 					<script nonce="${nonce}">
 						window.IMAGES_BASE_URI = "${imagesUri}"
+						window.COSTRICT_BASE_URI = "${costrictUri}"
 						window.AUDIO_BASE_URI = "${audioUri}"
 						window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 					</script>
@@ -739,6 +741,7 @@ export class ClineProvider
 
 		const scriptUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "build", "assets", "index.js"])
 		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "codicons", "codicon.css"])
+		const costrictUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "costrict"])
 		const materialIconsUri = getUri(webview, this.contextProxy.extensionUri, [
 			"assets",
 			"vscode-material-icons",
@@ -773,6 +776,7 @@ export class ClineProvider
 			<link href="${codiconsUri}" rel="stylesheet" />
 			<script nonce="${nonce}">
 				window.IMAGES_BASE_URI = "${imagesUri}"
+				window.COSTRICT_BASE_URI = "${costrictUri}"
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 			</script>
