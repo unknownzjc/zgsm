@@ -141,15 +141,19 @@ export async function insertContentTool(
 		if (relPath) {
 			await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
 		}
-		TelemetryService.instance.captureCodeAccept(language, diffLines)
-		// Check if AutoCommit is enabled before committing
-		const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
-		if (autoCommitEnabled) {
-			autoCommit(relPath, cline.cwd, {
-				model: cline.api.getModel().id,
-				editorName: vscode.env.appName,
-				date: new Date().toLocaleString(),
-			})
+		try {
+			TelemetryService.instance.captureCodeAccept(language, diffLines)
+			// Check if AutoCommit is enabled before committing
+			const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
+			if (autoCommitEnabled) {
+				autoCommit(relPath, cline.cwd, {
+					model: cline.api.getModel().id,
+					editorName: vscode.env.appName,
+					date: new Date().toLocaleString(),
+				})
+			}
+		} catch (err) {
+			console.log(err)
 		}
 
 		cline.didEditFile = true

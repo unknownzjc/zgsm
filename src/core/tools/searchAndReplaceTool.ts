@@ -205,12 +205,12 @@ export async function searchAndReplaceTool(
 
 		// Request user approval for changes
 		const completeMessage = JSON.stringify({ ...sharedMessageProps, diff } satisfies ClineSayTool)
-		const language = await getLanguage(validRelPath)
-		const diffLines = getDiffLines(fileContent, newContent)
+
 		const didApprove = await cline
 			.ask("tool", completeMessage, false)
 			.then((response) => response.response === "yesButtonClicked")
-
+		const language = await getLanguage(validRelPath)
+		const diffLines = getDiffLines(fileContent, newContent)
 		if (!didApprove) {
 			await cline.diffViewProvider.revertChanges()
 			pushToolResult("Changes were rejected by the user.")
@@ -225,16 +225,20 @@ export async function searchAndReplaceTool(
 		if (relPath) {
 			await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
 		}
-		TelemetryService.instance.captureCodeAccept(language, diffLines)
+		try {
+			TelemetryService.instance.captureCodeAccept(language, diffLines)
 
-		// Check if AutoCommit is enabled before committing
-		const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
-		if (autoCommitEnabled) {
-			autoCommit(relPath as string, cline.cwd, {
-				model: cline.api.getModel().id,
-				editorName: vscode.env.appName,
-				date: new Date().toLocaleString(),
-			})
+			// Check if AutoCommit is enabled before committing
+			const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
+			if (autoCommitEnabled) {
+				autoCommit(relPath as string, cline.cwd, {
+					model: cline.api.getModel().id,
+					editorName: vscode.env.appName,
+					date: new Date().toLocaleString(),
+				})
+			}
+		} catch (err) {
+			console.log(err)
 		}
 
 		cline.didEditFile = true
