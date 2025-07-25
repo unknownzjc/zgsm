@@ -44,7 +44,6 @@ import { TelemetryService } from "../../../src/services/telemetry"
 export class AICompletionProvider implements InlineCompletionItemProvider, Disposable {
 	private disposables: Disposable[] = []
 	private timer: NodeJS.Timeout | undefined
-	private feedbackTimer: NodeJS.Timeout | undefined
 	private mutex: Mutex
 	private provider: ClineProvider
 
@@ -142,12 +141,10 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 	}
 
 	public activate() {
-		this.setFeedbackTimer()
 		this.setDidChangeTextDocument()
 	}
 
 	public dispose() {
-		clearInterval(this.feedbackTimer)
 		Disposable.from(...this.disposables).dispose()
 	}
 
@@ -388,20 +385,6 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 				}
 				return Promise.reject(error)
 			})
-	}
-
-	/**
-	 * Set a timer to provide feedback information regularly. Several types of information need to be fed back:
-	 * 1. Effect data: Whether the user accepts the completion content.
-	 * 2. Performance data: The end-to-end time spent on the completion request and whether the request is normal.
-	 * 3. Improvement data: The actual content input by the user after rejecting the completion.
-	 */
-	private setFeedbackTimer() {
-		clearInterval(this.feedbackTimer)
-		this.feedbackTimer = setInterval(() => {
-			CompletionTrace.uploadPoints()
-			CompletionTrace.uploadMemo()
-		}, COMPLETION_CONST.feedbackInterval)
 	}
 
 	/**
