@@ -25,7 +25,7 @@ export const ZgsmAccountView = ({ apiConfiguration, onDone }: AccountViewProps) 
 
 	const wasAuthenticatedRef = useRef(false)
 
-	const rooLogoUri = (window as any).IMAGES_BASE_URI + "/roo-logo.svg"
+	const rooLogoUri = (window as any).COSTRICT_BASE_URI + "/logo.svg"
 
 	// Track authentication state changes to detect successful logout
 	useEffect(() => {
