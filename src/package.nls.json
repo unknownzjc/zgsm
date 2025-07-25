@@ -26,6 +26,8 @@
 	"command.terminal.explainCommand.title": "Explain This Command",
 	"command.acceptInput.title": "Accept Input/Suggestion",
 	"command.shortKeyCut.title": "Costrict Code Completion Shortcut",
+	"command.codeReview.title": "Code Review",
+	"command.reviewRepo.title": "Review Repo",
 
 	"intelligentCodeCompletion.enabled.description": "Enable intelligent code completion",
 	"intelligentCodeCompletion.betaMode.description": "Enable beta features for early access. See version notes for feature list.",

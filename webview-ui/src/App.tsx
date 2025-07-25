@@ -18,6 +18,7 @@ import WelcomeView from "./components/welcome/WelcomeView"
 import McpView from "./components/mcp/McpView"
 import { MarketplaceView } from "./components/marketplace/MarketplaceView"
 import ModesView from "./components/modes/ModesView"
+import CodeReviewPage from "./components/code-review"
 import { HumanRelayDialog } from "./components/human-relay/HumanRelayDialog"
 import { DeleteMessageDialog, EditMessageDialog } from "./components/chat/MessageModificationConfirmationDialog"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -26,8 +27,10 @@ import { useAddNonInteractiveClickListener } from "./components/ui/hooks/useNonI
 import { TooltipProvider } from "./components/ui/tooltip"
 import { STANDARD_TOOLTIP_DELAY } from "./components/ui/standard-tooltip"
 import { ZgsmAccountView } from "./components/account/ZgsmAccountView"
+import { TabContent, TabList, TabTrigger } from "./components/common/Tab"
+import { cn } from "./lib/utils"
 
-type Tab = "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account"
+type Tab = "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account" | "codeReview"
 
 interface HumanRelayDialogState {
 	isOpen: boolean
@@ -61,6 +64,7 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 	marketplaceButtonClicked: "marketplace",
 	accountButtonClicked: "account",
 	zgsmAccountButtonClicked: "zgsm-account",
+	codeReviewButtonClicked: "codeReview",
 }
 
 const App = () => {
@@ -84,6 +88,7 @@ const App = () => {
 
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [tab, setTab] = useState<Tab>("chat")
+	const isChatTab = useMemo(() => ["chat", "codeReview"].includes(tab), [tab])
 
 	const [humanRelayDialogState, setHumanRelayDialogState] = useState<HumanRelayDialogState>({
 		isOpen: false,
@@ -229,6 +234,29 @@ const App = () => {
 		}
 	}, [tab])
 
+	const tabs = [
+		{
+			label: "AGENT",
+			value: "chat",
+		},
+		{
+			label: "CODE REVIEW",
+			value: "codeReview",
+		},
+	]
+
+	const resetTabs = useCallback(() => {
+		setTab("chat")
+		vscode.postMessage({ type: "clearTask" })
+	}, [setTab])
+
+	const onIssueClick = useCallback((issueId: string) => {
+		vscode.postMessage({ type: "checkReviewSuggestion", issueId })
+	}, [])
+	const onTaskCancel = useCallback(() => {
+		vscode.postMessage({ type: "cancelReviewTask" })
+	}, [])
+
 	if (!didHydrateState) {
 		return null
 	}
@@ -263,12 +291,56 @@ const App = () => {
 			{tab === "zgsm-account" && (
 				<ZgsmAccountView apiConfiguration={apiConfiguration} onDone={() => switchTab("chat")} />
 			)}
-			<ChatView
-				ref={chatViewRef}
-				isHidden={tab !== "chat"}
-				showAnnouncement={showAnnouncement}
-				hideAnnouncement={() => setShowAnnouncement(false)}
-			/>
+			{isChatTab && (
+				<>
+					<div className="header flex items-center justify-between">
+						<TabList
+							value={tab}
+							onValueChange={(val) => switchTab(val as Tab)}
+							className="header-left h-[28px]">
+							{tabs.map(({ label, value }) => {
+								const isSelected = tab === value
+								const activeTabClass = isSelected ? "border-b border-gray-200" : ""
+
+								return (
+									<TabTrigger
+										key={value}
+										value={value}
+										isSelected={isSelected}
+										className={cn(activeTabClass, "mr-[16px]", "cursor-pointer")}
+										focusNeedRing={false}>
+										{label}
+									</TabTrigger>
+								)
+							})}
+						</TabList>
+
+						{tab === "chat" && (
+							<div className="header-right flex absolute right-[12px]">
+								<i
+									className="codicon codicon-add mr-[4px] cursor-pointer p-[2px]"
+									onClick={() => resetTabs()}></i>
+								<i
+									className="codicon codicon-history cursor-pointer p-[2px]"
+									onClick={() => switchTab("history")}></i>
+							</div>
+						)}
+					</div>
+					<TabContent>
+						{tab === "chat" && (
+							<ChatView
+								ref={chatViewRef}
+								isHidden={tab !== "chat"}
+								showAnnouncement={showAnnouncement}
+								hideAnnouncement={() => setShowAnnouncement(false)}
+							/>
+						)}
+						{tab === "codeReview" && (
+							<CodeReviewPage onIssueClick={onIssueClick} onTaskCancel={onTaskCancel} />
+						)}
+					</TabContent>
+				</>
+			)}
 			<MemoizedHumanRelayDialog
 				isOpen={humanRelayDialogState.isOpen}
 				requestId={humanRelayDialogState.requestId}

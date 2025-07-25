@@ -55,6 +55,16 @@ export const commandIds = [
 	"focusPanel",
 ] as const
 
+export const costrictCommandIds = [
+	// code review
+	"codeReviewButtonClicked",
+	"codeReview",
+	"reviewFilesAndFolders",
+	"reviewRepo",
+	"acceptIssue",
+	"rejectIssue",
+] as const
+export type CostrictCommandId = (typeof costrictCommandIds)[number]
 export type CommandId = (typeof commandIds)[number]
 
 /**

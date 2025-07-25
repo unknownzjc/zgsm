@@ -179,6 +179,24 @@
 				"command": "roo-cline.acceptInput",
 				"title": "%command.acceptInput.title%",
 				"category": "%configuration.title%"
+			},
+			{
+				"command": "roo-cline.reviewFilesAndFolders",
+				"title": "%command.codeReview.title%"
+			},
+			{
+				"command": "roo-cline.reviewRepo",
+				"title": "%command.reviewRepo.title%"
+			},
+			{
+				"command": "roo-cline.acceptIssue",
+				"title": "Accept",
+				"icon": "$(check)"
+			},
+			{
+				"command": "roo-cline.rejectIssue",
+				"title": "Reject",
+				"icon": "$(circle-slash)"
 			}
 		],
 		"menus": {
@@ -186,6 +204,22 @@
 				{
 					"submenu": "roo-cline.contextMenu",
 					"group": "1"
+				}
+			],
+			"explorer/context": [
+				{
+					"submenu": "roo-cline.explorerSubmenu",
+					"group": "1_modification@1"
+				}
+			],
+			"roo-cline.explorerSubmenu": [
+				{
+					"command": "roo-cline.reviewFilesAndFolders",
+					"group": "roo-cline.explorerSubmenu@1"
+				},
+				{
+					"command": "roo-cline.reviewRepo",
+					"group": "roo-cline.explorerSubmenu@2"
 				}
 			],
 			"roo-cline.contextMenu": [
@@ -224,11 +258,6 @@
 			],
 			"view/title": [
 				{
-					"command": "roo-cline.plusButtonClicked",
-					"group": "navigation@1",
-					"when": "view == roo-cline.SidebarProvider"
-				},
-				{
 					"command": "roo-cline.marketplaceButtonClicked",
 					"group": "navigation@2",
 					"when": "view == roo-cline.SidebarProvider"
@@ -244,23 +273,18 @@
 					"when": "view == roo-cline.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.historyButtonClicked",
+					"command": "roo-cline.promptsButtonClicked",
 					"group": "overflow@1",
 					"when": "view == roo-cline.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.promptsButtonClicked",
+					"command": "roo-cline.mcpButtonClicked",
 					"group": "overflow@2",
 					"when": "view == roo-cline.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.mcpButtonClicked",
-					"group": "overflow@3",
-					"when": "view == roo-cline.SidebarProvider"
-				},
-				{
 					"command": "roo-cline.popoutButtonClicked",
-					"group": "overflow@4",
+					"group": "overflow@3",
 					"when": "view == roo-cline.SidebarProvider"
 				}
 			],
@@ -305,6 +329,18 @@
 					"group": "overflow@4",
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				}
+			],
+			"comments/commentThread/title": [
+				{
+					"command": "roo-cline.acceptIssue",
+					"group": "navigation@1",
+					"when": "commentThread == CostrictCodeReview"
+				},
+				{
+					"command": "roo-cline.rejectIssue",
+					"group": "navigation@2",
+					"when": "commentThread == CostrictCodeReview"
+				}
 			]
 		},
 		"submenus": [
@@ -315,6 +351,10 @@
 			{
 				"id": "roo-cline.terminalMenu",
 				"label": "%views.terminalMenu.label%"
+			},
+			{
+				"id": "roo-cline.explorerSubmenu",
+				"label": "%extension.displayName%"
 			}
 		],
 		"configuration": {

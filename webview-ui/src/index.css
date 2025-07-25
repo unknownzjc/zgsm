@@ -132,6 +132,10 @@
 	--color-vscode-textLink-foreground: var(--vscode-textLink-foreground);
 	--color-vscode-textCodeBlock-background: var(--vscode-textCodeBlock-background);
 	--color-vscode-button-hoverBackground: var(--vscode-button-hoverBackground);
+
+	--color-vscode-widget-shadow: var(--vscode-widget-shadow);
+
+	--color-vscode-menu-border: var(--vscode-menu-border);
 }
 
 @layer base {

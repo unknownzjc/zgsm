@@ -54,6 +54,7 @@ export const workspace = {
 		writeFile: () => Promise.resolve(),
 		stat: () => Promise.resolve({ type: 1, ctime: 0, mtime: 0, size: 0 }),
 	},
+	openTextDocument: () => {},
 }
 
 export const window = {
@@ -82,6 +83,7 @@ export const window = {
 	}),
 	onDidCloseTerminal: () => mockDisposable,
 	createTextEditorDecorationType: () => ({ dispose: () => {} }),
+	showTextDocument: () => {},
 }
 
 export const commands = {
@@ -152,6 +154,42 @@ export const CodeActionKind = {
 
 export const EventEmitter = mockEventEmitter
 
+export const CommentMode = {
+	Editing: 0,
+	Preview: 1,
+}
+
+export const CommentThreadCollapsibleState = {
+	Collapsed: 0,
+	Expanded: 1,
+}
+
+export const comments = {
+	createCommentController: (id, label) => ({
+		id,
+		label,
+		createCommentThread: () => ({
+			uri: null,
+			range: null,
+			comments: [],
+			collapsibleState: 1,
+			canReply: false,
+			contextValue: "",
+			label: "",
+			dispose: () => {},
+		}),
+		dispose: () => {},
+		commentingRangeProvider: null,
+	}),
+}
+
+export const TextEditorRevealType = {
+	Default: 0,
+	InCenter: 1,
+	InCenterIfOutsideViewport: 2,
+	AtTop: 3,
+}
+
 export default {
 	workspace,
 	window,
@@ -171,4 +209,8 @@ export default {
 	EventEmitter,
 	CodeAction,
 	CodeActionKind,
+	CommentMode,
+	CommentThreadCollapsibleState,
+	comments,
+	TextEditorRevealType,
 }

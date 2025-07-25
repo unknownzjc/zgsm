@@ -2,7 +2,7 @@ const { execSync } = require("child_process")
 const fs = require("fs")
 const path = require("path")
 
-const outputDir = path.join(__dirname, "../src/core/zgsm-codebase/types")
+const outputDir = path.join(__dirname, "../src/core/costrict/codebase/types")
 if (!fs.existsSync(outputDir)) {
 	fs.mkdirSync(outputDir, { recursive: true })
 }
@@ -15,8 +15,8 @@ try {
     --ts_proto_out=${outputDir} \
     --ts_proto_opt=outputClientImpl=@grpc/grpc-js \
     --ts_proto_opt=outputServices=grpc-js \
-    -I=./src/core/zgsm-codebase \
-    ./src/core/zgsm-codebase/codebase_syncer.proto
+    -I=./src/core/costrict/codebase \
+    ./src/core/costrict/codebase/codebase_syncer.proto
   `,
 		{ stdio: "inherit" },
 	)
