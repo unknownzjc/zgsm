@@ -28,6 +28,13 @@
 	"command.shortKeyCut.title": "Costrict代码补全快捷键",
 	"command.codeReview.title": "代码审查",
 	"command.reviewRepo.title": "扫描仓库",
+	"command.addComment.title": "添加注释",
+	"command.addTests.title": "生成单元测试",
+	"command.explain.title": "解释代码",
+	"command.addDebugCode.title": "添加日志",
+	"command.addStrongerCode.title": "增加容错",
+	"command.simplifyCode.title": "简化代码",
+	"command.performanceOptimization.title": "优化性能",
 
 	"intelligentCodeCompletion.enabled.description": "启用智能代码补全",
 	"intelligentCodeCompletion.betaMode.description": "启用测试版功能以获取早期访问权限。请查看版本说明了解功能列表。",

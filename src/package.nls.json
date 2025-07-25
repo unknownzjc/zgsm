@@ -28,6 +28,13 @@
 	"command.shortKeyCut.title": "Costrict Code Completion Shortcut",
 	"command.codeReview.title": "Code Review",
 	"command.reviewRepo.title": "Review Repo",
+	"command.addComment.title": "Add Comments",
+	"command.addTests.title": "Generate Unit Tests",
+	"command.explain.title": "Explain Code",
+	"command.addDebugCode.title": "Add Logging",
+	"command.addStrongerCode.title": "Enhance Robustness",
+	"command.simplifyCode.title": "Simplify Code",
+	"command.performanceOptimization.title": "Optimize Performance",
 
 	"intelligentCodeCompletion.enabled.description": "Enable intelligent code completion",
 	"intelligentCodeCompletion.betaMode.description": "Enable beta features for early access. See version notes for feature list.",
