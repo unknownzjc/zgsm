@@ -33,6 +33,7 @@
 !assets/vscode-material-icons/**
 !assets/icons/**
 !assets/images/**
+!assets/costrict/**
 
 # Include .env file for telemetry
 !.env
