@@ -212,6 +212,7 @@ export interface WebviewMessage {
 		| "requestCodeIndexSecretStatus"
 		| "cancelReviewTask"
 		| "checkReviewSuggestion"
+		| "requestCommands"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account"

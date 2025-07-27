@@ -14,7 +14,6 @@ import { readLines } from "../../integrations/misc/read-lines"
 import { extractTextFromFile, addLineNumbers, getSupportedBinaryFormats } from "../../integrations/misc/extract-text"
 import { parseSourceCodeDefinitionsForFile } from "../../services/tree-sitter"
 import { parseXml } from "../../utils/xml"
-import { truncateContent } from "../costrict"
 
 export function getReadFileToolDescription(blockName: string, blockParams: any): string {
 	// Handle both single path and multiple files via args
@@ -135,12 +134,10 @@ export async function readFileTool(
 							const [, start, end] = match.map(Number)
 							if (!isNaN(start) && !isNaN(end)) {
 								const { maxReadFileLine = -1 } = (await cline.providerRef.deref()?.getState()) ?? {}
-
-								let _end = end
-								if (maxReadFileLine > 0 && end - start > maxReadFileLine) {
-									_end = maxReadFileLine + start
-								}
-								fileEntry.lineRanges?.push({ start, end: _end })
+								fileEntry.lineRanges?.push({
+									start,
+									end: maxReadFileLine > 0 ? Math.min(end, start + maxReadFileLine) : end,
+								})
 							}
 						}
 					}
@@ -436,7 +433,7 @@ export async function readFileTool(
 
 			const relPath = fileResult.path
 			const fullPath = path.resolve(cline.cwd, relPath)
-			const { maxReadFileLine = -1, maxReadFileChars = -1 } = (await cline.providerRef.deref()?.getState()) ?? {}
+			const { maxReadFileLine = -1 } = (await cline.providerRef.deref()?.getState()) ?? {}
 
 			// Process approved files
 			try {
@@ -522,15 +519,9 @@ export async function readFileTool(
 					}
 					continue
 				}
-				const { info: modelInfo } = cline?.api?.getModel?.() ?? {}
-				const forceTruncated = !modelInfo || modelInfo?.contextWindow <= 100_000
 
 				// Handle normal file read
-				const [content] = truncateContent(
-					await extractTextFromFile(fullPath),
-					forceTruncated ? maxReadFileLine : -1,
-					maxReadFileChars,
-				)
+				const content = await extractTextFromFile(fullPath)
 				const lineRangeAttr = ` lines="1-${totalLines}"`
 				let xmlInfo = totalLines > 0 ? `<content${lineRangeAttr}>\n${content}</content>\n` : `<content/>`
 

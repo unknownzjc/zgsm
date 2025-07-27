@@ -212,6 +212,42 @@ export const webviewMessageHandler = async (
 	}
 
 	switch (message.type) {
+		case "zgsmLogin": {
+			try {
+				TelemetryService.instance.captureEvent(TelemetryEventName.AUTHENTICATION_INITIATED)
+				const currentConfigName = getGlobalState("currentApiConfigName") || "default"
+				if (message.apiConfiguration) {
+					await provider.upsertProviderProfile(currentConfigName, message.apiConfiguration)
+				}
+				await provider.getZgsmAuthCommands?.()?.handleLogin()
+			} catch (error) {
+				provider.log(`AuthService#login failed: ${error}`)
+				vscode.window.showErrorMessage("Sign in failed.")
+			}
+
+			break
+		}
+		case "zgsmLogout": {
+			try {
+				await provider.getZgsmAuthCommands?.()?.handleLogout()
+				await provider.postStateToWebview()
+			} catch (error) {
+				provider.log(`AuthService#logout failed: ${error}`)
+				vscode.window.showErrorMessage("Sign out failed.")
+			}
+
+			break
+		}
+		case "zgsmAbort": {
+			await provider.cancelTask()
+			break
+		}
+		case "checkReviewSuggestion":
+			await CodeReviewService.getInstance().setActiveIssue(message.issueId!)
+			break
+		case "cancelReviewTask":
+			await CodeReviewService.getInstance().cancelCurrentTask()
+			break
 		case "webviewDidLaunch":
 			// Load custom modes first
 			const customModes = await provider.customModesManager.getCustomModes()
@@ -698,8 +734,8 @@ export const webviewMessageHandler = async (
 			break
 		case "requestHuggingFaceModels":
 			try {
-				const { getHuggingFaceModels } = await import("../../api/huggingface-models")
-				const huggingFaceModelsResponse = await getHuggingFaceModels()
+				const { getHuggingFaceModelsWithMetadata } = await import("../../api/providers/fetchers/huggingface")
+				const huggingFaceModelsResponse = await getHuggingFaceModelsWithMetadata()
 				provider.postMessageToWebview({
 					type: "huggingFaceModels",
 					huggingFaceModels: huggingFaceModelsResponse.models,
@@ -1285,11 +1321,6 @@ export const webviewMessageHandler = async (
 			break
 		case "maxReadFileLine":
 			await updateGlobalState("maxReadFileLine", message.value)
-			if (message.value === -1) await updateGlobalState("maxReadFileChars", message.value)
-			await provider.postStateToWebview()
-			break
-		case "maxReadFileChars":
-			await updateGlobalState("maxReadFileChars", message.value)
 			await provider.postStateToWebview()
 			break
 		case "maxConcurrentFileReads":
@@ -2123,6 +2154,19 @@ export const webviewMessageHandler = async (
 							}
 						}
 					}
+				} else {
+					// No workspace open - send error status
+					provider.log("Cannot save code index settings: No workspace folder open")
+					await provider.postMessageToWebview({
+						type: "indexingStatusUpdate",
+						values: {
+							systemStatus: "Error",
+							message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+							processedItems: 0,
+							totalItems: 0,
+							currentItemUnit: "items",
+						},
+					})
 				}
 			} catch (error) {
 				provider.log(`Error saving code index settings: ${error.message || error}`)
@@ -2136,16 +2180,26 @@ export const webviewMessageHandler = async (
 		}
 
 		case "requestIndexingStatus": {
-			try {
-				const manager = provider.codeIndexManager!
-				const status = manager.getCurrentStatus()
-				provider.postMessageToWebview({ type: "indexingStatusUpdate", values: status })
-			} catch (error) {
-				provider.log(
-					`Error request indexing status: ${error instanceof Error ? error.message : String(error)}`,
-					"error",
-				)
+			const manager = provider.codeIndexManager
+			if (!manager) {
+				// No workspace open - send error status
+				provider.postMessageToWebview({
+					type: "indexingStatusUpdate",
+					values: {
+						systemStatus: "Error",
+						message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+						processedItems: 0,
+						totalItems: 0,
+						currentItemUnit: "items",
+					},
+				})
+				return
 			}
+			const status = manager.getCurrentStatus()
+			provider.postMessageToWebview({
+				type: "indexingStatusUpdate",
+				values: status,
+			})
 			break
 		}
 		case "requestCodeIndexSecretStatus": {
@@ -2172,7 +2226,22 @@ export const webviewMessageHandler = async (
 		}
 		case "startIndexing": {
 			try {
-				const manager = provider.codeIndexManager!
+				const manager = provider.codeIndexManager
+				if (!manager) {
+					// No workspace open - send error status
+					provider.postMessageToWebview({
+						type: "indexingStatusUpdate",
+						values: {
+							systemStatus: "Error",
+							message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+							processedItems: 0,
+							totalItems: 0,
+							currentItemUnit: "items",
+						},
+					})
+					provider.log("Cannot start indexing: No workspace folder open")
+					return
+				}
 				if (manager.isFeatureEnabled && manager.isFeatureConfigured) {
 					if (!manager.isInitialized) {
 						await manager.initialize(provider.contextProxy)
@@ -2187,7 +2256,18 @@ export const webviewMessageHandler = async (
 		}
 		case "clearIndexData": {
 			try {
-				const manager = provider.codeIndexManager!
+				const manager = provider.codeIndexManager
+				if (!manager) {
+					provider.log("Cannot clear index data: No workspace folder open")
+					provider.postMessageToWebview({
+						type: "indexCleared",
+						values: {
+							success: false,
+							error: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+						},
+					})
+					return
+				}
 				await manager.clearIndexData()
 				provider.postMessageToWebview({ type: "indexCleared", values: { success: true } })
 			} catch (error) {
@@ -2338,41 +2418,30 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
-		case "zgsmLogin": {
+		case "requestCommands": {
 			try {
-				TelemetryService.instance.captureEvent(TelemetryEventName.AUTHENTICATION_INITIATED)
-				const currentConfigName = getGlobalState("currentApiConfigName") || "default"
-				if (message.apiConfiguration) {
-					await provider.upsertProviderProfile(currentConfigName, message.apiConfiguration)
-				}
-				await provider.getZgsmAuthCommands?.()?.handleLogin()
-			} catch (error) {
-				provider.log(`AuthService#login failed: ${error}`)
-				vscode.window.showErrorMessage("Sign in failed.")
-			}
+				const { getCommands } = await import("../../services/command/commands")
+				const commands = await getCommands(provider.cwd || "")
 
-			break
-		}
-		case "zgsmLogout": {
-			try {
-				await provider.getZgsmAuthCommands?.()?.handleLogout()
-				await provider.postStateToWebview()
-			} catch (error) {
-				provider.log(`AuthService#logout failed: ${error}`)
-				vscode.window.showErrorMessage("Sign out failed.")
-			}
+				// Convert to the format expected by the frontend
+				const commandList = commands.map((command) => ({
+					name: command.name,
+					source: command.source,
+				}))
 
+				await provider.postMessageToWebview({
+					type: "commands",
+					commands: commandList,
+				})
+			} catch (error) {
+				provider.log(`Error fetching commands: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`)
+				// Send empty array on error
+				await provider.postMessageToWebview({
+					type: "commands",
+					commands: [],
+				})
+			}
 			break
 		}
-		case "zgsmAbort": {
-			await provider.cancelTask()
-			break
-		}
-		case "checkReviewSuggestion":
-			await CodeReviewService.getInstance().setActiveIssue(message.issueId!)
-			break
-		case "cancelReviewTask":
-			await CodeReviewService.getInstance().cancelCurrentTask()
-			break
 	}
 }

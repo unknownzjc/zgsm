@@ -188,36 +188,3 @@ export function maskPhoneNumber(phone: string): string {
 	// Replace the middle four digits with asterisks using a regular expression
 	return phone.replace(/(\+86)(\d{3})\d{4}(\d{4})/, "$2****$3")
 }
-
-/**
- * Truncates file content to prevent performance issues from large files
- * @param content - The original file content to be processed
- * @param maxReadFileLine - Optional maximum line limit (if <= 0 uses default 500)
- * @returns The processed content (potentially truncated)
- */
-export function truncateContent(
-	content: string,
-	maxReadFileLine: number = 500,
-	maxReadFileChars: number = 20_000,
-): [string, number] {
-	if (maxReadFileLine === -1) {
-		return [content, maxReadFileLine]
-	}
-
-	const lines = content.split("\n")
-	const totalLines = lines.length
-
-	if (content.length > maxReadFileChars && maxReadFileChars !== -1) {
-		// If exceeds character limit, keep only first 20000 characters
-		return [content.substring(0, maxReadFileChars), totalLines]
-	}
-
-	if (totalLines > maxReadFileLine) {
-		// If exceeds line limit, keep only first 500 lines
-		// Use join('\n') to recombine content and add newline at end to maintain format
-		return [lines.slice(0, maxReadFileLine).join("\n") + "\n", totalLines]
-	}
-
-	// If content doesn't exceed any limits, return original
-	return [content, totalLines]
-}

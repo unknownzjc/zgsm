@@ -4,7 +4,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { isBinaryFile } from "isbinaryfile"
 
-import { mentionRegexGlobal, unescapeSpaces } from "../../shared/context-mentions"
+import { mentionRegexGlobal, commandRegexGlobal, unescapeSpaces } from "../../shared/context-mentions"
 
 import { getCommitInfo, getWorkingState } from "../../utils/git"
 import { getWorkspacePath } from "../../utils/path"
@@ -18,10 +18,10 @@ import { UrlContentFetcher } from "../../services/browser/UrlContentFetcher"
 import { FileContextTracker } from "../context-tracking/FileContextTracker"
 
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
+import { getCommand } from "../../services/command/commands"
 
 import { t } from "../../i18n"
 import { Task } from "../task/Task"
-import { truncateContent } from "../costrict"
 
 function getUrlErrorMessage(error: unknown): string {
 	const errorMessage = error instanceof Error ? error.message : String(error)
@@ -82,12 +82,21 @@ export async function parseMentions(
 	fileContextTracker?: FileContextTracker,
 	rooIgnoreController?: RooIgnoreController,
 	showRooIgnoredFiles: boolean = true,
-	cline?: Task,
 	includeDiagnosticMessages: boolean = true,
 	maxDiagnosticMessages: number = 50,
+	maxReadFileLine?: number,
 ): Promise<string> {
 	const mentions: Set<string> = new Set()
-	let parsedText = text.replace(mentionRegexGlobal, (match, mention) => {
+	const commandMentions: Set<string> = new Set()
+
+	// First pass: extract command mentions (starting with /)
+	let parsedText = text.replace(commandRegexGlobal, (match, commandName) => {
+		commandMentions.add(commandName)
+		return `Command '${commandName}' (see below for command content)`
+	})
+
+	// Second pass: handle regular mentions
+	parsedText = parsedText.replace(mentionRegexGlobal, (match, mention) => {
 		mentions.add(mention)
 		if (mention.startsWith("http")) {
 			return `'${mention}' (see below for site content)`
@@ -157,7 +166,7 @@ export async function parseMentions(
 					cwd,
 					rooIgnoreController,
 					showRooIgnoredFiles,
-					cline,
+					maxReadFileLine,
 				)
 				if (mention.endsWith("/")) {
 					parsedText += `\n\n<folder_content path="${mentionPath}">\n${content}\n</folder_content>`
@@ -205,6 +214,20 @@ export async function parseMentions(
 		}
 	}
 
+	// Process command mentions
+	for (const commandName of commandMentions) {
+		try {
+			const command = await getCommand(cwd, commandName)
+			if (command) {
+				parsedText += `\n\n<command name="${commandName}">\n${command.content}\n</command>`
+			} else {
+				parsedText += `\n\n<command name="${commandName}">\nCommand '${commandName}' not found. Available commands can be found in .roo/commands/ or ~/.roo/commands/\n</command>`
+			}
+		} catch (error) {
+			parsedText += `\n\n<command name="${commandName}">\nError loading command '${commandName}': ${error.message}\n</command>`
+		}
+	}
+
 	if (urlMention) {
 		try {
 			await urlContentFetcher.closeBrowser()
@@ -221,13 +244,10 @@ async function getFileOrFolderContent(
 	cwd: string,
 	rooIgnoreController?: any,
 	showRooIgnoredFiles: boolean = true,
-	cline?: Task,
+	maxReadFileLine?: number,
 ): Promise<string> {
 	const unescapedPath = unescapeSpaces(mentionPath)
 	const absPath = path.resolve(cwd, unescapedPath)
-	const { maxReadFileLine = -1, maxReadFileChars = -1 } = (await cline?.providerRef.deref()?.getState()) ?? {}
-	const { info: modelInfo } = cline?.api?.getModel?.() ?? {}
-	const forceTruncated = !modelInfo || modelInfo?.contextWindow <= 100_000
 
 	try {
 		const stats = await fs.stat(absPath)
@@ -237,14 +257,8 @@ async function getFileOrFolderContent(
 				return `(File ${mentionPath} is ignored by .rooignore)`
 			}
 			try {
-				const [content, totalLines] = truncateContent(
-					await extractTextFromFile(absPath),
-					forceTruncated ? maxReadFileLine : -1,
-					maxReadFileChars,
-				)
-				return (
-					content + `${totalLines > maxReadFileLine ? getTruncatedFileNotice(mentionPath, totalLines) : ""}`
-				)
+				const content = await extractTextFromFile(absPath, maxReadFileLine)
+				return content
 			} catch (error) {
 				return `(Failed to read contents of ${mentionPath}): ${error.message}`
 			}
@@ -283,13 +297,8 @@ async function getFileOrFolderContent(
 									if (isBinary) {
 										return undefined
 									}
-									const [content, totalLines] = truncateContent(
-										await extractTextFromFile(absoluteFilePath),
-										forceTruncated ? maxReadFileLine : -1,
-										maxReadFileChars,
-									)
-									const _path = filePath.toPosix()
-									return `<file_content path="${_path}">\n${content}${totalLines > maxReadFileLine ? getTruncatedFileNotice(_path, totalLines) : ""}</file_content>`
+									const content = await extractTextFromFile(absoluteFilePath, maxReadFileLine)
+									return `<file_content path="${filePath.toPosix()}">\n${content}\n</file_content>`
 								} catch (error) {
 									return undefined
 								}
