@@ -1653,7 +1653,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const areButtonsVisible = showScrollToBottom || primaryButtonText || secondaryButtonText || isStreaming
 
 	return (
-		<div className={isHidden ? "hidden" : "fixed top-[28px] left-0 right-0 bottom-0 flex flex-col overflow-hidden"}>
+		<div className={isHidden ? "hidden" : "fixed top-8 left-0 right-0 bottom-0 flex flex-col overflow-hidden"}>
 			{(showAnnouncement || showAnnouncementModal) && (
 				<Announcement
 					hideAnnouncement={() => {

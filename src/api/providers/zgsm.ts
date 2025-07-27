@@ -42,8 +42,8 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 		super()
 		this.options = options
 
-		this.baseURL = `${this.options.zgsmBaseUrl?.trim() ?? ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()}/chat-rag/api/v1`
-		const apiKey = options.zgsmAccessToken ?? "not-provided"
+		this.baseURL = `${this.options.zgsmBaseUrl?.trim() || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()}/chat-rag/api/v1`
+		const apiKey = options.zgsmAccessToken || "not-provided"
 		const isAzureAiInference = this._isAzureAiInference(this.baseURL)
 		const urlHost = this._getUrlHost(this.baseURL)
 		const isAzureOpenAi = urlHost === "azure.com" || urlHost.endsWith(".azure.com") || options.openAiUseAzure
@@ -85,8 +85,8 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
 		const { info: modelInfo, reasoning } = this.getModel()
-		const modelUrl = this.baseURL ?? ""
-		const modelId = this.options.zgsmModelId ?? zgsmDefaultModelId
+		const modelUrl = this.baseURL || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+		const modelId = this.options.zgsmModelId || zgsmDefaultModelId
 		const enabledR1Format = this.options.openAiR1FormatEnabled ?? false
 		const enabledLegacyFormat = this.options.openAiLegacyFormat ?? false
 		const isAzureAiInference = this._isAzureAiInference(modelUrl)

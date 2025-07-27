@@ -946,7 +946,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		// Helper function to render non-edit mode controls
 		const renderNonEditModeControls = () => (
 			<div className={cn("flex", "justify-between", "items-center", "mt-auto")}>
-				<div className={cn("flex", "items-center", "gap-1", "min-w-0")}>
+				<div className={cn("flex", "items-center", "gap-1", "min-w-0", " bg-vscode-input-background")}>
 					<div className="shrink-0">{renderModeSelector()}</div>
 
 					<div className={cn("flex-1", "min-w-0", "overflow-hidden")}>
@@ -965,7 +965,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					</div>
 				</div>
 
-				<div className={cn("flex", "items-center", "gap-0.5", "shrink-0")}>
+				<div className={cn("flex", "items-center", "gap-0.5", "shrink-0", " bg-vscode-input-background")}>
 					{isTtsPlaying && (
 						<StandardTooltip content={t("chat:stopTts")}>
 							<button
@@ -1161,12 +1161,12 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						</StandardTooltip>
 					</div>
 				)}
-
+				{renderNonEditModeControlsWrap()}
 				{!inputValue && !isEditMode && (
 					<div
 						className="absolute left-2 z-30 pr-9 flex items-center h-8"
 						style={{
-							bottom: "0.25rem",
+							bottom: 26,
 							color: "var(--vscode-tab-inactiveForeground)",
 							userSelect: "none",
 							pointerEvents: "none",
@@ -1283,9 +1283,18 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					/>
 				)}
 
-				{!isEditMode && renderNonEditModeControls()}
+				{/* {!isEditMode && renderNonEditModeControls()} */}
 			</div>
 		)
+		function renderNonEditModeControlsWrap() {
+			return (
+				!isEditMode && (
+					<div className="absolute bottom-1 left-2 z-30 w-[calc(100%-36px)]">
+						{renderNonEditModeControls()}
+					</div>
+				)
+			)
+		}
 	},
 )
 
