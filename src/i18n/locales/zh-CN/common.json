@@ -76,13 +76,6 @@
 		"share_task_not_found": "未找到任务或访问被拒绝。",
 		"mode_import_failed": "导入模式失败：{{error}}",
 		"delete_rules_folder_failed": "删除规则文件夹失败：{{rulesFolderPath}}。错误：{{error}}",
-		"claudeCode": {
-			"processExited": "Claude Code 进程退出，退出码：{{exitCode}}。",
-			"errorOutput": "错误输出：{{output}}",
-			"processExitedWithError": "Claude Code 进程退出，退出码：{{exitCode}}。错误输出：{{output}}",
-			"stoppedWithReason": "Claude Code 停止，原因：{{reason}}",
-			"apiKeyModelPlanMismatch": "API 密钥和订阅计划支持不同的模型。请确保所选模型包含在您的计划中。"
-		},
 		"geminiCli": {
 			"oauthLoadFailed": "加载 OAuth 凭据失败。请先进行身份验证：{{error}}",
 			"tokenRefreshFailed": "刷新 OAuth Token 失败：{{error}}",
@@ -92,6 +85,18 @@
 			"badRequest": "请求错误：{{details}}",
 			"apiError": "Gemini CLI API 错误：{{error}}",
 			"completionError": "Gemini CLI 补全错误：{{error}}"
+		},
+		"claudeCode": {
+			"processExited": "Claude Code 进程退出，退出码：{{exitCode}}。",
+			"errorOutput": "错误输出：{{output}}",
+			"processExitedWithError": "Claude Code 进程退出，退出码：{{exitCode}}。错误输出：{{output}}",
+			"stoppedWithReason": "Claude Code 停止，原因：{{reason}}",
+			"apiKeyModelPlanMismatch": "API 密钥和订阅计划支持不同的模型。请确保所选模型包含在您的计划中。"
+		},
+		"gemini": {
+			"generate_stream": "Gemini 生成上下文流错误：{{error}}",
+			"generate_complete_prompt": "Gemini 完成错误：{{error}}",
+			"sources": "来源："
 		}
 	},
 	"warnings": {
