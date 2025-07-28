@@ -34,7 +34,7 @@ function createAxiosInstance(): AxiosInstance {
 	const instance = axios.create(defaultConfig)
 
 	// Response interceptor for error handling
-	instance.interceptors.response.use(
+	instance?.interceptors?.response.use(
 		(response: AxiosResponse) => {
 			// Check for business logic errors (code !== 200)
 			if (response.data && typeof response.data === "object" && "success" in response.data) {

@@ -28,6 +28,6 @@ describe("ExecaTerminal", () => {
 		expect(callbacks.onShellExecutionComplete).toHaveBeenCalled()
 
 		expect(result).toBeTypeOf("string")
-		expect(result).toContain("total")
+		expect(result).toMatch(/total|总计/)
 	})
 })

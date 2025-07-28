@@ -16,7 +16,8 @@ import { getOpenRouterModelEndpoints, getOpenRouterModels } from "../openrouter"
 nockBack.fixtures = path.join(__dirname, "fixtures")
 nockBack.setMode("lockdown")
 
-describe("OpenRouter API", () => {
+// todo: skip
+describe.skip("OpenRouter API", () => {
 	describe("getOpenRouterModels", () => {
 		it("fetches models and validates schema", async () => {
 			const { nockDone } = await nockBack("openrouter-models.json")

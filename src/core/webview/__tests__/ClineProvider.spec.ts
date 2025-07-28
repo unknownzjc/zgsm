@@ -39,9 +39,18 @@ vi.mock("axios", () => ({
 	default: {
 		get: vi.fn().mockResolvedValue({ data: { data: [] } }),
 		post: vi.fn(),
+		create: vi.fn(),
+		interceptors: {
+			request: vi.fn(),
+			response: vi.fn(),
+		},
 	},
 	get: vi.fn().mockResolvedValue({ data: { data: [] } }),
 	post: vi.fn(),
+	interceptors: {
+		request: vi.fn(),
+		response: vi.fn(),
+	},
 }))
 
 vi.mock("../../../utils/safeWriteJson")
