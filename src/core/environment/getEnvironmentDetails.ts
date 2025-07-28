@@ -218,13 +218,17 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	} = state ?? {}
 
 	const currentMode = mode ?? defaultModeSlug
+	const simpleAskSuggestion =
+		process.env.NODE_ENV === "test"
+			? ""
+			: `\n - If the question is simple (e.g., a concept explanation, term definition, or basic usage), do **not** invoke any tools, plugins, or file operations. Just provide a concise answer based on your internal knowledge, and immediately respond using the \`attempt_completion\` tool.\n - If the question is clearly informal or lacks actionable meaning (e.g., "hello", "who are you", "tell me a joke"), respond politely without attempting any deep logic or tool usage, and immediately respond using the \`attempt_completion\` tool.\n - Only use tools, plugins, or complex actions when the question explicitly involves file reading/writing/editing/creating, project scanning, debugging, implementation (e.g., writing or modifying code), or deep technical analysis.`
 	const shellSuggestion =
 		process.env.NODE_ENV === "test"
 			? ""
 			: `\nThe user's current shell is \`${getShell()}\`, and all command outputs must adhere to the syntax.\n`
 	const modeDetails = await getFullModeDetails(currentMode, customModes, customModePrompts, {
 		cwd: cline.cwd,
-		globalCustomInstructions: shellSuggestion + globalCustomInstructions,
+		globalCustomInstructions: simpleAskSuggestion + shellSuggestion + globalCustomInstructions,
 		language: language ?? formatLanguage(vscode.env.language),
 	})
 	details += `\n\n# Operating System\n${osName()}`
