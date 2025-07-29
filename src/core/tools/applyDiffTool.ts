@@ -1,11 +1,15 @@
 import path from "path"
 import fs from "fs/promises"
+import * as vscode from "vscode"
 
 import { TelemetryService } from "@roo-code/telemetry"
 import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 import { ClineSayTool } from "../../shared/ExtensionMessage"
 import { getReadablePath } from "../../utils/path"
+import { getDiffLines } from "../../utils/diffLines"
+import { getLanguage } from "../../utils/file"
+import { autoCommit } from "../../utils/git"
 import { Task } from "../task/Task"
 import { ToolUse, RemoveClosingTag, AskApproval, HandleError, PushToolResult } from "../../shared/tools"
 import { formatResponse } from "../prompts/responses"
@@ -204,9 +208,11 @@ export async function applyDiffToolLegacy(
 				}
 
 				const didApprove = await askApproval("tool", completeMessage, toolProgressStatus, isWriteProtected)
-
+				const fileLanguage = await getLanguage(absolutePath)
+				const changedLines = getDiffLines(originalContent ?? "", diffResult.content ?? "")
 				if (!didApprove) {
 					await cline.diffViewProvider.revertChanges() // Cline likely handles closing the diff view
+					TelemetryService.instance.captureCodeReject(fileLanguage, changedLines)
 					return
 				}
 
@@ -217,6 +223,21 @@ export async function applyDiffToolLegacy(
 			// Track file edit operation
 			if (relPath) {
 				await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
+			}
+			try {
+				TelemetryService.instance.captureCodeAccept(fileLanguage, changedLines)
+
+				// Check if AutoCommit is enabled before committing
+				const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
+				if (autoCommitEnabled) {
+					autoCommit(relPath, cline.cwd, {
+						model: cline.api.getModel().id,
+						editorName: vscode.env.appName,
+						date: new Date().toLocaleString(),
+					})
+				}
+			} catch (err) {
+				console.log(err)
 			}
 
 			// Used to determine if we should wait for busy terminal to update before sending api request

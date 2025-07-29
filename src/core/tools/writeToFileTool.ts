@@ -12,10 +12,14 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { stripLineNumbers, everyLineHasLineNumbers } from "../../integrations/misc/extract-text"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { getLanguage } from "../../utils/file"
+import { getDiffLines } from "../../utils/diffLines"
+import { autoCommit } from "../../utils/git"
 import { detectCodeOmission } from "../../integrations/editor/detect-omission"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
 import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
+import { TelemetryService } from "@roo-code/telemetry"
 
 export async function writeToFileTool(
 	cline: Task,
@@ -284,9 +288,13 @@ export async function writeToFileTool(
 				} satisfies ClineSayTool)
 
 				const didApprove = await askApproval("tool", completeMessage, undefined, isWriteProtected)
-
+				const language = await getLanguage(relPath)
+				const lines = fileExists
+					? getDiffLines(cline.diffViewProvider.originalContent || "", newContent)
+					: newContent.split("\n").length
 				if (!didApprove) {
 					await cline.diffViewProvider.revertChanges()
+					TelemetryService.instance.captureCodeReject(language, lines)
 					return
 				}
 
@@ -297,6 +305,21 @@ export async function writeToFileTool(
 			// Track file edit operation
 			if (relPath) {
 				await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
+			}
+
+			try {
+				TelemetryService.instance.captureCodeAccept(language, lines)
+				// Check if AutoCommit is enabled before committing
+				const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
+				if (autoCommitEnabled) {
+					autoCommit(relPath, cline.cwd, {
+						model: cline.api.getModel().id,
+						editorName: vscode.env.appName,
+						date: new Date().toLocaleString(),
+					})
+				}
+			} catch (err) {
+				console.log(err)
 			}
 
 			cline.didEditFile = true // used to determine if we should wait for busy terminal to update before sending api request
