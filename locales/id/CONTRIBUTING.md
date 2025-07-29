@@ -69,7 +69,7 @@ Sebutkan keselarasan dengan area ini di PR kamu.
 
 Semua kontribusi harus dimulai dengan GitHub Issue.
 
-- **Periksa isu yang ada**: Cari di [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Periksa isu yang ada**: Cari di [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Buat isu**: Gunakan template yang sesuai:
     - **Bug:** Template "Bug Report".
     - **Fitur:** Template "Detailed Feature Proposal". Persetujuan diperlukan sebelum memulai.
@@ -80,13 +80,13 @@ Semua kontribusi harus dimulai dengan GitHub Issue.
 ### Memutuskan Apa yang Akan Dikerjakan
 
 - Periksa [GitHub Project](https://github.com/orgs/RooCodeInc/projects/1) untuk "Good First Issues" yang belum ditugaskan.
-- Untuk dokumen, kunjungi [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- Untuk dokumen, kunjungi [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Melaporkan Bug
 
 - Periksa laporan yang ada terlebih dahulu.
-- Buat bug baru menggunakan ["Bug Report" template](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Masalah keamanan**: Laporkan secara pribadi melalui [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Buat bug baru menggunakan ["Bug Report" template](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Masalah keamanan**: Laporkan secara pribadi melalui [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Proses Pengembangan & Pengiriman
 

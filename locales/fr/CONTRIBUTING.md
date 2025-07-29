@@ -69,7 +69,7 @@ Mentionne l'alignement avec ces domaines dans tes PRs.
 
 Toutes les contributions doivent commencer par un ticket GitHub.
 
-- **Vérifier les tickets existants :** Cherche dans les [Issues GitHub](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Vérifier les tickets existants :** Cherche dans les [Issues GitHub](https://github.com/zgsm-ai/costrict/issues).
 - **Créer un ticket :** Utilise les modèles appropriés :
     - **Bugs :** Modèle "Bug Report".
     - **Fonctionnalités :** Modèle "Detailed Feature Proposal". Approbation requise avant de commencer.
@@ -80,13 +80,13 @@ Toutes les contributions doivent commencer par un ticket GitHub.
 ### Décider sur quoi travailler
 
 - Consulte le [Projet GitHub](https://github.com/orgs/RooCodeInc/projects/1) pour les "Good First Issues" non assignés.
-- Pour la documentation, visite [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- Pour la documentation, visite [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Signaler des bugs
 
 - Vérifie d'abord les rapports existants.
-- Crée de nouveaux rapports de bugs avec le [modèle "Bug Report"](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Failles de sécurité :** Signale-les en privé via [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Crée de nouveaux rapports de bugs avec le [modèle "Bug Report"](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Failles de sécurité :** Signale-les en privé via [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Processus de développement et de soumission
 

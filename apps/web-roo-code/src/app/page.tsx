@@ -47,7 +47,7 @@ export default async function Home() {
 									size="lg"
 									className="w-full hover:bg-gray-200 dark:bg-white dark:text-black sm:w-auto">
 									<a
-										href="https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline"
+										href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm"
 										target="_blank"
 										className="flex w-full items-center justify-center">
 										Install Costrict

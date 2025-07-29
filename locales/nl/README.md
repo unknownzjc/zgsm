@@ -25,12 +25,12 @@
 <div align="center">
 <h1>Roo Code (voorheen Roo Cline)</h1>
 <p align="center">
-<img src="https://media.githubusercontent.com/media/RooCodeInc/Roo-Code/main/src/assets/docs/demo.gif" width="100%" />
+<img src="https://media.githubusercontent.com/media/zgsm-ai/costrict/main/src/assets/docs/demo.gif" width="100%" />
 </p>
 
-<a href="https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline" target="_blank"><img src="https://img.shields.io/badge/Download%20op%20VS%20Marketplace-blue?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Download op VS Marketplace"></a>
-<a href="https://github.com/RooCodeInc/Roo-Code/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank"><img src="https://img.shields.io/badge/Feature%20Requests-yellow?style=for-the-badge" alt="Feature Requests"></a>
-<a href="https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline&ssr=false#review-details" target="_blank"><img src="https://img.shields.io/badge/Beoordeel%20%26%20Review-green?style=for-the-badge" alt="Beoordeel & Review"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm" target="_blank"><img src="https://img.shields.io/badge/Download%20op%20VS%20Marketplace-blue?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Download op VS Marketplace"></a>
+<a href="https://github.com/zgsm-ai/costrict/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank"><img src="https://img.shields.io/badge/Feature%20Requests-yellow?style=for-the-badge" alt="Feature Requests"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm&ssr=false#review-details" target="_blank"><img src="https://img.shields.io/badge/Beoordeel%20%26%20Review-green?style=for-the-badge" alt="Beoordeel & Review"></a>
 <a href="https://docs.roocode.com" target="_blank"><img src="https://img.shields.io/badge/Documentatie-6B46C1?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentatie"></a>
 
 </div>
@@ -119,7 +119,7 @@ Laat Roo Code werken zoals jij wilt met:
 
 - **Discord:** [Word lid van onze Discord-server](https://discord.gg/roocode) voor directe hulp en discussies
 - **Reddit:** [Bezoek onze subreddit](https://www.reddit.com/r/RooCode) om ervaringen en tips te delen
-- **GitHub:** Meld [problemen](https://github.com/RooCodeInc/Roo-Code/issues) of vraag [features](https://github.com/RooCodeInc/Roo-Code/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop) aan
+- **GitHub:** Meld [problemen](https://github.com/zgsm-ai/costrict/issues) of vraag [features](https://github.com/zgsm-ai/costrict/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop) aan
 
 ---
 
@@ -128,7 +128,7 @@ Laat Roo Code werken zoals jij wilt met:
 1. **Kloon** de repo:
 
 ```sh
-git clone https://github.com/RooCodeInc/Roo-Code.git
+git clone https://github.com/zgsm-ai/costrict.git
 ```
 
 2. **Installeer afhankelijkheden**:
@@ -157,7 +157,7 @@ npm run build
 Een `.vsix`-bestand verschijnt in de `bin/`-map en kan worden geïnstalleerd met:
 
 ```sh
-code --install-extension bin/roo-cline-<versie>.vsix
+code --install-extension bin/zgsm-<versie>.vsix
 ```
 
 We gebruiken [changesets](https://github.com/changesets/changesets) voor versiebeheer en publicatie. Bekijk onze `CHANGELOG.md` voor release-opmerkingen.

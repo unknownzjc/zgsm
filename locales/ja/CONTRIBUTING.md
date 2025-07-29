@@ -69,7 +69,7 @@ PRでこれらの領域との関連性に言及してください。
 
 すべての貢献はGitHub Issueから始めてください。
 
-- **既存Issueの確認：** [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues)を検索。
+- **既存Issueの確認：** [GitHub Issues](https://github.com/zgsm-ai/costrict/issues)を検索。
 - **Issueの作成：** 適切なテンプレートを使用：
     - **バグ：** 「Bug Report」テンプレート。
     - **機能：** 「Detailed Feature Proposal」テンプレート。開始前に承認が必要。
@@ -80,13 +80,13 @@ PRでこれらの領域との関連性に言及してください。
 ### 何に取り組むか決める
 
 - 未割り当ての「Good First Issues」を[GitHub Project](https://github.com/orgs/RooCodeInc/projects/1)でチェック。
-- ドキュメント関連は[Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs)を参照。
+- ドキュメント関連は[Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs)を参照。
 
 ### バグの報告
 
 - まず既存の報告がないか確認。
-- 新しいバグは[「Bug Report」テンプレート](https://github.com/RooCodeInc/Roo-Code/issues/new/choose)で報告。
-- **セキュリティ問題：** [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new)を通じて非公開で報告。
+- 新しいバグは[「Bug Report」テンプレート](https://github.com/zgsm-ai/costrict/issues/new/choose)で報告。
+- **セキュリティ問題：** [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new)を通じて非公開で報告。
 
 ## 開発と提出のプロセス
 

@@ -69,7 +69,7 @@ Lộ trình của chúng mình định hướng dự án. Hãy điều chỉnh �
 
 Mọi đóng góp đều phải bắt đầu bằng một GitHub Issue.
 
-- **Kiểm tra issue hiện có:** Tìm kiếm trong [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Kiểm tra issue hiện có:** Tìm kiếm trong [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Tạo issue mới:** Sử dụng mẫu phù hợp:
     - **Lỗi:** Mẫu "Bug Report".
     - **Tính năng:** Mẫu "Detailed Feature Proposal". Cần được phê duyệt trước khi bắt đầu.
@@ -80,13 +80,13 @@ Mọi đóng góp đều phải bắt đầu bằng một GitHub Issue.
 ### Quyết định việc cần làm
 
 - Xem [Dự án GitHub](https://github.com/orgs/RooCodeInc/projects/1) để tìm "Good First Issues" chưa được gán.
-- Về tài liệu, hãy xem [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- Về tài liệu, hãy xem [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Báo cáo lỗi
 
 - Kiểm tra báo cáo hiện có trước.
-- Tạo báo cáo lỗi mới bằng [mẫu "Bug Report"](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Lỗ hổng bảo mật:** Báo cáo riêng qua [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Tạo báo cáo lỗi mới bằng [mẫu "Bug Report"](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Lỗ hổng bảo mật:** Báo cáo riêng qua [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Quy trình phát triển & gửi bài
 

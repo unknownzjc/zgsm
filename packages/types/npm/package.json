@@ -10,12 +10,12 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/RooCodeInc/Roo-Code.git"
+		"url": "git+https://github.com/zgsm-ai/costrict.git"
 	},
 	"bugs": {
-		"url": "https://github.com/RooCodeInc/Roo-Code/issues"
+		"url": "https://github.com/zgsm-ai/costrict/issues"
 	},
-	"homepage": "https://github.com/RooCodeInc/Roo-Code/tree/main/packages/types",
+	"homepage": "https://github.com/zgsm-ai/costrict/tree/main/packages/types",
 	"keywords": [
 		"roo",
 		"roo-code",

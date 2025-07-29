@@ -69,7 +69,7 @@ Erwähne die Ausrichtung an diesen Bereichen in deinen PRs.
 
 Alle Beiträge müssen mit einem GitHub Issue beginnen.
 
-- **Bestehende Issues prüfen**: Durchsuche die [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Bestehende Issues prüfen**: Durchsuche die [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Issue erstellen**: Nutze die passenden Vorlagen:
     - **Bugs:** "Bug Report"-Vorlage.
     - **Features:** "Detailed Feature Proposal"-Vorlage. Vor dem Start ist eine Genehmigung erforderlich.
@@ -80,13 +80,13 @@ Alle Beiträge müssen mit einem GitHub Issue beginnen.
 ### Was soll ich machen?
 
 - Schau im [GitHub Project](https://github.com/orgs/RooCodeInc/projects/1) nach nicht zugewiesenen "Good First Issues".
-- Für Dokumentation besuche das [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs) Repository.
+- Für Dokumentation besuche das [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs) Repository.
 
 ### Bugs melden
 
 - Prüfe zuerst, ob der Bug bereits gemeldet wurde.
-- Erstelle neue Bug-Reports mit der ["Bug Report"-Vorlage](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Sicherheitslücken:** Melde diese privat über [Security Advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Erstelle neue Bug-Reports mit der ["Bug Report"-Vorlage](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Sicherheitslücken:** Melde diese privat über [Security Advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Entwicklung & Einreichung
 

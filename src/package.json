@@ -1,8 +1,8 @@
 {
-	"name": "roo-cline",
+	"name": "zgsm",
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
-	"publisher": "RooVeterinaryInc",
+	"publisher": "zgsm-ai",
 	"version": "3.24.0",
 	"icon": "assets/icons/icon.png",
 	"galleryBanner": {
@@ -18,9 +18,9 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/RooCodeInc/Roo-Code"
+		"url": "https://github.com/zgsm-ai/costrict"
 	},
-	"homepage": "https://github.com/RooCodeInc/Roo-Code",
+	"homepage": "https://github.com/zgsm-ai/costrict",
 	"categories": [
 		"AI",
 		"Chat",
@@ -76,17 +76,17 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "roo-cline-ActivityBar",
+					"id": "zgsm-ActivityBar",
 					"title": "%views.activitybar.title%",
 					"icon": "assets/icons/icon.svg"
 				}
 			]
 		},
 		"views": {
-			"roo-cline-ActivityBar": [
+			"zgsm-ActivityBar": [
 				{
 					"type": "webview",
-					"id": "roo-cline.SidebarProvider",
+					"id": "zgsm.SidebarProvider",
 					"name": "%views.sidebar.name%"
 				}
 			]
@@ -98,142 +98,142 @@
 				"shortTitle": "%command.shortKeyCut.title%"
 			},
 			{
-				"command": "roo-cline.plusButtonClicked",
+				"command": "zgsm.plusButtonClicked",
 				"title": "%command.newTask.title%",
 				"icon": "$(add)"
 			},
 			{
-				"command": "roo-cline.promptsButtonClicked",
+				"command": "zgsm.promptsButtonClicked",
 				"title": "%command.prompts.title%",
 				"icon": "$(organization)"
 			},
 			{
-				"command": "roo-cline.mcpButtonClicked",
+				"command": "zgsm.mcpButtonClicked",
 				"title": "%command.mcpServers.title%",
 				"icon": "$(server)"
 			},
 			{
-				"command": "roo-cline.historyButtonClicked",
+				"command": "zgsm.historyButtonClicked",
 				"title": "%command.history.title%",
 				"icon": "$(history)"
 			},
 			{
-				"command": "roo-cline.marketplaceButtonClicked",
+				"command": "zgsm.marketplaceButtonClicked",
 				"title": "%command.marketplace.title%",
 				"icon": "$(extensions)"
 			},
 			{
-				"command": "roo-cline.popoutButtonClicked",
+				"command": "zgsm.popoutButtonClicked",
 				"title": "%command.openInEditor.title%",
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "roo-cline.accountButtonClicked",
+				"command": "zgsm.accountButtonClicked",
 				"title": "Account",
 				"icon": "$(account)"
 			},
 			{
-				"command": "roo-cline.settingsButtonClicked",
+				"command": "zgsm.settingsButtonClicked",
 				"title": "%command.settings.title%",
 				"icon": "$(settings-gear)"
 			},
 			{
-				"command": "roo-cline.openInNewTab",
+				"command": "zgsm.openInNewTab",
 				"title": "%command.openInNewTab.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.newTask",
+				"command": "zgsm.newTask",
 				"title": "%command.newTask.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.terminalAddToContext",
+				"command": "zgsm.terminalAddToContext",
 				"title": "%command.terminal.addToContext.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roo-cline.terminalFixCommand",
+				"command": "zgsm.terminalFixCommand",
 				"title": "%command.terminal.fixCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roo-cline.terminalExplainCommand",
+				"command": "zgsm.terminalExplainCommand",
 				"title": "%command.terminal.explainCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roo-cline.setCustomStoragePath",
+				"command": "zgsm.setCustomStoragePath",
 				"title": "%command.setCustomStoragePath.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.importSettings",
+				"command": "zgsm.importSettings",
 				"title": "%command.importSettings.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.focusInput",
+				"command": "zgsm.focusInput",
 				"title": "%command.focusInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.acceptInput",
+				"command": "zgsm.acceptInput",
 				"title": "%command.acceptInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.reviewFilesAndFolders",
+				"command": "zgsm.reviewFilesAndFolders",
 				"title": "%command.codeReview.title%"
 			},
 			{
-				"command": "roo-cline.reviewRepo",
+				"command": "zgsm.reviewRepo",
 				"title": "%command.reviewRepo.title%"
 			},
 			{
-				"command": "roo-cline.acceptIssue",
+				"command": "zgsm.acceptIssue",
 				"title": "Accept",
 				"icon": "$(check)"
 			},
 			{
-				"command": "roo-cline.rejectIssue",
+				"command": "zgsm.rejectIssue",
 				"title": "Reject",
 				"icon": "$(circle-slash)"
 			},
 			{
-				"command": "roo-cline.explainCode",
+				"command": "zgsm.explainCode",
 				"title": "%command.explainCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.fixCode",
+				"command": "zgsm.fixCode",
 				"title": "%command.fixCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.improveCode",
+				"command": "zgsm.improveCode",
 				"title": "%command.improveCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.addToContext",
+				"command": "zgsm.addToContext",
 				"title": "%command.addToContext.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roo-cline.view.issue",
+				"command": "zgsm.view.issue",
 				"title": "%command.view.issue.title%"
 			},
 			{
-				"command": "roo-cline.addFileToContext",
+				"command": "zgsm.addFileToContext",
 				"title": "%command.addFileToContext.title%"
 			},
 			{
-				"command": "roo-cline.view.userHelperDoc",
+				"command": "zgsm.view.userHelperDoc",
 				"title": "%command.view.userHelperDoc.title%"
 			},
 			{
-				"command": "roo-cline.simplifyCode",
+				"command": "zgsm.simplifyCode",
 				"title": "11111"
 			}
 		],
@@ -246,168 +246,168 @@
 			],
 			"explorer/context": [
 				{
-					"submenu": "roo-cline.explorerSubmenu",
+					"submenu": "zgsm.explorerSubmenu",
 					"group": "1_modification@1"
 				}
 			],
-			"roo-cline.explorerSubmenu": [
+			"zgsm.explorerSubmenu": [
 				{
-					"command": "roo-cline.reviewFilesAndFolders",
-					"group": "roo-cline.explorerSubmenu@1"
+					"command": "zgsm.reviewFilesAndFolders",
+					"group": "zgsm.explorerSubmenu@1"
 				},
 				{
-					"command": "roo-cline.reviewRepo",
-					"group": "roo-cline.explorerSubmenu@2"
+					"command": "zgsm.reviewRepo",
+					"group": "zgsm.explorerSubmenu@2"
 				},
 				{
-					"command": "roo-cline.addFileToContext",
-					"group": "roo-cline.explorerSubmenu@3"
+					"command": "zgsm.addFileToContext",
+					"group": "zgsm.explorerSubmenu@3"
 				}
 			],
 			"zhuge-shenma": [
 				{
-					"command": "roo-cline.addToContext",
+					"command": "zgsm.addToContext",
 					"group": "zhuge-shenma@1"
 				},
 				{
-					"command": "roo-cline.explainCode",
+					"command": "zgsm.explainCode",
 					"group": "zhuge-shenma@2"
 				},
 				{
-					"command": "roo-cline.fixCode",
+					"command": "zgsm.fixCode",
 					"group": "zhuge-shenma@3"
 				},
 				{
-					"command": "roo-cline.improveCode",
+					"command": "zgsm.improveCode",
 					"group": "zhuge-shenma@4"
 				},
 				{
-					"command": "roo-cline.view.issue",
+					"command": "zgsm.view.issue",
 					"group": "zissue@1"
 				}
 			],
 			"terminal/context": [
 				{
-					"submenu": "roo-cline.terminalMenu",
+					"submenu": "zgsm.terminalMenu",
 					"group": "2"
 				}
 			],
-			"roo-cline.terminalMenu": [
+			"zgsm.terminalMenu": [
 				{
-					"command": "roo-cline.terminalAddToContext",
+					"command": "zgsm.terminalAddToContext",
 					"group": "1_actions@1"
 				},
 				{
-					"command": "roo-cline.terminalFixCommand",
+					"command": "zgsm.terminalFixCommand",
 					"group": "1_actions@2"
 				},
 				{
-					"command": "roo-cline.terminalExplainCommand",
+					"command": "zgsm.terminalExplainCommand",
 					"group": "1_actions@3"
 				}
 			],
 			"view/title": [
 				{
-					"command": "roo-cline.marketplaceButtonClicked",
+					"command": "zgsm.marketplaceButtonClicked",
 					"group": "navigation@2",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.settingsButtonClicked",
+					"command": "zgsm.settingsButtonClicked",
 					"group": "navigation@3",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.accountButtonClicked",
+					"command": "zgsm.accountButtonClicked",
 					"group": "navigation@4",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.promptsButtonClicked",
+					"command": "zgsm.promptsButtonClicked",
 					"group": "overflow@1",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.mcpButtonClicked",
+					"command": "zgsm.mcpButtonClicked",
 					"group": "overflow@2",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.view.userHelperDoc",
+					"command": "zgsm.view.userHelperDoc",
 					"group": "overflow@4",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.view.issue",
+					"command": "zgsm.view.issue",
 					"group": "overflow@5",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				},
 				{
-					"command": "roo-cline.popoutButtonClicked",
+					"command": "zgsm.popoutButtonClicked",
 					"group": "overflow@6",
-					"when": "view == roo-cline.SidebarProvider"
+					"when": "view == zgsm.SidebarProvider"
 				}
 			],
 			"editor/title": [
 				{
-					"command": "roo-cline.plusButtonClicked",
+					"command": "zgsm.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.marketplaceButtonClicked",
+					"command": "zgsm.marketplaceButtonClicked",
 					"group": "navigation@2",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.settingsButtonClicked",
+					"command": "zgsm.settingsButtonClicked",
 					"group": "navigation@3",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.accountButtonClicked",
+					"command": "zgsm.accountButtonClicked",
 					"group": "navigation@4",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.historyButtonClicked",
+					"command": "zgsm.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.promptsButtonClicked",
+					"command": "zgsm.promptsButtonClicked",
 					"group": "overflow@2",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.mcpButtonClicked",
+					"command": "zgsm.mcpButtonClicked",
 					"group": "overflow@3",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.view.userHelperDoc",
+					"command": "zgsm.view.userHelperDoc",
 					"group": "overflow@4",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.view.issue",
+					"command": "zgsm.view.issue",
 					"group": "overflow@5",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.popoutButtonClicked",
+					"command": "zgsm.popoutButtonClicked",
 					"group": "overflow@6",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
+					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
 				}
 			],
 			"comments/commentThread/title": [
 				{
-					"command": "roo-cline.acceptIssue",
+					"command": "zgsm.acceptIssue",
 					"group": "navigation@1",
 					"when": "commentThread == CostrictCodeReview"
 				},
 				{
-					"command": "roo-cline.rejectIssue",
+					"command": "zgsm.rejectIssue",
 					"group": "navigation@2",
 					"when": "commentThread == CostrictCodeReview"
 				}
@@ -415,7 +415,7 @@
 		},
 		"submenus": [
 			{
-				"id": "roo-cline.contextMenu",
+				"id": "zgsm.contextMenu",
 				"label": "%views.contextMenu.label%"
 			},
 			{
@@ -423,11 +423,11 @@
 				"label": "%extension.displayName%"
 			},
 			{
-				"id": "roo-cline.terminalMenu",
+				"id": "zgsm.terminalMenu",
 				"label": "%views.terminalMenu.label%"
 			},
 			{
-				"id": "roo-cline.explorerSubmenu",
+				"id": "zgsm.explorerSubmenu",
 				"label": "%extension.displayName%"
 			}
 		],
@@ -539,7 +539,7 @@
 						}
 					}
 				},
-				"roo-cline.allowedCommands": {
+				"zgsm.allowedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -554,7 +554,7 @@
 					],
 					"description": "%commands.allowedCommands.description%"
 				},
-				"roo-cline.deniedCommands": {
+				"zgsm.deniedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -562,14 +562,14 @@
 					"default": [],
 					"description": "%commands.deniedCommands.description%"
 				},
-				"roo-cline.commandExecutionTimeout": {
+				"zgsm.commandExecutionTimeout": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
 					"maximum": 600,
 					"description": "%commands.commandExecutionTimeout.description%"
 				},
-				"roo-cline.commandTimeoutAllowlist": {
+				"zgsm.commandTimeoutAllowlist": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -577,12 +577,12 @@
 					"default": [],
 					"description": "%commands.commandTimeoutAllowlist.description%"
 				},
-				"roo-cline.preventCompletionWithOpenTodos": {
+				"zgsm.preventCompletionWithOpenTodos": {
 					"type": "boolean",
 					"default": false,
 					"description": "%commands.preventCompletionWithOpenTodos.description%"
 				},
-				"roo-cline.vsCodeLmModelSelector": {
+				"zgsm.vsCodeLmModelSelector": {
 					"type": "object",
 					"properties": {
 						"vendor": {
@@ -596,22 +596,22 @@
 					},
 					"description": "%settings.vsCodeLmModelSelector.description%"
 				},
-				"roo-cline.customStoragePath": {
+				"zgsm.customStoragePath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.customStoragePath.description%"
 				},
-				"roo-cline.enableCodeActions": {
+				"zgsm.enableCodeActions": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.enableCodeActions.description%"
 				},
-				"roo-cline.autoImportSettingsPath": {
+				"zgsm.autoImportSettingsPath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.autoImportSettingsPath.description%"
 				},
-				"roo-cline.useAgentRules": {
+				"zgsm.useAgentRules": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.useAgentRules.description%"

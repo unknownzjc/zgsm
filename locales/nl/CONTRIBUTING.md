@@ -69,7 +69,7 @@ Vermeld de afstemming met deze gebieden in je PR's.
 
 Elke bijdrage moet beginnen met een GitHub Issue.
 
-- **Bestaande issues controleren:** Zoek in [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Bestaande issues controleren:** Zoek in [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Issue aanmaken:** Gebruik de juiste templates:
     - **Bugs:** "Bug Report"-template.
     - **Functies:** "Detailed Feature Proposal"-template. Goedkeuring vereist voor je begint.
@@ -80,13 +80,13 @@ Elke bijdrage moet beginnen met een GitHub Issue.
 ### Bepalen waar je aan werkt
 
 - Bekijk het [GitHub Project](https://github.com/orgs/RooCodeInc/projects/1) voor niet-toegewezen "Good First Issues".
-- Voor documentatie, bezoek [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- Voor documentatie, bezoek [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Bugs of problemen melden
 
 - Controleer eerst of er al meldingen zijn.
-- Maak nieuwe bugmeldingen met de ["Bug Report"-template](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Beveiligingsproblemen:** Meld privé via [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Maak nieuwe bugmeldingen met de ["Bug Report"-template](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Beveiligingsproblemen:** Meld privé via [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Ontwikkelings- & indieningsproces
 

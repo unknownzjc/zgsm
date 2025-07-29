@@ -44,22 +44,22 @@ export class ZgsmAuthCommands {
 	 */
 	registerCommands(context: vscode.ExtensionContext): void {
 		// 登录命令
-		const loginCommand = vscode.commands.registerCommand("roo-cline.login", async () => {
+		const loginCommand = vscode.commands.registerCommand("zgsm.login", async () => {
 			await this.handleLogin()
 		})
 
 		// 登出命令
-		const logoutCommand = vscode.commands.registerCommand("roo-cline.logout", async () => {
+		const logoutCommand = vscode.commands.registerCommand("zgsm.logout", async () => {
 			await this.handleLogout()
 		})
 
 		// 检查登录状态命令
-		const checkStatusCommand = vscode.commands.registerCommand("roo-cline.checkLoginStatus", async () => {
+		const checkStatusCommand = vscode.commands.registerCommand("zgsm.checkLoginStatus", async () => {
 			await this.handleCheckLoginStatus()
 		})
 
 		// 刷新token命令
-		const refreshTokenCommand = vscode.commands.registerCommand("roo-cline.refreshToken", async () => {
+		const refreshTokenCommand = vscode.commands.registerCommand("zgsm.refreshToken", async () => {
 			await this.handleRefreshToken()
 		})
 

@@ -69,7 +69,7 @@ Wspomnij o powiązaniu z tymi obszarami w swoich PR.
 
 Każdy wkład musi zaczynać się od GitHub Issue.
 
-- **Sprawdź istniejące issues:** Przeszukaj [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Sprawdź istniejące issues:** Przeszukaj [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Utwórz issue:** Używaj odpowiednich szablonów:
     - **Błędy:** Szablon "Bug Report".
     - **Funkcje:** Szablon "Detailed Feature Proposal". Wymagane zatwierdzenie przed rozpoczęciem.
@@ -80,13 +80,13 @@ Każdy wkład musi zaczynać się od GitHub Issue.
 ### Decydowanie, nad czym pracować
 
 - Sprawdź [Projekt GitHub](https://github.com/orgs/RooCodeInc/projects/1) w poszukiwaniu nieprzypisanych "Good First Issues".
-- W kwestii dokumentacji odwiedź [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- W kwestii dokumentacji odwiedź [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Zgłaszanie błędów
 
 - Najpierw sprawdź istniejące zgłoszenia.
-- Twórz nowe zgłoszenia błędów używając [szablonu "Bug Report"](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Luki bezpieczeństwa:** Zgłaszaj prywatnie przez [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Twórz nowe zgłoszenia błędów używając [szablonu "Bug Report"](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Luki bezpieczeństwa:** Zgłaszaj prywatnie przez [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Proces rozwoju i zgłaszania
 

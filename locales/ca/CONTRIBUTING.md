@@ -69,7 +69,7 @@ Esmenta la relació amb aquestes àrees als teus PRs.
 
 Totes les contribucions han de començar amb una Issue de GitHub.
 
-- **Revisar issues existents:** Cerca a [GitHub Issues](https://github.com/RooCodeInc/Roo-Code/issues).
+- **Revisar issues existents:** Cerca a [GitHub Issues](https://github.com/zgsm-ai/costrict/issues).
 - **Crear una issue:** Utilitza les plantilles adequades:
     - **Errors:** Plantilla "Bug Report".
     - **Funcionalitats:** Plantilla "Detailed Feature Proposal". Es requereix aprovació abans de començar.
@@ -80,13 +80,13 @@ Totes les contribucions han de començar amb una Issue de GitHub.
 ### Decidir en què treballar
 
 - Consulta el [Projecte GitHub](https://github.com/orgs/RooCodeInc/projects/1) per trobar "Good First Issues" no assignades.
-- Per a documentació, visita [Roo Code Docs](https://github.com/RooCodeInc/Roo-Code-Docs).
+- Per a documentació, visita [Roo Code Docs](https://github.com/zgsm-ai/costrict-Docs).
 
 ### Informar d'errors
 
 - Comprova primer els informes existents.
-- Crea nous informes d'errors utilitzant la [plantilla "Bug Report"](https://github.com/RooCodeInc/Roo-Code/issues/new/choose).
-- **Vulnerabilitats de seguretat:** Informa de manera privada via [security advisories](https://github.com/RooCodeInc/Roo-Code/security/advisories/new).
+- Crea nous informes d'errors utilitzant la [plantilla "Bug Report"](https://github.com/zgsm-ai/costrict/issues/new/choose).
+- **Vulnerabilitats de seguretat:** Informa de manera privada via [security advisories](https://github.com/zgsm-ai/costrict/security/advisories/new).
 
 ## Procés de desenvolupament i enviament
 

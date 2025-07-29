@@ -37,7 +37,7 @@ export default function Privacy() {
 							If you run the Costrict extension <strong>without</strong> connecting to a Cloud account,
 							your data is governed by the standalone{" "}
 							<a
-								href="https://github.com/RooCodeInc/Roo-Code/blob/main/PRIVACY.md"
+								href="https://github.com/zgsm-ai/costrict/blob/main/PRIVACY.md"
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-primary hover:underline">

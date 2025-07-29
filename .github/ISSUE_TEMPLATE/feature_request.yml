@@ -12,8 +12,8 @@ body:
         **Quality over speed:** We prefer detailed, clear problem descriptions over quick ones. Vague requests often get closed or require multiple rounds of clarification, which wastes everyone's time.
         
         **Before submitting:**
-        - Search existing [Issues](https://github.com/RooCodeInc/Roo-Code/issues) and [Discussions](https://github.com/RooCodeInc/Roo-Code/discussions) to avoid duplicates
-        - For general ideas, use [GitHub Discussions](https://github.com/RooCodeInc/Roo-Code/discussions/categories/feature-requests) instead of this template.
+        - Search existing [Issues](https://github.com/zgsm-ai/costrict/issues) and [Discussions](https://github.com/zgsm-ai/costrict/discussions) to avoid duplicates
+        - For general ideas, use [GitHub Discussions](https://github.com/zgsm-ai/costrict/discussions/categories/feature-requests) instead of this template.
 
   - type: markdown
     attributes:
