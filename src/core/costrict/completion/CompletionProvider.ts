@@ -395,10 +395,10 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 	 * 3. Improvement data: The actual content input by the user after rejecting the completion.
 	 */
 	private setFeedbackTimer() {
-		this.feedbackTimer = setInterval(() => {
-			CompletionTrace.uploadPoints()
-			CompletionTrace.uploadMemo()
-		}, COMPLETION_CONST.feedbackInterval)
+		// this.feedbackTimer = setInterval(() => {
+		// 	CompletionTrace.uploadPoints()
+		// 	CompletionTrace.uploadMemo()
+		// }, COMPLETION_CONST.feedbackInterval)
 	}
 
 	/**
