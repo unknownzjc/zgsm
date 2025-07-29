@@ -49,13 +49,13 @@ Lihat [CHANGELOG](../../CHANGELOG.md) untuk update dan perbaikan detail.
 
 ---
 
-## 🎉 Roo Code 3.24 Dirilis
+## 🎉 Roo Code 3.25 Dirilis
 
-Roo Code 3.24 menghadirkan fitur-fitur baru yang powerful dan peningkatan signifikan untuk meningkatkan workflow development kamu!
+Roo Code 3.25 menghadirkan fitur-fitur baru yang powerful dan peningkatan signifikan untuk meningkatkan workflow development kamu!
 
-- **Hugging Face Provider** - Akses model open source yang luar biasa langsung melalui Hugging Face provider baru dengan integrasi yang mulus dan pemilihan model.
-- **Kontrol Perintah Inline** - Kontrol auto-approve dan tolak baru untuk eksekusi perintah memberikan kontrol yang tepat atas operasi terminal dengan izin yang dapat disesuaikan.
-- **Dukungan Aturan AGENTS.md** - Menambahkan dukungan untuk file AGENTS.md standar komunitas di root proyek.
+- **Antrian pesan** - Antrikan beberapa pesan saat Roo bekerja, memungkinkan kamu terus merencanakan alur kerja tanpa gangguan.
+- **Perintah slash kustom** - Buat perintah slash yang dipersonalisasi untuk akses cepat ke prompt dan alur kerja yang sering digunakan dengan manajemen UI lengkap.
+- **Alat Gemini lanjutan** - Fitur konteks URL dan dasar pencarian Google baru memberikan model Gemini informasi web real-time dan kemampuan penelitian lanjutan.
 
 ---
 

@@ -50,13 +50,13 @@ Consulteu el [CHANGELOG](../../CHANGELOG.md) per a actualitzacions i correccions
 
 ---
 
-## 🎉 Roo Code 3.24 Llançat
+## 🎉 Roo Code 3.25 Llançat
 
-Roo Code 3.24 aporta noves funcionalitats potents i millores significatives per millorar el vostre flux de treball de desenvolupament!
+Roo Code 3.25 aporta noves funcionalitats potents i millores significatives per millorar el vostre flux de treball de desenvolupament!
 
-- **Proveïdor Hugging Face** - Accediu a moltíssims models de codi obert excel·lents directament a través del nou proveïdor Hugging Face amb integració perfecta i selecció de models.
-- **Controls de Comandes en Línia** - Nous controls d'aprovació automàtica i denegació per a l'execució de comandes us donen un control precís sobre les operacions de terminal amb permisos personalitzables.
-- **Suport per a Regles AGENTS.md** - Afegeix suport per a un fitxer AGENTS.md estàndard de la comunitat a l'arrel del projecte.
+- **Cua de missatges** - Poseu diversos missatges a la cua mentre Roo treballa, permetent-vos continuar planificant el vostre flux de treball sense interrupcions.
+- **Comandes slash personalitzades** - Creeu comandes slash personalitzades per a accés ràpid a prompts i fluxos de treball utilitzats freqüentment amb gestió completa de la interfície d'usuari.
+- **Eines Gemini avançades** - Noves funcionalitats de context d'URL i fonaments de cerca de Google proporcionen als models Gemini informació web en temps real i capacitats de recerca avançades.
 
 ---
 

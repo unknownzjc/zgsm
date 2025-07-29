@@ -50,13 +50,13 @@ Sehen Sie sich das [CHANGELOG](../../CHANGELOG.md) für detaillierte Updates und
 
 ---
 
-## 🎉 Roo Code 3.24 veröffentlicht
+## 🎉 Roo Code 3.25 veröffentlicht
 
-Roo Code 3.24 bringt mächtige neue Funktionen und bedeutende Verbesserungen, um deinen Entwicklungsworkflow zu verbessern!
+Roo Code 3.25 bringt mächtige neue Funktionen und bedeutende Verbesserungen, um deinen Entwicklungsworkflow zu verbessern!
 
-- **Hugging Face Provider** - Greife auf unzählige großartige Open-Source-Modelle direkt über den neuen Hugging Face Provider mit nahtloser Integration und Modellauswahl zu.
-- **Inline-Befehlssteuerungen** - Neue Auto-Genehmigung und Verweigerungssteuerungen für die Befehlsausführung geben dir präzise Kontrolle über Terminal-Operationen mit anpassbaren Berechtigungen.
-- **AGENTS.md Regeln-Unterstützung** - Fügt Unterstützung für eine Community-Standard AGENTS.md-Datei im Projektverzeichnis hinzu.
+- **Nachrichten-Warteschlange** - Stelle mehrere Nachrichten in die Warteschlange, während Roo arbeitet, damit du deinen Workflow ohne Unterbrechung weiter planen kannst.
+- **Benutzerdefinierte Slash-Befehle** - Erstelle personalisierte Slash-Befehle für schnellen Zugriff auf häufig verwendete Prompts und Workflows mit vollständiger UI-Verwaltung.
+- **Erweiterte Gemini-Tools** - Neue URL-Kontext- und Google-Such-Grundlagen-Funktionen bieten Gemini-Modellen Echtzeit-Web-Informationen und erweiterte Recherche-Fähigkeiten.
 
 ---
 

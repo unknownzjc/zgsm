@@ -50,9 +50,9 @@ Detaylı güncellemeler ve düzeltmeler için [CHANGELOG](../../CHANGELOG.md) do
 
 ---
 
-## 🎉 Roo Code 3.24 Yayınlandı
+## 🎉 Roo Code 3.25 Yayınlandı
 
-Roo Code 3.24 geliştirme iş akışınızı geliştirmek için güçlü yeni özellikler ve önemli iyileştirmeler getiriyor.
+Roo Code 3.25 geliştirme iş akışınızı geliştirmek için güçlü yeni özellikler ve önemli iyileştirmeler getiriyor.
 
 - **Hugging Face Sağlayıcısı** - Yeni Hugging Face sağlayıcısı aracılığıyla sorunsuz entegrasyon ve model seçimi ile doğrudan tonlarca harika açık kaynak modeline erişin.
 - **Satır İçi Komut Kontrolleri** - Komut yürütme için yeni otomatik onay ve reddetme kontrolleri, özelleştirilebilir izinlerle terminal işlemleri üzerinde hassas kontrol sağlar.

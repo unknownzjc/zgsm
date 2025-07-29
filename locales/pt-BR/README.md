@@ -50,13 +50,13 @@ Confira o [CHANGELOG](../../CHANGELOG.md) para atualizações e correções deta
 
 ---
 
-## 🎉 Roo Code 3.24 foi lançado
+## 🎉 Roo Code 3.25 foi lançado
 
-O Roo Code 3.24 traz novos recursos poderosos e melhorias significativas para aprimorar seu fluxo de trabalho de desenvolvimento!
+O Roo Code 3.25 traz novos recursos poderosos e melhorias significativas para aprimorar seu fluxo de trabalho de desenvolvimento!
 
-- **Hugging Face Provider** - Acesse toneladas de excelentes modelos de código aberto diretamente através do novo provedor Hugging Face com integração perfeita e seleção de modelos.
-- **Controles de Comando Inline** - Novos controles de aprovação automática e negação para execução de comandos oferecem controle preciso sobre operações de terminal com permissões personalizáveis.
-- **Suporte a Regras AGENTS.md** - Adiciona suporte para um arquivo AGENTS.md padrão da comunidade na raiz do projeto.
+- **<bold>Gerenciamento de Sessões do Navegador</bold>** - Gerencie múltiplas sessões de navegador simultaneamente, permitindo a separação de diferentes tarefas e ambientes de teste.
+- **<bold>Cache de Prompts</bold>** - Faça cache de prompts frequentemente usados para reduzir significativamente os tempos de resposta e diminuir o uso da API.
+- **<bold>Funcionalidade de Uso do Computador</bold>** - A IA pode interagir diretamente com aplicações desktop, tirar screenshots e executar ações de clique e digitação.
 
 ---
 
