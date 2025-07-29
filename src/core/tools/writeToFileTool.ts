@@ -174,7 +174,26 @@ export async function writeToFileTool(
 				state?.experiments ?? {},
 				EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION,
 			)
-
+			const language = await getLanguage(relPath)
+			const lines = fileExists
+				? getDiffLines(cline.diffViewProvider.originalContent || "", newContent)
+				: newContent.split("\n").length
+			const captureCodeAccept = (language: string, lines: number) => {
+				try {
+					TelemetryService.instance.captureCodeAccept(language, lines)
+					// Check if AutoCommit is enabled before committing
+					const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
+					if (autoCommitEnabled) {
+						autoCommit(relPath, cline.cwd, {
+							model: cline.api.getModel().id,
+							editorName: vscode.env.appName,
+							date: new Date().toLocaleString(),
+						})
+					}
+				} catch (err) {
+					console.log(err)
+				}
+			}
 			if (isPreventFocusDisruptionEnabled) {
 				// Direct file write without diff view
 				// Check for code omissions before proceeding
@@ -214,6 +233,7 @@ export async function writeToFileTool(
 				const didApprove = await askApproval("tool", completeMessage, undefined, isWriteProtected)
 
 				if (!didApprove) {
+					TelemetryService.instance.captureCodeReject(language, lines)
 					return
 				}
 
@@ -288,10 +308,6 @@ export async function writeToFileTool(
 				} satisfies ClineSayTool)
 
 				const didApprove = await askApproval("tool", completeMessage, undefined, isWriteProtected)
-				const language = await getLanguage(relPath)
-				const lines = fileExists
-					? getDiffLines(cline.diffViewProvider.originalContent || "", newContent)
-					: newContent.split("\n").length
 				if (!didApprove) {
 					await cline.diffViewProvider.revertChanges()
 					TelemetryService.instance.captureCodeReject(language, lines)
@@ -307,20 +323,7 @@ export async function writeToFileTool(
 				await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
 			}
 
-			try {
-				TelemetryService.instance.captureCodeAccept(language, lines)
-				// Check if AutoCommit is enabled before committing
-				const autoCommitEnabled = vscode.workspace.getConfiguration().get<boolean>("AutoCommit", false)
-				if (autoCommitEnabled) {
-					autoCommit(relPath, cline.cwd, {
-						model: cline.api.getModel().id,
-						editorName: vscode.env.appName,
-						date: new Date().toLocaleString(),
-					})
-				}
-			} catch (err) {
-				console.log(err)
-			}
+			captureCodeAccept(language, lines)
 
 			cline.didEditFile = true // used to determine if we should wait for busy terminal to update before sending api request
 
