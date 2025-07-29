@@ -116,7 +116,7 @@ function getWindowsShellFromVSCode(): string | null {
 	}
 
 	// If the profile indicates Git Bash
-	if (defaultProfileName.toLowerCase().includes("bash.exe")) {
+	if (defaultProfileName.toLowerCase().includes("bash")) {
 		return SHELL_PATHS.GITBASH
 	}
 
