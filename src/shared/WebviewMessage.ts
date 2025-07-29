@@ -164,6 +164,8 @@ export interface WebviewMessage {
 		| "language"
 		| "maxReadFileLine"
 		| "maxReadFileChars"
+		| "maxImageFileSize"
+		| "maxTotalImageSize"
 		| "maxConcurrentFileReads"
 		| "includeDiagnosticMessages"
 		| "maxDiagnosticMessages"
@@ -213,6 +215,10 @@ export interface WebviewMessage {
 		| "cancelReviewTask"
 		| "checkReviewSuggestion"
 		| "requestCommands"
+		| "openCommandFile"
+		| "deleteCommand"
+		| "createCommand"
+		| "insertTextIntoTextarea"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account"

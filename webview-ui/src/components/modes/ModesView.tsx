@@ -50,6 +50,7 @@ import {
 import { DeleteModeDialog } from "@src/components/modes/DeleteModeDialog"
 import { useEvent } from "react-use"
 import { ExtensionMessage } from "@roo/ExtensionMessage"
+import { useEscapeKey } from "@src/hooks/useEscapeKey"
 
 // Get all available groups that should show in prompts view
 const availableGroups = (Object.keys(TOOL_GROUPS) as ToolGroup[]).filter((group) => !TOOL_GROUPS[group].alwaysAvailable)
@@ -195,6 +196,9 @@ const ModesView = ({ onDone }: ModesViewProps) => {
 			setTimeout(() => setSearchValue(""), 100)
 		}
 	}, [])
+
+	// Use the shared ESC key handler hook
+	useEscapeKey(open, () => setOpen(false))
 
 	// Handler for clearing search input
 	const onClearSearch = useCallback(() => {

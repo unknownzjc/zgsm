@@ -24,6 +24,8 @@ import { ZgsmUserInfo } from "../core/costrict/auth"
 export interface Command {
 	name: string
 	source: "global" | "project"
+	filePath?: string
+	description?: string
 }
 
 // Type for marketplace installed metadata
@@ -124,6 +126,7 @@ export interface ExtensionMessage {
 		| "reviewTaskUpdate"
 		| "issueStatusUpdated"
 		| "commands"
+		| "insertTextIntoTextarea"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	action?:
@@ -301,6 +304,8 @@ export type ExtensionState = Pick<
 	showRooIgnoredFiles: boolean // Whether to show .rooignore'd files in listings
 	maxReadFileLine: number // Maximum number of lines to read from a file before truncating
 	maxReadFileChars: number // Maximum number of lines to read from a file before truncating
+	maxImageFileSize: number // Maximum size of image files to process in MB
+	maxTotalImageSize: number // Maximum total size for all images in a single read operation in MB
 
 	experiments: Experiments // Map of experiment IDs to their enabled state
 

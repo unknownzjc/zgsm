@@ -667,6 +667,7 @@
 		"get-port": "^7.1.0",
 		"google-auth-library": "^9.15.1",
 		"google-protobuf": "^3.21.4",
+		"gray-matter": "^4.0.3",
 		"i18next": "^25.0.0",
 		"ignore": "^7.0.3",
 		"isbinaryfile": "^5.0.2",

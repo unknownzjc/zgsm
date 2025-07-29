@@ -127,6 +127,10 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setMaxReadFileChars: (value: number) => void
 	maxReadFileLine: number
 	setMaxReadFileLine: (value: number) => void
+	maxImageFileSize: number
+	setMaxImageFileSize: (value: number) => void
+	maxTotalImageSize: number
+	setMaxTotalImageSize: (value: number) => void
 	machineId?: string
 	pinnedApiConfigs?: Record<string, boolean>
 	setPinnedApiConfigs: (value: Record<string, boolean>) => void
@@ -217,6 +221,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		renderContext: "sidebar",
 		maxReadFileLine: -1, // Default max read file line limit
 		maxReadFileChars: -1, // Default max read file line limit
+		maxImageFileSize: 5, // Default max image file size in MB
+		maxTotalImageSize: 20, // Default max total image size in MB
 		pinnedApiConfigs: {}, // Empty object for pinned API configs
 		terminalZshOhMy: false, // Default Oh My Zsh integration setting
 		maxConcurrentFileReads: 5, // Default concurrent file reads
@@ -494,6 +500,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setAwsUsePromptCache: (value) => setState((prevState) => ({ ...prevState, awsUsePromptCache: value })),
 		setMaxReadFileLine: (value) => setState((prevState) => ({ ...prevState, maxReadFileLine: value })),
 		setMaxReadFileChars: (value) => setState((prevState) => ({ ...prevState, maxReadFileChars: value })),
+		setMaxImageFileSize: (value) => setState((prevState) => ({ ...prevState, maxImageFileSize: value })),
+		setMaxTotalImageSize: (value) => setState((prevState) => ({ ...prevState, maxTotalImageSize: value })),
 		setPinnedApiConfigs: (value) => setState((prevState) => ({ ...prevState, pinnedApiConfigs: value })),
 		setTerminalCompressProgressBar: (value) =>
 			setState((prevState) => ({ ...prevState, terminalCompressProgressBar: value })),
