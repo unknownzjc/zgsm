@@ -262,25 +262,24 @@ async function zgsmInitialize(
 ) {
 	startIPCServer()
 	connectIPC()
-
-	ZgsmAuthService.initialize(provider)
-	context.subscriptions.push(ZgsmAuthService.getInstance())
+	ZgsmAuthService.setProvider(provider)
+	const zgsmAuthService = ZgsmAuthService.getInstance()
+	context.subscriptions.push(zgsmAuthService)
 	context.subscriptions.push(
 		onZgsmTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
-			ZgsmAuthService.getInstance().saveTokens(tokens)
+			zgsmAuthService.saveTokens(tokens)
 			provider.log(`new token from other window: ${tokens.access_token}`)
 		}),
 		onZgsmLogout((sessionId: string) => {
 			if (vscode.env.sessionId === sessionId) return
-			ZgsmAuthService.getInstance().logout(true)
+			zgsmAuthService.logout(true)
 			provider.log(`logout from other window`)
 		}),
 	)
-	//  🔑 关键：初始化认证服务单例，插件启动时检查登录状态
-	ZgsmAuthCommands.initialize(provider)
-	context.subscriptions.push(ZgsmAuthCommands.getInstance())
+	ZgsmAuthCommands.setProvider(provider)
+	const zgsmAuthCommands = ZgsmAuthCommands.getInstance()
+	context.subscriptions.push(zgsmAuthCommands)
 
-	zgsmAuthCommands = ZgsmAuthCommands.getInstance()
 	zgsmAuthCommands.registerCommands(context)
 
 	provider.setZgsmAuthCommands(zgsmAuthCommands)
@@ -289,21 +288,19 @@ async function zgsmInitialize(
 	 * 插件启动时检查登录状态
 	 */
 	try {
-		const isLoggedIn = await ZgsmAuthService.getInstance().checkLoginStatusOnStartup()
+		const isLoggedIn = await zgsmAuthService.checkLoginStatusOnStartup()
 
 		if (isLoggedIn) {
 			provider.log("插件启动时检测到登录状态：有效")
-			ZgsmAuthService.getInstance()
-				.getTokens()
-				.then((tokens) => {
-					if (!tokens) {
-						return
-					}
-					initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
+			zgsmAuthService.getTokens().then((tokens) => {
+				if (!tokens) {
+					return
+				}
+				initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
 
-					ZgsmAuthService.getInstance().startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
-					ZgsmAuthService.getInstance().updateUserInfo(tokens.access_token)
-				})
+				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
+				zgsmAuthService.updateUserInfo(tokens.access_token)
+			})
 			// 开始token刷新定时器
 		} else {
 			ZgsmAuthService.openStatusBarLoginTip()

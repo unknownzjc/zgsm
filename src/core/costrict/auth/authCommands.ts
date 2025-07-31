@@ -1,33 +1,35 @@
 import * as vscode from "vscode"
 import { ZgsmAuthService } from "./authService"
 import type { ClineProvider } from "../../webview/ClineProvider"
+import { getCommand } from "../../../utils/commands"
 
 export class ZgsmAuthCommands {
 	private static instance: ZgsmAuthCommands
+	private static clineProvider: ClineProvider
 	private authService: ZgsmAuthService
-	private clineProvider: ClineProvider
 
 	private constructor(clineProvider: ClineProvider) {
 		// 确保 AuthService 已经被初始化
 		this.authService = ZgsmAuthService.getInstance()
-		this.clineProvider = clineProvider
 		if (clineProvider) {
-			this.authService.setClineProvider(clineProvider)
+			this.authService?.setClineProvider?.(clineProvider)
 		}
 	}
 
-	public static initialize(clineProvider: ClineProvider): void {
-		if (!ZgsmAuthCommands.instance) {
-			// 优先初始化依赖的服务
-			ZgsmAuthCommands.instance = new ZgsmAuthCommands(clineProvider)
-		}
+	public static setProvider(clineProvider: ClineProvider): void {
+		ZgsmAuthCommands.clineProvider = clineProvider
 	}
 
 	public static getInstance(): ZgsmAuthCommands {
 		if (!ZgsmAuthCommands.instance) {
-			// 在实际应用中，initialize应该已经被调用。
-			throw new Error("ZgsmAuthCommands 未初始化")
+			if (!ZgsmAuthCommands.clineProvider) {
+				// 在实际应用中，initialize应该已经被调用。
+				throw new Error("ZgsmAuthCommands 未初始化")
+			}
+			// 优先初始化依赖的服务
+			ZgsmAuthCommands.instance = new ZgsmAuthCommands(ZgsmAuthCommands.clineProvider)
 		}
+
 		return ZgsmAuthCommands.instance!
 	}
 
@@ -35,8 +37,8 @@ export class ZgsmAuthCommands {
 	 * 设置ClineProvider实例
 	 */
 	setClineProvider(clineProvider: ClineProvider): void {
-		this.clineProvider = clineProvider
-		this.authService.setClineProvider(clineProvider)
+		ZgsmAuthCommands.clineProvider = clineProvider
+		this.authService?.setClineProvider?.(clineProvider)
 	}
 
 	/**
@@ -44,22 +46,22 @@ export class ZgsmAuthCommands {
 	 */
 	registerCommands(context: vscode.ExtensionContext): void {
 		// 登录命令
-		const loginCommand = vscode.commands.registerCommand("zgsm.login", async () => {
+		const loginCommand = vscode.commands.registerCommand(getCommand("login"), async () => {
 			await this.handleLogin()
 		})
 
 		// 登出命令
-		const logoutCommand = vscode.commands.registerCommand("zgsm.logout", async () => {
+		const logoutCommand = vscode.commands.registerCommand(getCommand("logout"), async () => {
 			await this.handleLogout()
 		})
 
 		// 检查登录状态命令
-		const checkStatusCommand = vscode.commands.registerCommand("zgsm.checkLoginStatus", async () => {
+		const checkStatusCommand = vscode.commands.registerCommand(getCommand("checkLoginStatus"), async () => {
 			await this.handleCheckLoginStatus()
 		})
 
 		// 刷新token命令
-		const refreshTokenCommand = vscode.commands.registerCommand("zgsm.refreshToken", async () => {
+		const refreshTokenCommand = vscode.commands.registerCommand(getCommand("refreshToken"), async () => {
 			await this.handleRefreshToken()
 		})
 

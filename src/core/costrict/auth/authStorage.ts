@@ -5,42 +5,28 @@ import { sendZgsmTokens } from "./ipc/client"
 import { initZgsmCodeBase } from "../codebase"
 import { ZgsmAuthConfig } from "./authConfig"
 import { getClientId } from "../../../utils/getClientId"
-// import { safeJsonParse } from "../../shared/safeJsonParse"
-
 export class ZgsmAuthStorage {
-	private clineProvider?: ClineProvider
+	private static clineProvider?: ClineProvider
 	private static instance?: ZgsmAuthStorage
 
-	constructor(clineProvider?: ClineProvider) {
-		this.clineProvider = clineProvider
-	}
+	constructor(clineProvider?: ClineProvider) {}
 
-	public static initialize(clineProvider?: ClineProvider): void {
-		if (!ZgsmAuthStorage.instance) {
-			ZgsmAuthStorage.instance = new ZgsmAuthStorage(clineProvider)
-		}
+	public static setProvider(clineProvider: ClineProvider): void {
+		ZgsmAuthStorage.clineProvider = clineProvider
 	}
 	public static getInstance(): ZgsmAuthStorage {
 		if (!ZgsmAuthStorage.instance) {
-			ZgsmAuthStorage.instance = new ZgsmAuthStorage()
+			ZgsmAuthStorage.instance = new ZgsmAuthStorage(ZgsmAuthStorage.clineProvider)
 		}
 		return ZgsmAuthStorage.instance
-	}
-
-	/**
-	 * 设置ClineProvider实例
-	 */
-	setClineProvider(clineProvider: ClineProvider): ZgsmAuthStorage {
-		this.clineProvider = clineProvider
-		return this
 	}
 
 	/**
 	 * 保存认证token
 	 */
 	async saveTokens(tokens: ZgsmAuthTokens): Promise<void> {
-		if (!this.clineProvider) return
-		const state = await this.clineProvider.getState()
+		if (!ZgsmAuthStorage.clineProvider) return
+		const state = await ZgsmAuthStorage.clineProvider.getState()
 		if (!state.currentApiConfigName) {
 			return
 		}
@@ -48,7 +34,7 @@ export class ZgsmAuthStorage {
 			tokens.access_token === state.apiConfiguration.zgsmAccessToken ||
 			tokens.refresh_token === state.apiConfiguration.zgsmRefreshToken
 		) {
-			this.clineProvider?.log(`[ZgsmLoginManager:${state}] saveTokens: tokens are already saved`)
+			ZgsmAuthStorage.clineProvider?.log(`[ZgsmLoginManager:${state}] saveTokens: tokens are already saved`)
 			return
 		}
 		const { exp, iat } = jwtDecode(tokens.access_token) as any
@@ -62,15 +48,18 @@ export class ZgsmAuthStorage {
 			zgsmApiKeyUpdatedAt,
 			zgsmApiKeyExpiredAt,
 		}
-		await this.clineProvider?.providerSettingsManager.saveMergeConfig(config, (name, { apiProvider }) => {
-			return apiProvider === "zgsm" && name !== state.currentApiConfigName
-		})
-		this.clineProvider.setValue("zgsmRefreshToken", tokens.refresh_token)
-		this.clineProvider.setValue("zgsmAccessToken", tokens.access_token)
-		this.clineProvider.setValue("zgsmState", tokens.state)
-		this.clineProvider.setValue("zgsmApiKeyUpdatedAt", zgsmApiKeyUpdatedAt)
-		this.clineProvider.setValue("zgsmApiKeyExpiredAt", zgsmApiKeyExpiredAt)
-		await this.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
+		await ZgsmAuthStorage.clineProvider?.providerSettingsManager.saveMergeConfig(
+			config,
+			(name, { apiProvider }) => {
+				return apiProvider === "zgsm" && name !== state.currentApiConfigName
+			},
+		)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmRefreshToken", tokens.refresh_token)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmAccessToken", tokens.access_token)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmState", tokens.state)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmApiKeyUpdatedAt", zgsmApiKeyUpdatedAt)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmApiKeyExpiredAt", zgsmApiKeyExpiredAt)
+		await ZgsmAuthStorage.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
 
 		sendZgsmTokens(tokens)
 
@@ -84,8 +73,8 @@ export class ZgsmAuthStorage {
 	 * 获取保存的认证token
 	 */
 	async getTokens(): Promise<ZgsmAuthTokens | null> {
-		if (!this.clineProvider) return null
-		const state = await this.clineProvider.getState()
+		if (!ZgsmAuthStorage.clineProvider) return null
+		const state = await ZgsmAuthStorage.clineProvider.getState()
 		return {
 			access_token: state.apiConfiguration.zgsmAccessToken,
 			refresh_token: state.apiConfiguration.zgsmRefreshToken,
@@ -97,24 +86,24 @@ export class ZgsmAuthStorage {
 	 * 保存登录状态
 	 */
 	async saveLoginState(loginState: ZgsmLoginState): Promise<void> {
-		if (!this.clineProvider) return
-		const state = await this.clineProvider.getState()
+		if (!ZgsmAuthStorage.clineProvider) return
+		const state = await ZgsmAuthStorage.clineProvider.getState()
 		if (!state.currentApiConfigName) {
 			return
 		}
 		const config = { ...state.apiConfiguration, zgsmState: loginState.state }
 		// well
-		this.clineProvider.setValue("zgsmState", loginState.state)
+		ZgsmAuthStorage.clineProvider.setValue("zgsmState", loginState.state)
 
-		await this.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
+		await ZgsmAuthStorage.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
 	}
 
 	/**
 	 * 获取保存的登录状态
 	 */
 	async getLoginState(): Promise<ZgsmLoginState | null> {
-		if (!this.clineProvider) return null
-		const state = await this.clineProvider.getState()
+		if (!ZgsmAuthStorage.clineProvider) return null
+		const state = await ZgsmAuthStorage.clineProvider.getState()
 		return state.apiConfiguration.zgsmState
 			? { state: state.apiConfiguration.zgsmState, machineId: getClientId() }
 			: null
@@ -124,19 +113,19 @@ export class ZgsmAuthStorage {
 	 * 清除所有认证信息
 	 */
 	async clearAllLoginState(): Promise<void> {
-		if (!this.clineProvider) return
-		const state = await this.clineProvider.getState()
+		if (!ZgsmAuthStorage.clineProvider) return
+		const state = await ZgsmAuthStorage.clineProvider.getState()
 		if (!state.currentApiConfigName) {
 			return
 		}
 		const { zgsmAccessToken, zgsmRefreshToken, zgsmState, ...config } = state.apiConfiguration
 
-		await this.clineProvider.setValue("zgsmAccessToken", undefined)
-		await this.clineProvider.setValue("zgsmRefreshToken", undefined)
-		await this.clineProvider.setValue("zgsmState", undefined)
-		await this.clineProvider.setValue("zgsmApiKeyUpdatedAt", undefined)
-		await this.clineProvider.setValue("zgsmApiKeyExpiredAt", undefined)
-		await this.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmAccessToken", undefined)
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmRefreshToken", undefined)
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmState", undefined)
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmApiKeyUpdatedAt", undefined)
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmApiKeyExpiredAt", undefined)
+		await ZgsmAuthStorage.clineProvider.upsertProviderProfile(state.currentApiConfigName, config, false)
 	}
 
 	/**

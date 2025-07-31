@@ -15,6 +15,7 @@ import { CompletionStatusBar } from "../completion"
 export class ZgsmAuthService {
 	private static instance: ZgsmAuthService
 	private static hasStatusBarLoginTip = false
+	private static clineProvider: ClineProvider
 
 	private storage: ZgsmAuthStorage
 	private api: ZgsmAuthApi
@@ -23,29 +24,27 @@ export class ZgsmAuthService {
 	private waitLoginPollingInterval?: NodeJS.Timeout
 	private tokenRefreshInterval?: NodeJS.Timeout
 	private startLoginTokenPollInterval?: NodeJS.Timeout
-	private clineProvider: ClineProvider
 	private disposed = false
 	private userInfo = {} as ZgsmUserInfo
 
 	protected constructor(clineProvider: ClineProvider) {
+		ZgsmAuthStorage.setProvider(clineProvider)
 		this.storage = ZgsmAuthStorage.getInstance()
-		if (clineProvider) {
-			this.storage.setClineProvider(clineProvider)
-		}
 		this.api = new ZgsmAuthApi(clineProvider)
-		this.config = ZgsmAuthConfig.getInstance() // 使用单例
-		this.clineProvider = clineProvider
+		this.config = ZgsmAuthConfig.getInstance()
 	}
 
-	public static initialize(clineProvider: ClineProvider): void {
-		if (!ZgsmAuthService.instance) {
-			ZgsmAuthService.instance = new ZgsmAuthService(clineProvider)
-		}
+	public static setProvider(clineProvider: ClineProvider): void {
+		ZgsmAuthService.clineProvider = clineProvider
 	}
 
 	public static getInstance(): ZgsmAuthService {
 		if (!ZgsmAuthService.instance) {
-			throw new Error("ZgsmAuthService not initialized")
+			if (!ZgsmAuthService.clineProvider) {
+				throw new Error("ZgsmAuthService not initialized")
+			}
+
+			// ZgsmAuthService.instance = new ZgsmAuthService(ZgsmAuthService.clineProvider)
 		}
 		return ZgsmAuthService.instance
 	}
@@ -62,8 +61,9 @@ export class ZgsmAuthService {
 	 * 设置ClineProvider实例
 	 */
 	setClineProvider(clineProvider: ClineProvider): ZgsmAuthService {
-		this.clineProvider = clineProvider
+		ZgsmAuthService.clineProvider = clineProvider
 		this.api.setClineProvider(clineProvider)
+		ZgsmAuthStorage.setProvider(clineProvider)
 		return this
 	}
 
@@ -71,9 +71,9 @@ export class ZgsmAuthService {
 	 * 获取API配置
 	 */
 	private async getApiConfiguration(): Promise<ProviderSettings> {
-		if (this.clineProvider) {
+		if (ZgsmAuthService.clineProvider) {
 			try {
-				const state = await this.clineProvider.getState()
+				const state = await ZgsmAuthService.clineProvider.getState()
 				return state.apiConfiguration
 			} catch (error) {
 				console.error("获取API配置失败:", error)
@@ -403,7 +403,7 @@ export class ZgsmAuthService {
 	protected onLoginSuccess(tokens: ZgsmAuthTokens): void {
 		this.updateUserInfo(tokens.refresh_token)
 		vscode.window.showInformationMessage(`${this.userInfo.name}用户登录成功`)
-		this.clineProvider?.postMessageToWebview?.({ type: "zgsmLogined" })
+		ZgsmAuthService.clineProvider?.postMessageToWebview?.({ type: "zgsmLogined" })
 		CompletionStatusBar.complete()
 		CompletionStatusBar.resetCommand()
 	}

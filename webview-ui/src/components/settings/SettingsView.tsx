@@ -210,7 +210,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			if (isEqual(prevState[field], value)) {
 				return prevState
 			}
-			// debugger
+
 			setChangeDetected(true)
 			return { ...prevState, [field]: value }
 		})
@@ -222,7 +222,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 				if (isEqual(prevState.apiConfiguration?.[field], value)) {
 					return prevState
 				}
-				// debugger
 
 				const previousValue = prevState.apiConfiguration?.[field]
 
@@ -244,7 +243,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			if (isEqual(prevState.experiments[id], enabled)) {
 				return prevState
 			}
-			// debugger
 
 			setChangeDetected(true)
 			return { ...prevState, experiments: { ...prevState.experiments, [id]: enabled } }
@@ -256,7 +254,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			if (isEqual(prevState.telemetrySetting, setting)) {
 				return prevState
 			}
-			// debugger
 
 			setChangeDetected(true)
 			return { ...prevState, telemetrySetting: setting }
@@ -268,7 +265,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			if (isEqual(prevState.customSupportPrompts, prompts)) {
 				return prevState
 			}
-			// debugger
 
 			setChangeDetected(true)
 			return { ...prevState, customSupportPrompts: prompts }

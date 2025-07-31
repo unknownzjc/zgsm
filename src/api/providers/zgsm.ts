@@ -98,7 +98,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			"Accept-Language": metadata?.language || "en",
 			"x-quota-identity": this.chatType,
 			"zgsm-task-id": metadata?.taskId,
-			"zgsm-request-id": `${metadata?.instanceId}-${Date.now().toString()}`,
+			"x-request-id": `${metadata?.instanceId}-${Date.now().toString()}`,
 			"zgsm-client-id": getClientId(),
 			"zgsm-project-path": encodeURI(getWorkspacePath()),
 		}
