@@ -59,7 +59,7 @@ import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
 import { getSystemPromptFilePath } from "../prompts/sections/custom-system-prompt"
 import { telemetryService } from "../../services/telemetry/TelemetryService"
-import { getWorkspacePath } from "../../utils/path"
+import { getWorkspacePath, toRelativePath } from "../../utils/path"
 import { webviewMessageHandler } from "./webviewMessageHandler"
 import { WebviewMessage } from "../../shared/WebviewMessage"
 import { defaultLang } from "../../utils/language"
@@ -315,7 +315,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			visibleProvider.startReviewTask([
 				{
 					type: ReviewTargetType.CODE,
-					file_path: params.filePath as string,
+					file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),
 					line_range: [Number(params.startLine), Number(params.endLine)],
 				},
 			])
