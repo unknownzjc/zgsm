@@ -645,6 +645,18 @@
 				"command": "zgsm-completion.shortKeyCut",
 				"key": "alt+a",
 				"when": "editorTextFocus && !editorReadonly"
+			},
+			{
+				"command": "zgsm.addToContext",
+				"key": "ctrl+l",
+				"mac": "cmd+l",
+				"when": "editorHasSelection"
+			},
+			{
+				"command": "zgsm.addFileToContext",
+				"key": "ctrl+l",
+				"mac": "cmd+l",
+				"when": "filesExplorerFocus"
 			}
 		],
 		"icons": {

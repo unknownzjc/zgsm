@@ -15,6 +15,7 @@ import { ReviewComment } from "../services/codeReview/reviewComment"
 import { IssueStatus } from "../shared/codeReview"
 import { toRelativePath } from "../utils/path"
 import { EditorContext, EditorUtils } from "../integrations/editor/EditorUtils"
+import path from "node:path"
 
 interface UriSource {
 	path: string
@@ -317,10 +318,12 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		// Return early if no valid file sources were found.
 		const aliasedPathPromises = sources.map(async (source) => {
 			// The 'path' property should be common to both UriSource and EditorContext.
-			if (!(source as UriSource).path) {
+			if (!(source as UriSource).path && !(source as EditorContext).filePath) {
 				return null
 			}
-			const resourceUri = vscode.Uri.parse((source as UriSource).path)
+			const resourceUri = vscode.Uri.parse(
+				(source as UriSource).path || path.join(visibleProvider.cwd, (source as EditorContext).filePath),
+			)
 			// Await the dedicated function to get the aliased path.
 			return createAliasedPath(resourceUri)
 		})
