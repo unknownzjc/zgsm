@@ -6,15 +6,6 @@ import { getCommand } from "../../../utils/commands"
 export class ZgsmAuthCommands {
 	private static instance: ZgsmAuthCommands
 	private static clineProvider: ClineProvider
-	private authService: ZgsmAuthService
-
-	private constructor(clineProvider: ClineProvider) {
-		// 确保 AuthService 已经被初始化
-		this.authService = ZgsmAuthService.getInstance()
-		if (clineProvider) {
-			this.authService?.setClineProvider?.(clineProvider)
-		}
-	}
 
 	public static setProvider(clineProvider: ClineProvider): void {
 		ZgsmAuthCommands.clineProvider = clineProvider
@@ -27,7 +18,7 @@ export class ZgsmAuthCommands {
 				throw new Error("ZgsmAuthCommands 未初始化")
 			}
 			// 优先初始化依赖的服务
-			ZgsmAuthCommands.instance = new ZgsmAuthCommands(ZgsmAuthCommands.clineProvider)
+			ZgsmAuthCommands.instance = new ZgsmAuthCommands()
 		}
 
 		return ZgsmAuthCommands.instance!
@@ -36,9 +27,8 @@ export class ZgsmAuthCommands {
 	/**
 	 * 设置ClineProvider实例
 	 */
-	setClineProvider(clineProvider: ClineProvider): void {
+	setProvider(clineProvider: ClineProvider): void {
 		ZgsmAuthCommands.clineProvider = clineProvider
-		this.authService?.setClineProvider?.(clineProvider)
 	}
 
 	/**
@@ -74,7 +64,7 @@ export class ZgsmAuthCommands {
 	 */
 	public async handleLogin(): Promise<void> {
 		try {
-			const loginState = await this.authService.startLogin()
+			const loginState = await ZgsmAuthService.getInstance().startLogin()
 			console.info(
 				`登录流程已启动，请在浏览器中完成登录。\nState: ${loginState.state}\nMachineId: ${loginState.machineId}`,
 			)
@@ -88,7 +78,7 @@ export class ZgsmAuthCommands {
 	 */
 	public async handleLogout(): Promise<void> {
 		try {
-			await this.authService.logout()
+			await ZgsmAuthService.getInstance().logout()
 			vscode.window.showInformationMessage("已成功退出登录")
 		} catch (error) {
 			vscode.window.showErrorMessage(`登出失败: ${error}`)
@@ -100,7 +90,7 @@ export class ZgsmAuthCommands {
 	 */
 	private async handleCheckLoginStatus(): Promise<void> {
 		try {
-			const token = await this.authService.getCurrentAccessToken()
+			const token = await ZgsmAuthService.getInstance().getCurrentAccessToken()
 
 			if (token) {
 				vscode.window.showInformationMessage("当前已登录")
@@ -130,14 +120,15 @@ export class ZgsmAuthCommands {
 	/**
 	 * 获取认证服务实例
 	 */
-	getAuthService(): ZgsmAuthService {
-		return this.authService
+	// getAuthService(): ZgsmAuthService {
+	getAuthService() {
+		// return this.authService
 	}
 
 	/**
 	 * 销毁命令处理器
 	 */
 	dispose(): void {
-		this.authService.dispose()
+		// this.authService.dispose()
 	}
 }

@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 
-import type { ProviderSettings } from "@roo-code/types"
+import type { ProviderSettings, ZgsmUserInfo } from "@roo-code/types"
 import { TelemetryEventName } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
 import { telemetryClient } from "@src/utils/TelemetryClient"
-import { ZgsmUserInfo } from "../../../../src/core/costrict/auth"
 import axios from "axios"
 import { useEvent } from "react-use"
 import { ExtensionMessage } from "@roo/ExtensionMessage"

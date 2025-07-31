@@ -18,7 +18,6 @@ import { McpServer } from "./mcp"
 import { Mode } from "./modes"
 import { RouterModels } from "./api"
 import type { MarketplaceItem } from "@roo-code/types"
-import { ZgsmUserInfo } from "../core/costrict/auth"
 
 // Command interface for frontend/backend communication
 export interface Command {

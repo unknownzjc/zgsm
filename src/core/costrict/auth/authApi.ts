@@ -6,32 +6,32 @@ import { getParams } from "../../../utils/zgsmUtils"
 import { joinUrl } from "../../../utils/joinUrl"
 
 export class ZgsmAuthApi {
-	private config: ZgsmAuthConfig
-	private clineProvider?: ClineProvider
+	private static clineProvider?: ClineProvider
+	private static instance?: ZgsmAuthApi
+
 	loginUrl = "/oidc-auth/api/v1/plugin/login"
 	tokenUrl = "/oidc-auth/api/v1/plugin/login/token"
 	statusUrl = "/oidc-auth/api/v1/plugin/login/status"
 	logoutUrl = `/oidc-auth/api/v1/plugin/logout`
 
-	constructor(clineProvider?: ClineProvider) {
-		this.config = ZgsmAuthConfig.getInstance()
-		this.clineProvider = clineProvider
+	public static setProvider(clineProvider: ClineProvider): void {
+		ZgsmAuthApi.clineProvider = clineProvider
 	}
 
-	/**
-	 * 设置ClineProvider实例
-	 */
-	setClineProvider(clineProvider: ClineProvider): void {
-		this.clineProvider = clineProvider
+	public static getInstance(): ZgsmAuthApi {
+		if (!ZgsmAuthApi.instance) {
+			ZgsmAuthApi.instance = new ZgsmAuthApi()
+		}
+		return ZgsmAuthApi.instance
 	}
 
 	/**
 	 * 获取API配置
 	 */
 	private async getApiConfiguration(): Promise<ProviderSettings> {
-		if (this.clineProvider) {
+		if (ZgsmAuthApi.clineProvider) {
 			try {
-				const state = await this.clineProvider.getState()
+				const state = await ZgsmAuthApi.clineProvider.getState()
 				return state.apiConfiguration
 			} catch (error) {
 				console.error("获取API配置失败:", error)
@@ -42,7 +42,7 @@ export class ZgsmAuthApi {
 		return {
 			apiProvider: "zgsm",
 			apiKey: "",
-			zgsmBaseUrl: this.config.getDefaultLoginBaseUrl(),
+			zgsmBaseUrl: ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl(),
 		}
 	}
 
@@ -58,7 +58,7 @@ export class ZgsmAuthApi {
 		}
 
 		// 使用默认API URL
-		return this.config.getDefaultApiBaseUrl()
+		return ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 	}
 
 	/**

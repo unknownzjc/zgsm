@@ -7,13 +7,6 @@
 
 import * as vscode from "vscode"
 import { ClineProvider } from "../webview/ClineProvider"
-// import { initZgsmApiConfiguration } from "../../shared/zgsmInitialize"
-// import { registerCodeAction } from "../../activate/registerCodeActions"
-// import { defaultZgsmAuthConfig } from "../../zgsmAuth/config"
-// import { getCommand } from "../../utils/commands"
-// import { CodeActionId } from "../../schemas"
-
-// import { COMMAND_IDS } from "../../activate/CodeActionProvider"
 
 // Import from migrated modules
 import { AICompletionProvider, CompletionStatusBar, shortKeyCut } from "./completion"
@@ -31,42 +24,28 @@ import {
 	loadLocalLanguageExtensions,
 	LangSetting,
 } from "./base/common"
-import { ZgsmAuthStorage } from "./auth"
+import { ZgsmAuthApi, ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService, ZgsmAuthStorage } from "./auth"
 import { initCodeReview } from "./code-review"
 import { initTelemetry } from "./telemetry"
 import { Package } from "../../shared/package"
 import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
-
-// import { registerCodeAction } from "../../activate/registerCodeActions"
-
-// import { CodeActionId } from "@roo-code/types"
+import { initZgsmCodeBase, ZgsmCodeBaseSyncService } from "./codebase"
+import { connectIPC, disconnectIPC, onZgsmLogout, onZgsmTokensUpdate, startIPCServer, stopIPCServer } from "./auth/ipc"
+import { getClientId } from "../../utils/getClientId"
 
 /**
  * Initialization entry
  */
 async function initialize(provider: ClineProvider) {
+	ZgsmAuthStorage.setProvider(provider)
+	ZgsmAuthApi.setProvider(provider)
+	ZgsmCodeBaseSyncService.setProvider(provider)
+	ZgsmAuthService.setProvider(provider)
+	ZgsmAuthCommands.setProvider(provider)
 	printLogo()
 	initLangSetting()
 	loadLocalLanguageExtensions()
-	// await initZgsmApiConfiguration(provider)
 }
-
-/**
- * Register ZGSM-specific code actions
- */
-// function registerZGSMCodeActions(context: vscode.ExtensionContext) {
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_EXPLAIN as CodeActionId, "ZGSM_EXPLAIN")
-
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_ADD_COMMENT as CodeActionId, "ZGSM_ADD_COMMENT")
-
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_ADD_DEBUG_CODE as CodeActionId, "ZGSM_ADD_DEBUG_CODE")
-
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_ADD_STRONG_CODE as CodeActionId, "ZGSM_ADD_STRONG_CODE")
-
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_SIMPLIFY_CODE as CodeActionId, "ZGSM_SIMPLIFY_CODE")
-
-// 	registerCodeAction(context, COMMAND_IDS.ZGSM_PERFORMANCE as CodeActionId, "ZGSM_PERFORMANCE")
-// }
 
 /**
  * Entry function when the ZGSM extension is activated
@@ -78,6 +57,54 @@ export async function activate(
 ) {
 	createLogger(Package.outputChannel, { channel: outputChannel })
 	await initialize(provider)
+	startIPCServer()
+	connectIPC()
+
+	const zgsmAuthService = ZgsmAuthService.getInstance()
+	context.subscriptions.push(zgsmAuthService)
+	context.subscriptions.push(
+		onZgsmTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
+			zgsmAuthService.saveTokens(tokens)
+			provider.log(`new token from other window: ${tokens.access_token}`)
+		}),
+		onZgsmLogout((sessionId: string) => {
+			if (vscode.env.sessionId === sessionId) return
+			zgsmAuthService.logout(true)
+			provider.log(`logout from other window`)
+		}),
+	)
+	const zgsmAuthCommands = ZgsmAuthCommands.getInstance()
+	context.subscriptions.push(zgsmAuthCommands)
+
+	zgsmAuthCommands.registerCommands(context)
+
+	provider.setZgsmAuthCommands(zgsmAuthCommands)
+
+	/**
+	 * 插件启动时检查登录状态
+	 */
+	try {
+		const isLoggedIn = await zgsmAuthService.checkLoginStatusOnStartup()
+
+		if (isLoggedIn) {
+			provider.log("插件启动时检测到登录状态：有效")
+			zgsmAuthService.getTokens().then((tokens) => {
+				if (!tokens) {
+					return
+				}
+				initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
+
+				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
+				zgsmAuthService.updateUserInfo(tokens.access_token)
+			})
+			// 开始token刷新定时器
+		} else {
+			ZgsmAuthService.openStatusBarLoginTip()
+			provider.log("插件启动时检测到登录状态：无效")
+		}
+	} catch (error) {
+		provider.log("启动时检查登录状态失败: " + error.message)
+	}
 	initCodeReview(context, provider, outputChannel)
 	CompletionStatusBar.create(context)
 	initTelemetry(provider)
@@ -123,30 +150,6 @@ export async function activate(
 		}),
 	)
 
-	// // Register the command for the right-click menu
-	// registerZGSMCodeActions(context)
-
-	// // Register the 'Start Chat' command
-	// context.subscriptions.push(
-	// 	vscode.commands.registerCommand(getCommand("chat"), () => {
-	// 		vscode.commands.executeCommand(getCommand("SidebarProvider.focus"))
-	// 	}),
-	// )
-
-	// // Register the 'User Manual' command
-	// context.subscriptions.push(
-	// 	vscode.commands.registerCommand(getCommand("view.userHelperDoc"), () => {
-	// 		vscode.env.openExternal(vscode.Uri.parse(`${defaultZgsmAuthConfig.zgsmSite}`))
-	// 	}),
-	// )
-
-	// // Register the 'Report Issue' command
-	// context.subscriptions.push(
-	// 	vscode.commands.registerCommand(getCommand("view.issue"), () => {
-	// 		vscode.env.openExternal(vscode.Uri.parse(`${defaultZgsmAuthConfig.baseUrl}/issue/`))
-	// 	}),
-	// )
-
 	// Get zgsmRefreshToken without webview resolve
 	const tokens = await ZgsmAuthStorage.getInstance().getTokens()
 	if (tokens?.access_token) {
@@ -162,6 +165,10 @@ export async function activate(
  * Deactivation function for ZGSM
  */
 export function deactivate() {
+	ZgsmCodeBaseSyncService.stopSync()
+	// Clean up IPC connections
+	disconnectIPC()
+	stopIPCServer()
 	// Currently no specific cleanup needed
 	loggerDeactivate()
 }

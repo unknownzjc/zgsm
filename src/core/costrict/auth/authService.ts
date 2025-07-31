@@ -3,11 +3,11 @@ import { jwtDecode } from "jwt-decode"
 import { ZgsmAuthStorage } from "./authStorage"
 import { ZgsmAuthApi } from "./authApi"
 import { ZgsmAuthConfig } from "./authConfig"
-import type { ProviderSettings } from "@roo-code/types"
+import type { ProviderSettings, ZgsmUserInfo } from "@roo-code/types"
 import type { ClineProvider } from "../../webview/ClineProvider"
 import { getParams, retryWrapper } from "../../../utils/zgsmUtils"
 import { joinUrl } from "../../../utils/joinUrl"
-import { ZgsmAuthStatus, ZgsmAuthTokens, ZgsmLoginState, ZgsmUserInfo, LoginTokenResponse } from "./types"
+import { ZgsmAuthStatus, ZgsmAuthTokens, ZgsmLoginState, LoginTokenResponse } from "./types"
 import { getClientId } from "../../../utils/getClientId"
 import { sendZgsmLogout } from "./ipc/client"
 import { CompletionStatusBar } from "../completion"
@@ -17,22 +17,12 @@ export class ZgsmAuthService {
 	private static hasStatusBarLoginTip = false
 	private static clineProvider: ClineProvider
 
-	private storage: ZgsmAuthStorage
-	private api: ZgsmAuthApi
 	private loginStateTmp: ZgsmLoginState | undefined
-	private config: ZgsmAuthConfig
 	private waitLoginPollingInterval?: NodeJS.Timeout
 	private tokenRefreshInterval?: NodeJS.Timeout
 	private startLoginTokenPollInterval?: NodeJS.Timeout
 	private disposed = false
 	private userInfo = {} as ZgsmUserInfo
-
-	protected constructor(clineProvider: ClineProvider) {
-		ZgsmAuthStorage.setProvider(clineProvider)
-		this.storage = ZgsmAuthStorage.getInstance()
-		this.api = new ZgsmAuthApi(clineProvider)
-		this.config = ZgsmAuthConfig.getInstance()
-	}
 
 	public static setProvider(clineProvider: ClineProvider): void {
 		ZgsmAuthService.clineProvider = clineProvider
@@ -44,7 +34,7 @@ export class ZgsmAuthService {
 				throw new Error("ZgsmAuthService not initialized")
 			}
 
-			ZgsmAuthService.instance = new ZgsmAuthService(ZgsmAuthService.clineProvider)
+			ZgsmAuthService.instance = new ZgsmAuthService()
 		}
 		return ZgsmAuthService.instance
 	}
@@ -55,16 +45,6 @@ export class ZgsmAuthService {
 	 */
 	public static _resetForTesting(): void {
 		ZgsmAuthService.instance = undefined!
-	}
-
-	/**
-	 * 设置ClineProvider实例
-	 */
-	setClineProvider(clineProvider: ClineProvider): ZgsmAuthService {
-		ZgsmAuthService.clineProvider = clineProvider
-		this.api.setClineProvider(clineProvider)
-		ZgsmAuthStorage.setProvider(clineProvider)
-		return this
 	}
 
 	/**
@@ -84,7 +64,7 @@ export class ZgsmAuthService {
 		return {
 			apiProvider: "zgsm",
 			apiKey: "",
-			zgsmBaseUrl: this.config.getDefaultLoginBaseUrl(),
+			zgsmBaseUrl: ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl(),
 		}
 	}
 
@@ -136,7 +116,7 @@ export class ZgsmAuthService {
 					return
 				}
 
-				this.api
+				ZgsmAuthApi.getInstance()
 					.getRefreshUserToken("", this.getMachineId(), state)
 					.then((result) => {
 						if (result.data?.access_token && result.data?.refresh_token && result.data?.state === state) {
@@ -165,7 +145,7 @@ export class ZgsmAuthService {
 			try {
 				const { data, success } = await retryWrapper(
 					"pollLoginState",
-					() => this.api.getUserLoginState(loginState.state, loginState.access_token),
+					() => ZgsmAuthApi.getInstance().getUserLoginState(loginState.state, loginState.access_token),
 					undefined,
 					0,
 				)
@@ -177,9 +157,9 @@ export class ZgsmAuthService {
 					data?.status === ZgsmAuthStatus.LOGGED_IN
 				) {
 					// 登录成功，保存token
-					await this.storage.saveTokens(loginState)
+					await ZgsmAuthStorage.getInstance().saveTokens(loginState)
 					// 登录成功后 保存登录状态到本地
-					await this.storage.saveLoginState(loginState)
+					await ZgsmAuthStorage.getInstance().saveLoginState(loginState)
 					// 停止轮询
 					this.stopWaitLoginPolling()
 
@@ -204,7 +184,10 @@ export class ZgsmAuthService {
 			}
 
 			// 设置轮询间隔（每5秒检查一次）
-			this.waitLoginPollingInterval = setTimeout(pollLoginState, this.config.getWaitLoginPollingInterval())
+			this.waitLoginPollingInterval = setTimeout(
+				pollLoginState,
+				ZgsmAuthConfig.getInstance().getWaitLoginPollingInterval(),
+			)
 		}
 
 		// 立即执行一次
@@ -252,7 +235,7 @@ export class ZgsmAuthService {
 					// this.logout()
 				}
 			},
-			this.config.getTokenRefreshInterval(refreshToken),
+			ZgsmAuthConfig.getInstance().getTokenRefreshInterval(refreshToken),
 			refreshToken,
 			machineId,
 			state,
@@ -265,7 +248,7 @@ export class ZgsmAuthService {
 	async refreshToken(refreshToken: string, machineId: string, state: string, auto = true): Promise<ZgsmAuthTokens> {
 		try {
 			const { success, data, message } = await retryWrapper("refreshToken", () =>
-				this.api.getRefreshUserToken(refreshToken, machineId, state),
+				ZgsmAuthApi.getInstance().getRefreshUserToken(refreshToken, machineId, state),
 			)
 
 			if (
@@ -276,7 +259,7 @@ export class ZgsmAuthService {
 				this.loginStateTmp?.state === data.state
 			) {
 				// 更新保存的token
-				await this.storage.saveTokens(data)
+				await ZgsmAuthStorage.getInstance().saveTokens(data)
 
 				// 更新刷新定时器
 				if (auto) {
@@ -294,10 +277,10 @@ export class ZgsmAuthService {
 	}
 
 	async getTokens() {
-		return await this.storage.getTokens()
+		return await ZgsmAuthStorage.getInstance().getTokens()
 	}
 	async saveTokens(tokens: ZgsmAuthTokens) {
-		return await this.storage.saveTokens(tokens)
+		return await ZgsmAuthStorage.getInstance().saveTokens(tokens)
 	}
 
 	/**
@@ -305,7 +288,7 @@ export class ZgsmAuthService {
 	 */
 	async checkLoginStatusOnStartup(): Promise<boolean> {
 		try {
-			const tokens = await this.storage.getTokens()
+			const tokens = await ZgsmAuthStorage.getInstance().getTokens()
 
 			if (!tokens?.access_token || !tokens?.refresh_token) {
 				return false
@@ -324,7 +307,7 @@ export class ZgsmAuthService {
 	 * 获取当前token
 	 */
 	async getCurrentAccessToken(): Promise<string | null> {
-		const tokens = await this.storage.getTokens()
+		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
 		return tokens?.access_token || null
 	}
 
@@ -342,7 +325,7 @@ export class ZgsmAuthService {
 			await this.onLogout()
 		}
 		// 清除存储的登录信息
-		await this.storage.clearAllLoginState()
+		await ZgsmAuthStorage.getInstance().clearAllLoginState()
 		if (!auto) {
 			sendZgsmLogout(vscode.env.sessionId)
 		}
@@ -366,7 +349,7 @@ export class ZgsmAuthService {
 		const baseUrl = this.getLoginBaseUrl(apiConfig)
 		const params = getParams(loginState.state, [])
 
-		return `${joinUrl(baseUrl, [this.api.loginUrl])}?${params.map((p) => p.join("=")).join("&")}`
+		return `${joinUrl(baseUrl, [ZgsmAuthApi.getInstance().loginUrl])}?${params.map((p) => p.join("=")).join("&")}`
 	}
 
 	/**
@@ -379,7 +362,7 @@ export class ZgsmAuthService {
 		}
 
 		// 使用默认URL
-		return this.config.getDefaultLoginBaseUrl()
+		return ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl()
 	}
 
 	/**
@@ -428,12 +411,12 @@ export class ZgsmAuthService {
 	 * 登出回调
 	 */
 	protected async onLogout() {
-		const state = await this.storage.getLoginState()
-		const tokens = await this.storage.getTokens()
+		const state = await ZgsmAuthStorage.getInstance().getLoginState()
+		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
 		// 可以在这里添加登出后的逻辑
 		await retryWrapper(
 			"onLogout",
-			() => this.api.logoutUser(state?.state || tokens?.state, tokens?.access_token),
+			() => ZgsmAuthApi.getInstance().logoutUser(state?.state || tokens?.state, tokens?.access_token),
 			undefined,
 			1,
 		)

@@ -2,7 +2,7 @@
  * 认证模块类型定义
  */
 
-import { CloudUserInfo } from "@roo-code/types"
+// import { CloudUserInfo } from "@roo-code/types"
 
 /**
  * 登录状态接口
@@ -43,11 +43,6 @@ export enum ZgsmAuthStatus {
 	LOGIN_FAILED = "login_failed",
 	/** Token过期 */
 	TOKEN_EXPIRED = "token_expired",
-}
-
-export interface ZgsmUserInfo extends CloudUserInfo {
-	id?: string
-	phone?: string | number
 }
 
 export interface ZgsmLoginResponse {

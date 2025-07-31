@@ -5,18 +5,17 @@ import { sendZgsmTokens } from "./ipc/client"
 import { initZgsmCodeBase } from "../codebase"
 import { ZgsmAuthConfig } from "./authConfig"
 import { getClientId } from "../../../utils/getClientId"
+
 export class ZgsmAuthStorage {
 	private static clineProvider?: ClineProvider
 	private static instance?: ZgsmAuthStorage
-
-	constructor(clineProvider?: ClineProvider) {}
 
 	public static setProvider(clineProvider: ClineProvider): void {
 		ZgsmAuthStorage.clineProvider = clineProvider
 	}
 	public static getInstance(): ZgsmAuthStorage {
 		if (!ZgsmAuthStorage.instance) {
-			ZgsmAuthStorage.instance = new ZgsmAuthStorage(ZgsmAuthStorage.clineProvider)
+			ZgsmAuthStorage.instance = new ZgsmAuthStorage()
 		}
 		return ZgsmAuthStorage.instance
 	}

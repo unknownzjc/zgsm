@@ -360,3 +360,15 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 	// Default to OpenAI protocol
 	return "openai"
 }
+
+export interface ZgsmUserInfo {
+	name?: string
+	email?: string
+	picture?: string
+	organizationId?: string
+	organizationName?: string
+	organizationRole?: string
+	organizationImageUrl?: string
+	id?: string
+	phone?: string | number
+}

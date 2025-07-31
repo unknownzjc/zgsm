@@ -14,7 +14,7 @@ try {
 }
 
 import { CloudService } from "@roo-code/cloud"
-import { TelemetryService, PostHogTelemetryClient } from "@roo-code/telemetry"
+import { TelemetryService } from "@roo-code/telemetry"
 
 import "./utils/path" // Necessary to have access to String.prototype.toPosix.
 import { createOutputChannelLogger, createDualLogger } from "./utils/outputChannelLogger"
@@ -31,7 +31,7 @@ import { MdmService } from "./services/mdm/MdmService"
 import { migrateSettings } from "./utils/migrateSettings"
 import { autoImportSettings } from "./utils/autoImportSettings"
 import { API } from "./extension/api"
-import { ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService } from "./core/costrict/auth/index"
+import { ZgsmAuthConfig } from "./core/costrict/auth/index"
 
 import {
 	handleUri,
@@ -41,16 +41,6 @@ import {
 	CodeActionProvider,
 } from "./activate"
 import { initializeI18n } from "./i18n"
-import {
-	startIPCServer,
-	stopIPCServer,
-	connectIPC,
-	disconnectIPC,
-	onZgsmTokensUpdate,
-	onZgsmLogout,
-} from "./core/costrict/auth/ipc"
-import { initZgsmCodeBase, ZgsmCodeBaseSyncService } from "./core/costrict/codebase"
-import { getClientId } from "./utils/getClientId"
 import { getCommand } from "./utils/commands"
 
 /**
@@ -63,7 +53,6 @@ import { getCommand } from "./utils/commands"
 
 let outputChannel: vscode.OutputChannel
 let extensionContext: vscode.ExtensionContext
-let zgsmAuthCommands: ZgsmAuthCommands
 
 // This method is called when your extension is activated.
 // Your extension is activated the very first time the command is executed.
@@ -123,7 +112,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	const provider = new ClineProvider(context, outputChannel, "sidebar", contextProxy, codeIndexManager, mdmService)
 	// TelemetryService.instance.setProvider(provider)
-	ZgsmCodeBaseSyncService.setProvider(provider)
 
 	if (codeIndexManager) {
 		context.subscriptions.push(codeIndexManager)
@@ -236,79 +224,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	}
 
-	zgsmInitialize(context, provider, outputChannel)
+	ZgsmCore.activate(context, provider, outputChannel)
 
 	return new API(outputChannel, provider, socketPath, enableLogging)
 }
 
 // This method is called when your extension is deactivated.
 export async function deactivate() {
-	ZgsmCodeBaseSyncService.stopSync()
 	ZgsmCore.deactivate()
-
-	// Clean up IPC connections
-	disconnectIPC()
-	stopIPCServer()
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
 	await McpServerManager.cleanup(extensionContext)
 	TelemetryService.instance.shutdown()
 	TerminalRegistry.cleanup()
-}
-
-async function zgsmInitialize(
-	context: vscode.ExtensionContext,
-	provider: ClineProvider,
-	outputChannel: vscode.OutputChannel,
-) {
-	startIPCServer()
-	connectIPC()
-	ZgsmAuthService.setProvider(provider)
-	const zgsmAuthService = ZgsmAuthService.getInstance()
-	context.subscriptions.push(zgsmAuthService)
-	context.subscriptions.push(
-		onZgsmTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
-			zgsmAuthService.saveTokens(tokens)
-			provider.log(`new token from other window: ${tokens.access_token}`)
-		}),
-		onZgsmLogout((sessionId: string) => {
-			if (vscode.env.sessionId === sessionId) return
-			zgsmAuthService.logout(true)
-			provider.log(`logout from other window`)
-		}),
-	)
-	ZgsmAuthCommands.setProvider(provider)
-	const zgsmAuthCommands = ZgsmAuthCommands.getInstance()
-	context.subscriptions.push(zgsmAuthCommands)
-
-	zgsmAuthCommands.registerCommands(context)
-
-	provider.setZgsmAuthCommands(zgsmAuthCommands)
-
-	/**
-	 * 插件启动时检查登录状态
-	 */
-	try {
-		const isLoggedIn = await zgsmAuthService.checkLoginStatusOnStartup()
-
-		if (isLoggedIn) {
-			provider.log("插件启动时检测到登录状态：有效")
-			zgsmAuthService.getTokens().then((tokens) => {
-				if (!tokens) {
-					return
-				}
-				initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
-
-				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
-				zgsmAuthService.updateUserInfo(tokens.access_token)
-			})
-			// 开始token刷新定时器
-		} else {
-			ZgsmAuthService.openStatusBarLoginTip()
-			provider.log("插件启动时检测到登录状态：无效")
-		}
-	} catch (error) {
-		provider.log("启动时检查登录状态失败: " + error.message)
-	}
-
-	await ZgsmCore.activate(context, provider, outputChannel)
 }
