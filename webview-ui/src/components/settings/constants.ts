@@ -14,6 +14,8 @@ import {
 	groqModels,
 	chutesModels,
 	geminiCliModels,
+	sambaNovaModels,
+	doubaoModels,
 } from "@roo-code/types"
 
 export const MODELS_BY_PROVIDER: Partial<Record<ProviderName, Record<string, ModelInfo>>> = {
@@ -21,6 +23,7 @@ export const MODELS_BY_PROVIDER: Partial<Record<ProviderName, Record<string, Mod
 	"claude-code": claudeCodeModels,
 	bedrock: bedrockModels,
 	deepseek: deepSeekModels,
+	doubao: doubaoModels,
 	moonshot: moonshotModels,
 	gemini: geminiModels,
 	"gemini-cli": geminiCliModels,
@@ -30,6 +33,7 @@ export const MODELS_BY_PROVIDER: Partial<Record<ProviderName, Record<string, Mod
 	xai: xaiModels,
 	groq: groqModels,
 	chutes: chutesModels,
+	sambanova: sambaNovaModels,
 }
 
 export const PROVIDERS = [
@@ -39,6 +43,7 @@ export const PROVIDERS = [
 	{ value: "claude-code", label: "Claude Code" },
 	{ value: "gemini", label: "Google Gemini" },
 	{ value: "gemini-cli", label: "Gemini CLI" },
+	{ value: "doubao", label: "Doubao" },
 	{ value: "deepseek", label: "DeepSeek" },
 	{ value: "moonshot", label: "Moonshot" },
 	{ value: "openai-native", label: "OpenAI" },
@@ -58,4 +63,5 @@ export const PROVIDERS = [
 	{ value: "huggingface", label: "Hugging Face" },
 	{ value: "chutes", label: "Chutes AI" },
 	{ value: "litellm", label: "LiteLLM" },
+	{ value: "sambanova", label: "SambaNova" },
 ].sort((a, b) => a.label.localeCompare(b.label))

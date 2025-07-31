@@ -15,6 +15,7 @@ import {
 	litellmDefaultModelId,
 	openAiNativeDefaultModelId,
 	anthropicDefaultModelId,
+	doubaoDefaultModelId,
 	claudeCodeDefaultModelId,
 	geminiDefaultModelId,
 	deepSeekDefaultModelId,
@@ -27,6 +28,7 @@ import {
 	vertexDefaultModelId,
 	zgsmDefaultModelId,
 	geminiCliDefaultModelId,
+	sambaNovaDefaultModelId,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -58,6 +60,7 @@ import {
 	Chutes,
 	ClaudeCode,
 	DeepSeek,
+	Doubao,
 	Gemini,
 	Glama,
 	Groq,
@@ -71,6 +74,7 @@ import {
 	OpenAICompatible,
 	OpenRouter,
 	Requesty,
+	SambaNova,
 	Unbound,
 	Vertex,
 	VSCodeLM,
@@ -308,6 +312,7 @@ const ApiOptions = ({
 				gemini: { field: "apiModelId", default: geminiDefaultModelId },
 				"gemini-cli": { field: "apiModelId", default: geminiCliDefaultModelId },
 				deepseek: { field: "apiModelId", default: deepSeekDefaultModelId },
+				doubao: { field: "apiModelId", default: doubaoDefaultModelId },
 				moonshot: { field: "apiModelId", default: moonshotDefaultModelId },
 				mistral: { field: "apiModelId", default: mistralDefaultModelId },
 				xai: { field: "apiModelId", default: xaiDefaultModelId },
@@ -315,6 +320,7 @@ const ApiOptions = ({
 				chutes: { field: "apiModelId", default: chutesDefaultModelId },
 				bedrock: { field: "apiModelId", default: bedrockDefaultModelId },
 				vertex: { field: "apiModelId", default: vertexDefaultModelId },
+				sambanova: { field: "apiModelId", default: sambaNovaDefaultModelId },
 				openai: { field: "openAiModelId" },
 				zgsm: { field: "zgsmModelId", default: zgsmDefaultModelId },
 				ollama: { field: "ollamaModelId" },
@@ -503,6 +509,10 @@ const ApiOptions = ({
 				<DeepSeek apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
 			)}
 
+			{selectedProvider === "doubao" && (
+				<Doubao apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+			)}
+
 			{selectedProvider === "moonshot" && (
 				<Moonshot apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
 			)}
@@ -538,6 +548,10 @@ const ApiOptions = ({
 					organizationAllowList={organizationAllowList}
 					modelValidationError={modelValidationError}
 				/>
+			)}
+
+			{selectedProvider === "sambanova" && (
+				<SambaNova apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
 			)}
 
 			{selectedProvider === "human-relay" && (

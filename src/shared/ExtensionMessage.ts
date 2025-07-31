@@ -332,6 +332,7 @@ export type ExtensionState = Pick<
 	cloudApiUrl?: string
 	sharingEnabled: boolean
 	organizationAllowList: OrganizationAllowList
+	organizationSettingsVersion?: number
 
 	autoCondenseContext: boolean
 	autoCondenseContextPercent: number
