@@ -44,7 +44,7 @@ export class ZgsmAuthService {
 				throw new Error("ZgsmAuthService not initialized")
 			}
 
-			// ZgsmAuthService.instance = new ZgsmAuthService(ZgsmAuthService.clineProvider)
+			ZgsmAuthService.instance = new ZgsmAuthService(ZgsmAuthService.clineProvider)
 		}
 		return ZgsmAuthService.instance
 	}
