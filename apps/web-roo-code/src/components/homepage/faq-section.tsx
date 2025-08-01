@@ -4,64 +4,233 @@ import { useState } from "react"
 import { motion } from "framer-motion"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
 
 interface FAQItem {
 	question: string
-	answer: string
+	answer: React.ReactNode
 }
 
 const faqs: FAQItem[] = [
 	{
 		question: "What exactly is Costrict?",
-		answer: "Costrict is an open-source, AI-powered coding assistant that runs in VS Code. It goes beyond simple autocompletion by reading and writing across multiple files, executing commands, and adapting to your workflow—like having a whole dev team right inside your editor.",
+		answer: (
+			<>
+				Costrict is an open-source, AI-powered coding assistant that runs in VS Code. It goes beyond simple
+				autocompletion by reading and writing across multiple files, executing commands, and adapting to your
+				workflow—like having a whole dev team right inside your editor.
+			</>
+		),
 	},
 	{
 		question: "How does Costrict differ from Copilot, Cursor, or Windsurf?",
-		answer: "Open & Customizable: Costrict is open-source and allows you to integrate any AI model (OpenAI, Anthropic, local LLMs, etc.). Multi-File Edits: It can read, refactor, and update multiple files at once for more holistic changes. Agentic Abilities: Costrict can run tests, open a browser, or do deeper tasks than a typical AI autocomplete. Permission-Based: You control and approve any file changes or command executions.",
+		answer: (
+			<>
+				Costrict is <strong>open-source and fully customizable</strong>, letting you integrate any AI model you
+				choose (e.g, OpenAI, Anthropic, local LLMs, etc.). It&apos;s built for <strong>multi-file edits</strong>
+				, so it can read, refactor, and update multiple files at once for holistic code changes. Its{" "}
+				<strong>agentic abilities</strong> go beyond a typical AI autocomplete, enabling it to run tests, open a
+				browser, and handle deeper tasks. And you&apos;re always in control: Costrict is{" "}
+				<strong>permission-based</strong>, meaning you can control and approve any file changes or command
+				executions.
+			</>
+		),
 	},
 	{
 		question: "Is Costrict really free?",
-		answer: "Yes! Costrict is completely free and open-source. You'll only pay for the AI model usage if you use a paid API (like OpenAI). If you choose free or self-hosted models, there's no cost at all.",
+		answer: (
+			<>
+				Yes! Costrict is completely free and open-source. You&apos;ll only pay for the AI model usage if you use
+				a paid API (like OpenAI). If you choose free or self-hosted models, there&apos;s no cost at all.
+			</>
+		),
 	},
 	{
 		question: "Will my code stay private?",
-		answer: "Yes. Because Costrict is an extension in your local VS Code, your code never leaves your machine unless you connect to an external AI API. Even then, you control exactly what is sent to the AI model. You can use tools like .rooignore to exclude sensitive files, and you can also run Costrict with offline/local models for full privacy.",
+		answer: (
+			<>
+				Yes. Because Costrict is an extension in your local VS Code, your code never leaves your machine unless
+				you connect to an external AI API. Even then, you control exactly what is sent to the AI model. You can
+				use tools like .rooignore to exclude sensitive files, and you can also run Costrict with offline/local
+				models for full privacy.
+			</>
+		),
 	},
 	{
 		question: "Which AI models does Costrict support?",
-		answer: "Costrict is model-agnostic. It works with: OpenAI models (GPT-3.5, GPT-4, etc.), Anthropic Claude, Local LLMs (through APIs or special plugins), Any other API that follows Costrict's Model Context Protocol (MCP).",
+		answer: (
+			<>
+				Costrict is fully model-agnostic, giving you the flexibility to work with whatever AI models you prefer.
+				It supports OpenAI models (like GPT-4o, GPT-4, and o1), Anthropic&apos;s Claude (including Claude 3.5
+				Sonnet), Google&apos;s Gemini models, and local LLMs via APIs or specialized plugins. You can even
+				connect any other model that follows Costrict&apos;s Model Context Protocol (MCP).
+			</>
+		),
 	},
 	{
 		question: "Does Costrict support my programming language?",
-		answer: "Likely yes! Costrict supports a wide range of languages—Python, Java, C#, JavaScript/TypeScript, Go, Rust, etc. Since it leverages the AI model's understanding, new or lesser-known languages may also work, depending on model support.",
+		answer: (
+			<>
+				Likely yes! Costrict supports a wide range of languages—Python, Java, C#, JavaScript/TypeScript, Go,
+				Rust, etc. Since it leverages the AI model&apos;s understanding, new or lesser-known languages may also
+				work, depending on model support.
+			</>
+		),
 	},
 	{
 		question: "How do I install and get started?",
-		answer: "Install Costrict from the VS Code Marketplace (or GitHub). Add your AI keys (OpenAI, Anthropic, or other) in the extension settings. Open the Costrict panel (the rocket icon) in VS Code, and start typing commands in plain English!",
+		answer: (
+			<>
+				Install Costrict from the{" "}
+				<a
+					href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					VS Code Marketplace
+				</a>{" "}
+				(or GitHub). Add your AI keys (OpenAI, Anthropic, or other) in the extension settings. Open the Roo
+				panel (the rocket icon) in VS Code, and start typing commands in plain English!{" "}
+				<a
+					href="https://docs.roocode.com/tutorial-videos"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Watch our tutorial to help you get started.
+				</a>
+			</>
+		),
 	},
 	{
 		question: "Can it handle large, enterprise-scale projects?",
-		answer: "Absolutely. Costrict uses efficient strategies (like partial-file analysis, summarization, or user-specified context) to handle large codebases. Enterprises especially appreciate the on-prem or self-hosted model option for compliance and security needs.",
+		answer: (
+			<>
+				Absolutely. Costrict uses efficient strategies (like partial-file analysis, summarization, or
+				user-specified context) to handle large codebases. Enterprises especially appreciate the on-prem or
+				self-hosted model option for compliance and security needs.{" "}
+				<Link href="/enterprise" className="text-primary underline-offset-4 hover:underline">
+					Learn more about Costrict for enterprise.
+				</Link>
+			</>
+		),
 	},
 	{
 		question: "Is it safe for enterprise use?",
-		answer: "Yes. Costrict was designed with enterprise in mind: Self-host AI models or choose your own provider. Permission gating on file writes and commands. Auditable: The entire code is open-source, so you know exactly how it operates.",
+		answer: (
+			<>
+				Yes. Costrict was built for enterprise environments. You can self-host AI models or use your own trusted
+				provider. All file changes and commands go through permission gating, so nothing runs without your
+				approval. And because Costrict is fully open-source, it&apos;s auditable—you can review exactly how it
+				works before deploying it.{" "}
+				<a
+					href="https://roocode.com/enterprise"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Learn more about Costrict for enterprise.
+				</a>
+			</>
+		),
 	},
 	{
 		question: "Can Costrict run commands and tests automatically?",
-		answer: "Yes! One of Costrict's superpowers is command execution (optional and fully permission-based). It can: Run npm install or any terminal command you grant permission for. Execute your test suites. Open a web browser for integration tests.",
+		answer: (
+			<>
+				Yes! One of Costrict&apos;s biggest strengths is its ability to execute commands—always optional and
+				fully permission-based. It can run terminal commands like npm install, execute your test suites, and
+				even open a web browser for integration testing when you approve it.
+			</>
+		),
 	},
 	{
 		question: "What if I just want a casual coding 'vibe'?",
-		answer: 'Costrict shines for both serious enterprise development and casual "vibe coding." You can ask it to quickly prototype ideas, refactor on the fly, or provide design suggestions—without a rigid, step-by-step process.',
+		answer: (
+			<>
+				Costrict shines for both serious enterprise development and casual &quot;vibe coding.&quot; You can ask
+				it to quickly prototype ideas, refactor on the fly, or provide design suggestions—without a rigid,
+				step-by-step process.
+			</>
+		),
 	},
 	{
 		question: "Can I contribute to Costrict?",
-		answer: "Yes, please do! Costrict is open-source on GitHub. Submit issues, suggest features, or open a pull request. There's also an active community on Discord and Reddit if you want to share feedback or help others.",
+		answer: (
+			<>
+				Yes, please do! Costrict is open-source on{" "}
+				<a
+					href="https://github.com/zgsm-ai/costrict"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					GitHub
+				</a>
+				. Submit issues, suggest features, or open a pull request. There&apos;s also an active community on{" "}
+				<a
+					href="https://discord.gg/roocode"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Discord
+				</a>{" "}
+				and{" "}
+				<a
+					href="https://reddit.com/r/RooCode"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Reddit
+				</a>{" "}
+				if you want to share feedback or help others.
+			</>
+		),
 	},
 	{
 		question: "Where can I learn more or get help?",
-		answer: "Check out: Official Documentation for setup and advanced guides. Discord & Reddit channels for community support. YouTube tutorials and blog posts from fellow developers showcasing real-world usage.",
+		answer: (
+			<>
+				Check out our{" "}
+				<a
+					href="https://docs.roocode.com"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					official documentation
+				</a>{" "}
+				for both a quick-start set up and advanced guides. You can also get community support on{" "}
+				<a
+					href="https://discord.gg/roocode"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Discord
+				</a>{" "}
+				and{" "}
+				<a
+					href="https://reddit.com/r/RooCode"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					Reddit
+				</a>
+				. You can also check out our{" "}
+				<a
+					href="https://www.youtube.com/@RooCodeYT"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					YouTube
+				</a>{" "}
+				tutorials and{" "}
+				<a
+					href="https://blog.roocode.com"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-primary underline-offset-4 hover:underline">
+					blog posts
+				</a>{" "}
+				from fellow developers showcasing real-world usage.
+			</>
+		),
 	},
 ]
 
@@ -84,10 +253,8 @@ export function FAQSection() {
 							duration: 0.6,
 							ease: [0.21, 0.45, 0.27, 0.9],
 						}}>
-						<h2 className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl">
-							Frequently Asked Questions
-						</h2>
-						<p className="mt-6 text-lg text-muted-foreground">
+						<h2 className="text-4xl font-bold tracking-tight sm:text-5xl">Frequently Asked Questions</h2>
+						<p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
 							Everything you need to know about Costrict and how it can transform your development
 							workflow.
 						</p>
@@ -125,9 +292,7 @@ export function FAQSection() {
 											"overflow-hidden transition-all duration-300 ease-in-out",
 											openIndex === index ? "max-h-96 pb-6" : "max-h-0",
 										)}>
-										<div className="px-6 text-muted-foreground">
-											<p>{faq.answer}</p>
-										</div>
+										<div className="px-6 text-muted-foreground">{faq.answer}</div>
 									</div>
 								</div>
 							</motion.div>

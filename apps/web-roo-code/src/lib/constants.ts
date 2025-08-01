@@ -1,5 +1,6 @@
 export const EXTERNAL_LINKS = {
 	GITHUB: "https://github.com/zgsm-ai/costrict",
+	GITHUB_DISCUSSIONS: "https://github.com/zgsm-ai/costrict/discussions",
 	DISCORD: "https://discord.gg/roocode",
 	REDDIT: "https://reddit.com/r/RooCode",
 	X: "https://x.com/roo_code",
@@ -18,6 +19,11 @@ export const EXTERNAL_LINKS = {
 	TUTORIALS: "https://docs.roocode.com/tutorial-videos",
 	MARKETPLACE: "https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm",
 	SECURITY: "https://trust.roocode.com",
+	EVALS: "https://roocode.com/evals",
+	BLOG: "https://blog.roocode.com",
+	OFFICE_HOURS_PODCAST: "https://www.youtube.com/@RooCodeYT/podcasts",
+	FAQ: "https://roocode.com/#faq",
+	TESTIMONIALS: "https://roocode.com/#testimonials",
 }
 
 export const INTERNAL_LINKS = {
