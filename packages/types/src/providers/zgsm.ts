@@ -12,7 +12,7 @@ import { vertexModels } from "./vertex.js"
 import { vscodeLlmModels } from "./vscode-llm.js"
 import { xaiModels } from "./xai.js"
 
-export const zgsmDefaultModelId = "deepseek-v3"
+export const zgsmDefaultModelId = "glm45-fp8"
 
 export const zgsmModels = {
 	...anthropicModels,
@@ -27,6 +27,16 @@ export const zgsmModels = {
 	...vertexModels,
 	...vscodeLlmModels,
 	...xaiModels,
+	"glm45-fp8": {
+		maxTokens: 32768,
+		contextWindow: 131072,
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 0,
+		outputPrice: 0,
+		description:
+			"GLM-4.5-FP8 model with 128k token context window, optimized for agent-based applications with MoE architecture.",
+	},
 	"qwen25-vl-32b": {
 		maxTokens: 32768,
 		contextWindow: 64_000,
