@@ -131,7 +131,7 @@ export const ZgsmAI = ({
 				onInput={handleInputChange("zgsmBaseUrl")}
 				placeholder={t("settings:placeholders.baseUrl")}
 				className="w-full">
-				<label className="block font-medium mb-1">{t("settings:providers.openAiBaseUrl")}</label>
+				<label className="block font-medium mb-1">{t("settings:providers.zgsmBaseUrl")}</label>
 			</VSCodeTextField>
 			{!fromWelcomeView && (
 				<>
