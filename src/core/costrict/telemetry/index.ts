@@ -1,5 +1,5 @@
 import { TelemetryService, PrometheusTelemetryClient } from "@roo-code/telemetry"
-import { ClineProvider } from "../../webview/ClineProvider"
+import type { ClineProvider } from "../../webview/ClineProvider"
 export * from "./constants"
 
 export function initTelemetry(provider: ClineProvider) {

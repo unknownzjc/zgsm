@@ -12,7 +12,7 @@ import { getAcceptionString, getCorrectionString } from "./completionDataInterfa
 import { CompletionCache } from "./completionCache"
 // import { writeLogsSync } from "../common/vscode-util"
 import * as vscode from "vscode"
-import { ClineProvider } from "../../webview/ClineProvider"
+import type { ClineProvider } from "../../webview/ClineProvider"
 import { createHeaders } from "../../../utils/zgsmUtils"
 import { ZgsmAuthConfig } from "../auth"
 

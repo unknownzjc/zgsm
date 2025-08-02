@@ -11,12 +11,12 @@ let clientIdCache: string | null = null
 
 // Gets the path to client ID file
 const getClientIdFilePath = (): string => {
-	return path.join(os.homedir(), ".zgsm", ".clientId")
+	return path.join(os.homedir(), ".costrict", ".clientId")
 }
 
 // Gets .zgsm directory path
 const getZgsmDirPath = (): string => {
-	return path.join(os.homedir(), ".zgsm")
+	return path.join(os.homedir(), ".costrict")
 }
 
 // Generates new client ID

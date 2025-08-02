@@ -178,23 +178,6 @@ export const ZgsmAccountView = ({ apiConfiguration, onDone }: AccountViewProps) 
 						<h2 className="text-lg font-medium text-vscode-foreground mb-2">
 							{t("account:cloudBenefitsTitle")}
 						</h2>
-						<p className="text-md text-vscode-descriptionForeground mb-4">
-							{t("account:cloudBenefitsSubtitle")}
-						</p>
-						<ul className="text-sm text-vscode-descriptionForeground space-y-2 max-w-xs mx-auto">
-							<li className="flex items-start">
-								<span className="mr-2 text-vscode-foreground">•</span>
-								{t("account:cloudBenefitHistory")}
-							</li>
-							<li className="flex items-start">
-								<span className="mr-2 text-vscode-foreground">•</span>
-								{t("account:cloudBenefitSharing")}
-							</li>
-							<li className="flex items-start">
-								<span className="mr-2 text-vscode-foreground">•</span>
-								{t("account:cloudBenefitMetrics")}
-							</li>
-						</ul>
 					</div>
 
 					<div className="flex flex-col gap-4">

@@ -28,7 +28,7 @@ import { createLogger, ILogger } from "../../../utils/logger"
 import { getClientId } from "../../../utils/getClientId"
 import { t } from "../../../i18n"
 import { CommentService, type CommentThreadInfo } from "../../../integrations/comment"
-import { ClineProvider } from "../../webview/ClineProvider"
+import type { ClineProvider } from "../../webview/ClineProvider"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeReviewErrorType, type TelemetryErrorType } from "../telemetry"
 /**

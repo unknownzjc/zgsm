@@ -15,8 +15,7 @@ import { CodeReviewService } from "./codeReviewService"
 import { CommentService } from "../../../integrations/comment"
 import type { ReviewComment } from "./reviewComment"
 import { ReviewTarget, ReviewTargetType } from "./types"
-import { TelemetryService } from "@roo-code/telemetry"
-import { CodeBaseError, CodeReviewErrorType, type TelemetryErrorType } from "../telemetry"
+import { CodeBaseError, type TelemetryErrorType } from "../telemetry"
 
 export function initCodeReview(
 	context: vscode.ExtensionContext,

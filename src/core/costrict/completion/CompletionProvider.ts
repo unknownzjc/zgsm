@@ -1,4 +1,4 @@
-import { ClineProvider } from "../../webview/ClineProvider"
+import type { ClineProvider } from "../../webview/ClineProvider"
 /**
  * Copyright (c) 2024 - Sangfor LTD.
  *

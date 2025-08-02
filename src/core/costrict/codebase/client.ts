@@ -13,7 +13,7 @@ import {
 	VersionResponse,
 	SyncCodebaseResponse,
 } from "./types/codebase_syncer"
-import { ClineProvider } from "../../webview/ClineProvider"
+import type { ClineProvider } from "../../webview/ClineProvider"
 import { getWorkspacePath } from "../../../utils/path"
 import { PackageInfo, PackagesResponse } from "./types"
 import { getClientId } from "../../../utils/getClientId"
@@ -29,6 +29,7 @@ export class ZgsmCodeBaseSyncService {
 	private address = ""
 	private curVersion = ""
 	private processName = "costrict"
+	// private processName = "CostrictIndexClient"
 	private accessToken = ""
 	private serverEndpoint = ""
 	private childPid?: number // Record processName process PID
@@ -119,7 +120,7 @@ export class ZgsmCodeBaseSyncService {
 			throw new Error("Failed to determine home directory path")
 		}
 
-		const cacheDir = path.join(homeDir, ".zgsm", "bin")
+		const cacheDir = path.join(homeDir, ".costrict", "bin")
 		const targetDir = path.join(cacheDir, version, `${this.platform}_${this.arch}`)
 		const targetPath = path.join(targetDir, `${this.processName}${this.platform === "windows" ? ".exe" : ""}`)
 		return { targetDir, targetPath, cacheDir }
@@ -429,7 +430,7 @@ export class ZgsmCodeBaseSyncService {
 				const exeName = processName.endsWith(".exe") ? processName : `${processName}.exe`
 				await execPromise(`taskkill /F /IM "${exeName}" /T`)
 			} else {
-				await execPromise(`pkill -f "${processName}"`).catch(() => {})
+				await execPromise(`pkill -x "${processName}"`).catch(() => {})
 			}
 
 			this.log(`Killed ${processName} process by name`)

@@ -6,7 +6,7 @@
  */
 
 import * as vscode from "vscode"
-import { ClineProvider } from "../webview/ClineProvider"
+import type { ClineProvider } from "../webview/ClineProvider"
 
 // Import from migrated modules
 import { AICompletionProvider, CompletionStatusBar, shortKeyCut } from "./completion"
