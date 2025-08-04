@@ -292,7 +292,7 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	maxDiagnosticMessages: 50,
 
 	language: "en",
-	telemetrySetting: "enabled",
+	telemetrySetting: "disabled",
 
 	mcpEnabled: false,
 

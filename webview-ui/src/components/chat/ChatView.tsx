@@ -41,6 +41,7 @@ import { StandardTooltip } from "@src/components/ui"
 import { useAutoApprovalState } from "@src/hooks/useAutoApprovalState"
 import { useAutoApprovalToggles } from "@src/hooks/useAutoApprovalToggles"
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import TelemetryBanner from "../common/TelemetryBanner"
 import VersionIndicator from "../common/VersionIndicator"
 import { useTaskSearch } from "../history/useTaskSearch"
@@ -111,6 +112,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		alwaysAllowFollowupQuestions,
 		alwaysAllowUpdateTodoList,
 		customModes,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		telemetrySetting,
 		hasSystemPromptOverride,
 		historyPreviewCollapsed, // Added historyPreviewCollapsed
@@ -1823,7 +1825,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						/>
 
 						<RooHero />
-						{telemetrySetting === "unset" && <TelemetryBanner />}
+						{/* {telemetrySetting === "unset" && <TelemetryBanner />} */}
 
 						<div className="mb-2.5">
 							{/* {cloudIsAuthenticated || taskHistory.length < 4 ? <RooTips /> : <RooCloudCTA />} */}

@@ -197,7 +197,7 @@ describe("mergeExtensionState", () => {
 			maxOpenTabsContext: 20,
 			maxWorkspaceFiles: 100,
 			apiConfiguration: { providerId: "openrouter" } as ProviderSettings,
-			telemetrySetting: "unset",
+			telemetrySetting: "disabled",
 			showRooIgnoredFiles: true,
 			renderContext: "sidebar",
 			maxReadFileLine: 500,

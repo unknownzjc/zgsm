@@ -105,7 +105,7 @@ const mockPostMessage = (state: any) => {
 				allowedCommands: [],
 				alwaysAllowExecute: false,
 				cloudIsAuthenticated: false,
-				telemetrySetting: "enabled",
+				telemetrySetting: "disabled",
 				mode: "code",
 				customModes: [],
 				...state,

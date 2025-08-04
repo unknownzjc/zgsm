@@ -79,7 +79,7 @@ describe("TelemetryClient", () => {
 
 		it("doesn't initialize PostHog when telemetry is unset", () => {
 			// Act
-			telemetryClient.updateTelemetryState("unset")
+			telemetryClient.updateTelemetryState("disabled")
 
 			// Assert
 			expect(posthog.init).not.toHaveBeenCalled()
@@ -120,7 +120,7 @@ describe("TelemetryClient", () => {
 		 */
 		it("doesn't capture events when telemetry is unset", () => {
 			// Arrange - set telemetry to unset
-			telemetryClient.updateTelemetryState("unset")
+			telemetryClient.updateTelemetryState("disabled")
 			vi.clearAllMocks() // Clear previous calls
 
 			// Act
