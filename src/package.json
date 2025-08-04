@@ -310,7 +310,7 @@
 				{
 					"command": "zgsm.marketplaceButtonClicked",
 					"group": "navigation@2",
-					"when": "view == zgsm.SidebarProvider"
+					"when": "false"
 				},
 				{
 					"command": "zgsm.settingsButtonClicked",
@@ -357,7 +357,7 @@
 				{
 					"command": "zgsm.marketplaceButtonClicked",
 					"group": "navigation@2",
-					"when": "activeWebviewPanelId == zgsm.TabPanelProvider"
+					"when": "false"
 				},
 				{
 					"command": "zgsm.settingsButtonClicked",

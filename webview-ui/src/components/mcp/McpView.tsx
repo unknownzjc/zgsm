@@ -23,6 +23,7 @@ import {
 	DialogDescription,
 	DialogFooter,
 	ToggleSwitch,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	StandardTooltip,
 } from "@src/components/ui"
 import { buildDocLink } from "@src/utils/docLinks"
@@ -156,7 +157,8 @@ const McpView = ({ onDone }: McpViewProps) => {
 								<span className="codicon codicon-refresh" style={{ marginRight: "6px" }}></span>
 								{t("mcp:refreshMCP")}
 							</Button>
-							<StandardTooltip content={t("mcp:marketplace")}>
+							{/* todo: marketplace */}
+							{/* <StandardTooltip content={t("mcp:marketplace")}>
 								<Button
 									variant="secondary"
 									style={{ width: "100%" }}
@@ -173,7 +175,7 @@ const McpView = ({ onDone }: McpViewProps) => {
 									<span className="codicon codicon-extensions" style={{ marginRight: "6px" }}></span>
 									{t("mcp:marketplace")}
 								</Button>
-							</StandardTooltip>
+							</StandardTooltip> */}
 						</div>
 						<div
 							style={{

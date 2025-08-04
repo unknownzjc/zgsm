@@ -27,6 +27,7 @@ import { ApiConfigSelector } from "./ApiConfigSelector"
 import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
 import { VolumeX, Image, WandSparkles, SendHorizontal } from "lucide-react"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { IndexingStatusBadge } from "./IndexingStatusBadge"
 import { SlashCommandsPopover } from "./SlashCommandsPopover"
 import { cn } from "@/lib/utils"
@@ -958,7 +959,8 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						</StandardTooltip>
 					)}
 					<SlashCommandsPopover />
-					<IndexingStatusBadge className={cn("bg-vscode-input-background  opacity-85")} />
+					{/* todo: IndexingStatusBadge */}
+					{/* <IndexingStatusBadge className={cn("bg-vscode-input-background  opacity-85")} /> */}
 
 					<StandardTooltip content={t("chat:addImages")}>
 						<button

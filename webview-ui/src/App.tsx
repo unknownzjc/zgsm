@@ -16,6 +16,7 @@ import HistoryView from "./components/history/HistoryView"
 import SettingsView, { SettingsViewRef } from "./components/settings/SettingsView"
 import WelcomeView from "./components/welcome/WelcomeView"
 import McpView from "./components/mcp/McpView"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { MarketplaceView } from "./components/marketplace/MarketplaceView"
 import ModesView from "./components/modes/ModesView"
 import CodeReviewPage from "./components/code-review"
@@ -61,7 +62,7 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 	promptsButtonClicked: "modes",
 	mcpButtonClicked: "mcp",
 	historyButtonClicked: "history",
-	marketplaceButtonClicked: "marketplace",
+	// marketplaceButtonClicked: "marketplace",
 	accountButtonClicked: "account",
 	zgsmAccountButtonClicked: "zgsm-account",
 	codeReviewButtonClicked: "codeReview",
@@ -84,6 +85,7 @@ const App = () => {
 	} = useExtensionState()
 
 	// Create a persistent state manager
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const marketplaceStateManager = useMemo(() => new MarketplaceViewStateManager(), [])
 
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
@@ -131,6 +133,7 @@ const App = () => {
 	)
 
 	const [currentSection, setCurrentSection] = useState<string | undefined>(undefined)
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const [currentMarketplaceTab, setCurrentMarketplaceTab] = useState<string | undefined>(undefined)
 
 	const onMessage = useCallback(
@@ -273,13 +276,13 @@ const App = () => {
 			{tab === "settings" && (
 				<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
 			)}
-			{tab === "marketplace" && (
+			{/* {tab === "marketplace" && (
 				<MarketplaceView
 					stateManager={marketplaceStateManager}
 					onDone={() => switchTab("chat")}
 					targetTab={currentMarketplaceTab as "mcp" | "mode" | undefined}
 				/>
-			)}
+			)} */}
 			{tab === "account" && (
 				<AccountView
 					userInfo={cloudUserInfo}
