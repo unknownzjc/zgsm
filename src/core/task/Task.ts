@@ -547,10 +547,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const shouldCaptureMessage = message.partial !== true && CloudService.isEnabled()
 
 		if (shouldCaptureMessage) {
-			CloudService.instance.captureEvent({
-				event: TelemetryEventName.TASK_MESSAGE,
-				properties: { taskId: this.taskId, message },
-			})
+			// CloudService.instance.captureEvent({
+			// 	event: TelemetryEventName.TASK_MESSAGE as any,
+			// 	properties: { taskId: this.taskId, message },
+			// })
 		}
 	}
 
@@ -569,7 +569,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 		if (shouldCaptureMessage) {
 			CloudService.instance.captureEvent({
-				event: TelemetryEventName.TASK_MESSAGE,
+				event: TelemetryEventName.TASK_MESSAGE as any,
 				properties: { taskId: this.taskId, message },
 			})
 		}

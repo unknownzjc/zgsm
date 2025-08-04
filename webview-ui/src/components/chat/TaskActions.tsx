@@ -9,7 +9,7 @@ import { useCopyToClipboard } from "@/utils/clipboard"
 
 import { DeleteTaskDialog } from "../history/DeleteTaskDialog"
 import { IconButton } from "./IconButton"
-import { ShareButton } from "./ShareButton"
+// import { ShareButton } from "./ShareButton"
 
 interface TaskActionsProps {
 	item?: HistoryItem
@@ -23,7 +23,7 @@ export const TaskActions = ({ item, buttonsDisabled }: TaskActionsProps) => {
 
 	return (
 		<div className="flex flex-row gap-1">
-			<ShareButton item={item} disabled={false} />
+			{/* <ShareButton item={item} disabled={false} /> */}
 			<IconButton
 				iconClass="codicon-desktop-download"
 				title={t("chat:task.export")}
