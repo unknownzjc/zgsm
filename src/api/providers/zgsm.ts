@@ -1,6 +1,7 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI, { AzureOpenAI } from "openai"
 import axios from "axios"
+import { v7 as uuidv7 } from "uuid"
 
 import {
 	type ModelInfo,
@@ -101,6 +102,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			"x-request-id": `${metadata?.instanceId}-${Date.now().toString()}`,
 			"zgsm-client-id": getClientId(),
 			"zgsm-project-path": encodeURI(getWorkspacePath()),
+			"X-Request-ID": uuidv7(),
 		}
 
 		try {

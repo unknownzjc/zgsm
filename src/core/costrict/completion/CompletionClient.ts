@@ -10,6 +10,7 @@ import OpenAI from "openai"
 import { Logger } from "../base/common/log-util"
 import { workspace } from "vscode"
 import { AxiosError } from "axios"
+import { v7 as uuidv7 } from "uuid"
 import * as vscode from "vscode"
 import {
 	configCompletion,
@@ -255,7 +256,9 @@ export class CompletionClient {
 		this.reqs.set(cp.id, abortController)
 
 		Logger.log(`Completion [${cp.id}]: Sending API request`)
-		const headers = createHeaders()
+		const headers = createHeaders({
+			"X-Request-ID": uuidv7(),
+		})
 		const repo = workspace?.name?.split(" ")[0] ?? ""
 
 		const config = await this.getApiConfig(apiConfiguration)
