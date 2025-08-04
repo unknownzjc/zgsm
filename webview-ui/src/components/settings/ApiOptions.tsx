@@ -30,6 +30,8 @@ import {
 	zgsmDefaultModelId,
 	geminiCliDefaultModelId,
 	sambaNovaDefaultModelId,
+	internationalZAiDefaultModelId,
+	mainlandZAiDefaultModelId,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -82,6 +84,7 @@ import {
 	VSCodeLM,
 	XAI,
 	ZgsmAI,
+	ZAi,
 } from "./providers"
 
 import { MODELS_BY_PROVIDER, PROVIDERS } from "./constants"
@@ -324,6 +327,13 @@ const ApiOptions = ({
 				bedrock: { field: "apiModelId", default: bedrockDefaultModelId },
 				vertex: { field: "apiModelId", default: vertexDefaultModelId },
 				sambanova: { field: "apiModelId", default: sambaNovaDefaultModelId },
+				zai: {
+					field: "apiModelId",
+					default:
+						apiConfiguration.zaiApiLine === "china"
+							? mainlandZAiDefaultModelId
+							: internationalZAiDefaultModelId,
+				},
 				openai: { field: "openAiModelId" },
 				zgsm: { field: "zgsmModelId", default: zgsmDefaultModelId },
 				ollama: { field: "ollamaModelId" },
@@ -559,6 +569,10 @@ const ApiOptions = ({
 
 			{selectedProvider === "sambanova" && (
 				<SambaNova apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+			)}
+
+			{selectedProvider === "zai" && (
+				<ZAi apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
 			)}
 
 			{selectedProvider === "human-relay" && (

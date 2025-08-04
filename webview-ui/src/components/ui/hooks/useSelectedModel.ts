@@ -43,6 +43,10 @@ import {
 	sambaNovaDefaultModelId,
 	doubaoModels,
 	doubaoDefaultModelId,
+	internationalZAiDefaultModelId,
+	mainlandZAiDefaultModelId,
+	internationalZAiModels,
+	mainlandZAiModels,
 } from "@roo-code/types"
 
 import type { ModelRecord, RouterModels } from "@roo/api"
@@ -215,6 +219,14 @@ function getSelectedModel({
 		case "moonshot": {
 			const id = apiConfiguration.apiModelId ?? moonshotDefaultModelId
 			const info = moonshotModels[id as keyof typeof moonshotModels]
+			return { id, info }
+		}
+		case "zai": {
+			const isChina = apiConfiguration.zaiApiLine === "china"
+			const models = isChina ? mainlandZAiModels : internationalZAiModels
+			const defaultModelId = isChina ? mainlandZAiDefaultModelId : internationalZAiDefaultModelId
+			const id = apiConfiguration.apiModelId ?? defaultModelId
+			const info = models[id as keyof typeof models]
 			return { id, info }
 		}
 		case "openai-native": {
