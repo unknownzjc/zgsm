@@ -164,6 +164,9 @@
 		},
 		"statusbar": {
 			"login_expired": "無法取得登入資訊。請重新登入以使用 Code Review 服務。"
+		},
+		"comment": {
+			"detail_label": "Code Review 詳情"
 		}
 	}
 }

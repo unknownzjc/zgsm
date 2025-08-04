@@ -168,6 +168,9 @@
 		},
 		"statusbar": {
 			"login_expired": "Failed to get login information. Please log in again to use the code review."
+		},
+		"comment": {
+			"detail_label": "Code Review Details"
 		}
 	}
 }

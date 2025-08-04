@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import { CommentThreadInfo } from "./types"
+import { t } from "../../i18n"
 
 /**
  * Comment Service Class - Manages VS Code editor comment system integration
@@ -37,15 +38,6 @@ export class CommentService {
 				"costrict-code-review",
 				"costrict Code Review",
 			)
-
-			// Configure commentingRangeProvider
-			this.commentController.commentingRangeProvider = {
-				provideCommentingRanges: (document: vscode.TextDocument) => {
-					// Return entire document range
-					return [new vscode.Range(0, 0, document.lineCount - 1, 0)]
-				},
-			}
-
 			console.log("[CommentService] CommentController initialized")
 		} catch (error) {
 			console.error("[CommentService] Failed to initialize CommentController:", error)
@@ -124,29 +116,6 @@ export class CommentService {
 	}
 
 	/**
-	 * Dispose specified comment thread
-	 */
-	public async disposeCommentThread(issueId: string): Promise<void> {
-		try {
-			// Get the thread using our getter method
-			const thread = this.getCommentThread(issueId)
-
-			if (thread) {
-				// Dispose the thread
-				thread.dispose()
-				console.log(`[CommentService] Disposed comment thread for issue ${issueId}`)
-			}
-
-			// Remove from threadMap (getCommentThread may have already done this)
-			this.threadMap.delete(issueId)
-		} catch (error) {
-			console.error(`[CommentService] Failed to dispose comment thread for issue ${issueId}:`, error)
-			// Still try to remove from map even if dispose failed
-			this.threadMap.delete(issueId)
-		}
-	}
-
-	/**
 	 * Clear all comment threads
 	 */
 	public async clearAllCommentThreads(): Promise<void> {
@@ -216,13 +185,66 @@ export class CommentService {
 	}
 
 	/**
+	 * Update comment thread collapsible state by issue ID
+	 *
+	 * @param issueId - Issue ID to find the comment thread
+	 * @param state - New collapsible state to set
+	 * @returns Promise<boolean> - Returns true if successfully updated, false if thread not found
+	 */
+	private async updateCommentThreadCollapsibleState(
+		issueId: string,
+		state: vscode.CommentThreadCollapsibleState,
+	): Promise<boolean> {
+		try {
+			// Get the thread using our getter method
+			const thread = this.getCommentThread(issueId)
+
+			if (!thread) {
+				console.warn(`[CommentService] Comment thread not found for issue ${issueId}`)
+				return false
+			}
+
+			// Update the collapsible state
+			thread.collapsibleState = state
+
+			console.log(
+				`[CommentService] Updated collapsible state for issue ${issueId} to ${state === vscode.CommentThreadCollapsibleState.Expanded ? "Expanded" : "Collapsed"}`,
+			)
+			return true
+		} catch (error) {
+			console.error(`[CommentService] Failed to update collapsible state for issue ${issueId}:`, error)
+			return false
+		}
+	}
+
+	/**
+	 * Expand comment thread by issue ID
+	 *
+	 * @param issueId - Issue ID to find the comment thread
+	 * @returns Promise<boolean> - Returns true if successfully expanded, false if thread not found
+	 */
+	public async expandCommentThread(issueId: string): Promise<boolean> {
+		return await this.updateCommentThreadCollapsibleState(issueId, vscode.CommentThreadCollapsibleState.Expanded)
+	}
+
+	/**
+	 * Collapse comment thread by issue ID
+	 *
+	 * @param issueId - Issue ID to find the comment thread
+	 * @returns Promise<boolean> - Returns true if successfully collapsed, false if thread not found
+	 */
+	public async collapseCommentThread(issueId: string): Promise<boolean> {
+		return await this.updateCommentThreadCollapsibleState(issueId, vscode.CommentThreadCollapsibleState.Collapsed)
+	}
+
+	/**
 	 * Configure comment thread properties
 	 */
 	private configureCommentThread(thread: vscode.CommentThread): void {
 		thread.contextValue = "CostrictCodeReview"
 		thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded
 		thread.canReply = false
-		thread.label = "Code Review 详情"
+		thread.label = t("common:review.comment.detail_label")
 	}
 
 	/**

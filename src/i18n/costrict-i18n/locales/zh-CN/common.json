@@ -168,6 +168,9 @@
 		},
 		"statusbar": {
 			"login_expired": "获取登录信息失败，请重新登录以使用 Code Review 功能"
+		},
+		"comment": {
+			"detail_label": "Code Review 详情"
 		}
 	}
 }

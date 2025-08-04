@@ -275,9 +275,8 @@ export class CodeReviewService {
 			const currentIssue = this.getCachedIssue(this.currentActiveIssueId)
 			if (currentIssue?.status === IssueStatus.INITIAL) {
 				await this.autoIgnoreCurrentIssue()
-			} else {
-				this.commentService?.disposeCommentThread(this.currentActiveIssueId)
 			}
+			// Note: No longer disposing comment thread to preserve comments
 		}
 
 		// Set new active issue
@@ -336,12 +335,10 @@ export class CodeReviewService {
 			// Create updated issue copy and update cache only after successful API call
 			const updatedIssue = { ...issue, status }
 			this.updateCachedIssues([updatedIssue])
+			this.commentService?.collapseCommentThread(issueId)
 
-			// Remove comment thread if this is the current active issue and status is not INITIAL
+			// Update current active issue if this was the active one and status changed
 			if (this.currentActiveIssueId === issueId && status !== IssueStatus.INITIAL) {
-				if (this.commentService) {
-					await this.commentService.disposeCommentThread(issueId)
-				}
 				this.currentActiveIssueId = null
 			}
 
@@ -613,8 +610,8 @@ export class CodeReviewService {
 		const iconPath = vscode.Uri.joinPath(
 			this.clineProvider!.contextProxy.extensionUri,
 			"assets",
-			"images",
-			"shenma.svg",
+			"costrict",
+			"logo.svg",
 		)
 		const cwd = this.clineProvider!.cwd
 		return {
