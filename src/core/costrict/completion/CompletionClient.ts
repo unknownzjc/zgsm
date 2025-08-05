@@ -11,18 +11,9 @@ import { Logger } from "../base/common/log-util"
 import { workspace } from "vscode"
 import { AxiosError } from "axios"
 import * as vscode from "vscode"
-import {
-	configCompletion,
-	settings,
-	OPENAI_CLIENT_NOT_INITIALIZED,
-	NOT_PROVIDERED,
-	ZGSM_API_KEY,
-	ZGSM_BASE_URL,
-	ZGSM_COMPLETION_URL,
-} from "../base/common/constant"
+import { configCompletion, settings, OPENAI_CLIENT_NOT_INITIALIZED, NOT_PROVIDERED } from "../base/common/constant"
 import { CompletionPoint } from "./completionPoint"
 import { CompletionScores } from "./completionScore"
-import { CompletionTrace } from "./completionTrace"
 import { Completion } from "openai/resources/completions"
 import type { ClineProvider } from "../../webview/ClineProvider"
 import { CompletionAcception } from "./completionDataInterface"
@@ -89,18 +80,15 @@ export class CompletionClient {
 			Logger.log(`Completion [${cp.id}]: Request succeeded`, response)
 			cp.fetched(client.acquireCompletionText(response))
 			cp.parentId = client.acquireCompletionId(response)
-			CompletionTrace.reportApiOk()
 			return cp.getContent()
 		} catch (err: unknown) {
 			if (err instanceof Error && err.name === "AbortError") {
 				Logger.log(`Completion [${cp.id}]: Request cancelled`, err)
 				cp.cancel()
-				CompletionTrace.reportApiCancel()
 			} else {
 				Logger.error(`Completion [${cp.id}]: Request failed`, err)
 				this.client = undefined // reset client
 				const statusCode = (err as AxiosError)?.response?.status || 500
-				CompletionTrace.reportApiError(`${statusCode}`)
 
 				if ((err as AxiosError).status === 401) {
 					const provider = CompletionClient.providerRef.deref()

@@ -35,7 +35,6 @@ export { CompletionPoint, calcKey } from "./completionPoint"
 export { CompletionCache } from "./completionCache"
 export { CompletionStatusBar } from "./completionStatusBar"
 export { getHideScoreArgs } from "./completionScore"
-export { CompletionTrace } from "./completionTrace"
 export { getDependencyImports } from "./extractingImports"
 
 // Command exports

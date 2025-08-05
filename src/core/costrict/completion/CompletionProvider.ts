@@ -37,14 +37,12 @@ import { CompletionCache } from "./completionCache"
 import { getHideScoreArgs } from "./completionScore"
 import { CompletionStatusBar } from "./completionStatusBar"
 import { CompletionPoint } from "./completionPoint"
-import { CompletionTrace } from "./completionTrace"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeCompletionError, type TelemetryErrorType } from "../telemetry"
 
 export class AICompletionProvider implements InlineCompletionItemProvider, Disposable {
 	private disposables: Disposable[] = []
 	private timer: NodeJS.Timeout | undefined
-	private feedbackTimer: NodeJS.Timeout | undefined
 	private mutex: Mutex
 	private provider: ClineProvider
 
@@ -57,7 +55,6 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 		this.timer = undefined
 		this.extensionContext = context
 		CompletionClient.setProvider(provider)
-		CompletionTrace.init(context, this.provider)
 	}
 
 	/**
@@ -140,12 +137,10 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 	}
 
 	public activate() {
-		this.setFeedbackTimer()
 		this.setDidChangeTextDocument()
 	}
 
 	public dispose() {
-		clearInterval(this.feedbackTimer)
 		Disposable.from(...this.disposables).dispose()
 	}
 
@@ -377,7 +372,10 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 				return Promise.resolve(this.toInlineCompletions(document, cp))
 			})
 			.catch((error) => {
-				if (cp.getAcception() === CompletionAcception.Canceled) {
+				if (
+					[CompletionAcception.Canceled, CompletionAcception.None].includes(cp.getAcception()) ||
+					error.message === "Request was aborted."
+				) {
 					Logger.info(`Completion [${cp.id}]: The request has been cancelled.`)
 				} else {
 					Logger.error(`Completion [${cp.id}]: Failed to get completion content`, error)
@@ -386,19 +384,6 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 				}
 				return Promise.reject(error)
 			})
-	}
-
-	/**
-	 * Set a timer to provide feedback information regularly. Several types of information need to be fed back:
-	 * 1. Effect data: Whether the user accepts the completion content.
-	 * 2. Performance data: The end-to-end time spent on the completion request and whether the request is normal.
-	 * 3. Improvement data: The actual content input by the user after rejecting the completion.
-	 */
-	private setFeedbackTimer() {
-		// this.feedbackTimer = setInterval(() => {
-		// 	CompletionTrace.uploadPoints()
-		// 	CompletionTrace.uploadMemo()
-		// }, COMPLETION_CONST.feedbackInterval)
 	}
 
 	/**
