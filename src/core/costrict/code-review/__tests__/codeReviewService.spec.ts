@@ -25,10 +25,10 @@ vi.mock("vscode", () => ({
 		joinPath: vi.fn().mockReturnValue({
 			scheme: "file",
 			authority: "",
-			path: "/test/extension/assets/images/shenma_robot_logo.png",
+			path: "/test/extension/assets/costrict/logo.svg",
 			query: "",
 			fragment: "",
-			fsPath: "/test/extension/assets/images/shenma_robot_logo.png",
+			fsPath: "/test/extension/assets/costrict/logo.svg",
 		}),
 		file: vi.fn().mockImplementation((path) => ({
 			scheme: "file",
@@ -176,6 +176,9 @@ describe("CodeReviewService", () => {
 			const mockCommentService = {
 				focusOrCreateCommentThread: vi.fn(),
 				disposeCommentThread: vi.fn(),
+				collapseCommentThread: vi.fn(),
+				expandCommentThread: vi.fn(),
+				clearAllCommentThreads: vi.fn(),
 			} as Partial<CommentService>
 			service.setCommentService(mockCommentService as CommentService)
 
@@ -1080,7 +1083,6 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 	let codeReviewService: CodeReviewService
 	let mockClineProvider: Partial<ClineProvider>
 	let mockCommentService: any
-	let mockUpdateIssueStatusAPI: any
 
 	const mockIssue1: ReviewIssue = {
 		id: "issue-1",
@@ -1151,15 +1153,15 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 		mockCommentService = {
 			focusOrCreateCommentThread: vi.fn().mockResolvedValue(undefined),
 			disposeCommentThread: vi.fn().mockResolvedValue(undefined),
+			collapseCommentThread: vi.fn().mockResolvedValue(true),
+			expandCommentThread: vi.fn().mockResolvedValue(true),
+			clearAllCommentThreads: vi.fn(),
 		}
 
 		// Get service instance
 		codeReviewService = CodeReviewService.getInstance()
 		codeReviewService.setProvider(mockClineProvider as ClineProvider)
 		codeReviewService.setCommentService(mockCommentService)
-
-		// Setup mocks
-		mockUpdateIssueStatusAPI = vi.mocked(updateIssueStatusAPI)
 
 		// Add mock issues to cache
 		;(codeReviewService as any).updateCachedIssues([mockIssue1, mockIssue2])
@@ -1429,7 +1431,7 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 			expect(updatedIssue?.status).toBe(IssueStatus.REJECT)
 		})
 
-		it("should remove comment thread when updating status from INITIAL and issue is active", async () => {
+		it("should collapse comment thread when updating status from INITIAL and issue is active", async () => {
 			mockUpdateIssueStatusAPI.mockResolvedValue({ success: true })
 
 			// Set issue as active first
@@ -1438,11 +1440,11 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.ACCEPT)
 
-			expect(mockCommentService.disposeCommentThread).toHaveBeenCalledWith("issue-1")
+			expect(mockCommentService.collapseCommentThread).toHaveBeenCalledWith("issue-1")
 			expect(codeReviewService.getCurrentActiveIssueId()).toBeNull()
 		})
 
-		it("should not remove comment thread when updating status to INITIAL", async () => {
+		it("should collapse comment thread when updating status to INITIAL", async () => {
 			mockUpdateIssueStatusAPI.mockResolvedValue({ success: true })
 
 			// Set issue as active first
@@ -1451,11 +1453,11 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.INITIAL)
 
-			expect(mockCommentService.disposeCommentThread).not.toHaveBeenCalled()
+			expect(mockCommentService.collapseCommentThread).toHaveBeenCalledWith("issue-1")
 			expect(codeReviewService.getCurrentActiveIssueId()).toBe("issue-1")
 		})
 
-		it("should not remove comment thread for non-active issue", async () => {
+		it("should collapse comment thread for non-active issue", async () => {
 			mockUpdateIssueStatusAPI.mockResolvedValue({ success: true })
 
 			// Set different issue as active
@@ -1464,7 +1466,7 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.ACCEPT)
 
-			expect(mockCommentService.disposeCommentThread).not.toHaveBeenCalled()
+			expect(mockCommentService.collapseCommentThread).toHaveBeenCalledWith("issue-1")
 			expect(codeReviewService.getCurrentActiveIssueId()).toBe("issue-2")
 		})
 
@@ -1597,7 +1599,7 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			// Verify CommentService interactions
 			expect(mockCommentService.focusOrCreateCommentThread).toHaveBeenCalledTimes(2)
-			expect(mockCommentService.disposeCommentThread).toHaveBeenCalledWith("issue-1")
+			expect(mockCommentService.collapseCommentThread).toHaveBeenCalledWith("issue-1")
 		})
 
 		it("should handle switching active issues with auto-ignore", async () => {
