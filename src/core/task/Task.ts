@@ -32,7 +32,7 @@ import {
 	isBlockingAsk,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
-import { CloudService } from "@roo-code/cloud"
+import { CloudService, TaskBridgeService } from "@roo-code/cloud"
 
 // api
 import { ApiHandler, ApiHandlerCreateMessageMetadata, buildApiHandler } from "../../api"
@@ -120,6 +120,7 @@ export type TaskOptions = {
 	parentTask?: Task
 	taskNumber?: number
 	onCreated?: (task: Task) => void
+	enableTaskBridge?: boolean
 }
 
 export class Task extends EventEmitter<TaskEvents> implements TaskLike {
@@ -242,6 +243,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	checkpointService?: RepoPerTaskCheckpointService
 	checkpointServiceInitializing = false
 
+	// Task Bridge
+	taskBridgeService?: TaskBridgeService
+
 	// Streaming
 	isWaitingForFirstChunk = false
 	isStreaming = false
@@ -273,6 +277,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		parentTask,
 		taskNumber = -1,
 		onCreated,
+		enableTaskBridge = false,
 	}: TaskOptions) {
 		super()
 
@@ -349,6 +354,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		this.toolRepetitionDetector = new ToolRepetitionDetector(this.consecutiveMistakeLimit)
+
+		// Initialize TaskBridgeService only if enabled
+		if (enableTaskBridge) {
+			this.taskBridgeService = TaskBridgeService.getInstance()
+		}
 
 		onCreated?.(this)
 
@@ -944,6 +954,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	// Start / Abort / Resume
 
 	private async startTask(task?: string, images?: string[]): Promise<void> {
+		if (this.taskBridgeService) {
+			await this.taskBridgeService.initialize()
+			await this.taskBridgeService.subscribeToTask(this)
+		}
+
 		// `conversationHistory` (for API) and `clineMessages` (for webview)
 		// need to be in sync.
 		// If the extension process were killed, then on restart the
@@ -995,6 +1010,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	private async resumeTaskFromHistory() {
+		if (this.taskBridgeService) {
+			await this.taskBridgeService.initialize()
+			await this.taskBridgeService.subscribeToTask(this)
+		}
+
 		const modifiedClineMessages = await this.getSavedClineMessages()
 
 		// Remove any resume messages that may have been added before
@@ -1238,6 +1258,13 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.pauseInterval) {
 			clearInterval(this.pauseInterval)
 			this.pauseInterval = undefined
+		}
+
+		// Unsubscribe from TaskBridge service.
+		if (this.taskBridgeService) {
+			this.taskBridgeService
+				.unsubscribeFromTask(this.taskId)
+				.catch((error) => console.error("Error unsubscribing from task bridge:", error))
 		}
 
 		// Release any terminals associated with this task.

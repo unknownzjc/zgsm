@@ -41,6 +41,7 @@ export interface IndexingStatus {
 	processedItems: number
 	totalItems: number
 	currentItemUnit?: string
+	workspacePath?: string
 }
 
 export interface IndexingStatusUpdateMessage {
@@ -288,6 +289,7 @@ export type ExtensionState = Pick<
 	| "profileThresholds"
 	| "includeDiagnosticMessages"
 	| "maxDiagnosticMessages"
+	| "remoteControlEnabled"
 > & {
 	version: string
 	clineMessages: ClineMessage[]

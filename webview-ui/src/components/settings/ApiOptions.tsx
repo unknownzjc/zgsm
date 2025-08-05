@@ -32,6 +32,7 @@ import {
 	sambaNovaDefaultModelId,
 	internationalZAiDefaultModelId,
 	mainlandZAiDefaultModelId,
+	fireworksDefaultModelId,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -85,6 +86,7 @@ import {
 	XAI,
 	ZgsmAI,
 	ZAi,
+	Fireworks,
 } from "./providers"
 
 import { MODELS_BY_PROVIDER, PROVIDERS } from "./constants"
@@ -334,6 +336,7 @@ const ApiOptions = ({
 							? mainlandZAiDefaultModelId
 							: internationalZAiDefaultModelId,
 				},
+				fireworks: { field: "apiModelId", default: fireworksDefaultModelId },
 				openai: { field: "openAiModelId" },
 				zgsm: { field: "zgsmModelId", default: zgsmDefaultModelId },
 				ollama: { field: "ollamaModelId" },
@@ -584,6 +587,10 @@ const ApiOptions = ({
 						{t("settings:providers.humanRelay.instructions")}
 					</div>
 				</>
+			)}
+
+			{selectedProvider === "fireworks" && (
+				<Fireworks apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
 			)}
 
 			{selectedProviderModels.length > 0 && (
