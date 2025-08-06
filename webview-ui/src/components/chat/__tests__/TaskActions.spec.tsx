@@ -86,7 +86,6 @@ describe("TaskActions", () => {
 	})
 
 	describe("Share Button Visibility", () => {
-		return
 		it("renders share button when item has id", () => {
 			render(<TaskActions item={mockItem} buttonsDisabled={false} />)
 
@@ -182,7 +181,6 @@ describe("TaskActions", () => {
 	})
 
 	describe("Unauthenticated User Login Flow", () => {
-		return
 		beforeEach(() => {
 			mockUseExtensionState.mockReturnValue({
 				sharingEnabled: false,
@@ -230,7 +228,6 @@ describe("TaskActions", () => {
 	})
 
 	describe("Mixed Authentication States", () => {
-		return
 		it("shows disabled share button when authenticated but sharing not enabled", () => {
 			mockUseExtensionState.mockReturnValue({
 				sharingEnabled: false,
@@ -353,7 +350,6 @@ describe("TaskActions", () => {
 	})
 
 	describe("Button States", () => {
-		return
 		it("keeps share, export, and copy buttons enabled but disables delete button when buttonsDisabled is true", () => {
 			render(<TaskActions item={mockItem} buttonsDisabled={true} />)
 
@@ -372,7 +368,6 @@ describe("TaskActions", () => {
 		})
 
 		it("share, export, and copy buttons are always enabled while delete button respects buttonsDisabled state", () => {
-			return
 			// Test with buttonsDisabled = false
 			const { rerender } = render(<TaskActions item={mockItem} buttonsDisabled={false} />)
 
