@@ -177,30 +177,31 @@ export class ErrorCodeManager {
 				message = defaultError["401"].message
 				solution = defaultError["401"].solution
 				error.status = status = 401
-			} else if (code === "quota-check.insufficient_quota" || code === "ai-gateway.star_required") {
+			} else if (code === "ai-gateway.insufficient_quota" || code === "ai-gateway.star_required") {
 				const hash = await this.hashToken(apiConfiguration.zgsmAccessToken || "")
-				const isQuota = code === "quota-check.insufficient_quota"
+				const baseurl = ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl()
+				const isQuota = code === "ai-gateway.insufficient_quota"
 
 				const solution1 = isQuota
-					? t("apiErrors:solution.quota-check.insufficientCredits")
+					? t("apiErrors:solution.ai-gateway.insufficientCredits")
 					: t("apiErrors:solution.ai-gateway.pleaseStarProject")
 				const solution2 = isQuota
-					? t("apiErrors:solution.quota-check.quotaAcquisition")
+					? t("apiErrors:solution.ai-gateway.quotaAcquisition")
 					: t("apiErrors:solution.ai-gateway.howToStar")
 
 				const checkRemainingQuotaStr = isQuota
-					? `${t("apiErrors:solution.quota-check.checkRemainingQuota")} “ <mark hash=${hash} type="CREDIT">${t("apiErrors:solution.quota-check.creditUsageStats")}</mark> ” ${t("apiErrors:solution.quota-check.viewDetails")}`
+					? `${t("apiErrors:solution.quota-check.checkRemainingQuota")} “ <a href='${baseurl}/credit/manager/credits?state=${hash}' style="text-decoration: none">${t("apiErrors:solution.quota-check.creditUsageStats")}</a> ” ${t("apiErrors:solution.quota-check.viewDetails")}`
 					: ""
 
 				solution = `\n\n
-<span style="color:#E64545">${solution1}</span>  <mark hash=${hash} type="GUIDE">${solution2}</mark>
+<span style="color:#E64545">${solution1}</span> <a href='${baseurl}/credit/manager/md-preview?state=${hash}' style="text-decoration: none">${solution2}</a>
 
 ${checkRemainingQuotaStr}
 `
 			}
 			TelemetryService.instance.captureError(`ApiError_${code}`)
 			this.provider.log(`[Costrict#apiErrors] task ${taskId}.${instanceId} Raw Error: ${rawError}`)
-			return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}\n\n${solution}`
+			return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}${solution}`
 		}
 		const { message, solution } = defaultError[status] || unknownError
 		if (defaultError[status]) {
@@ -211,7 +212,7 @@ ${checkRemainingQuotaStr}
 			TelemetryService.instance.captureError(`ApiError_unknown`)
 		}
 		this.provider.log(`[Costrict#apiErrors] task ${taskId}.${instanceId} Raw Error: ${rawError}`)
-		return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}\n\n${solution}`
+		return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}${solution}`
 	}
 	private async hashToken(token: string) {
 		const encoder = new TextEncoder()

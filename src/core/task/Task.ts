@@ -2118,10 +2118,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 				return
 			} else {
-				const { response } = await this.ask(
-					"api_req_failed",
-					error.message ?? JSON.stringify(serializeError(error), null, 2),
-				)
+				const { response } = await this.ask("api_req_failed", errorMsg)
 
 				if (response !== "yesButtonClicked") {
 					// This will never happen since if noButtonClicked, we will

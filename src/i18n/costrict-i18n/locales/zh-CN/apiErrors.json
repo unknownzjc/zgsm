@@ -25,14 +25,14 @@
 		"504": "1.请稍后重试\n2.请尝试切换其他模型\n3.请联系管理员",
 		"ai-gateway": {
 			"star_required": "请前往 https://github.com/zgsm-ai/costrict star 项目后继续使用",
-			"pleaseStarProject": "请先star项目",
-			"howToStar": "如何star"
+			"pleaseStarProject": "请先 star 项目",
+			"howToStar": "如何 star",
+			"insufficientCredits": "剩余 Credit 配额不足",
+			"quotaAcquisition": "额度获取"
 		},
 		"quota-check": {
-			"insufficientCredits": "剩余 Credit 配额不足",
-			"quotaAcquisition": "额度获取",
 			"checkRemainingQuota": "剩余额度不清楚？请前往",
-			"creditUsageStats": "Credit用量统计",
+			"creditUsageStats": "Credit 用量统计",
 			"viewDetails": "查看详情"
 		},
 		"undefined": "1.请检查网络连接\n2.请检查代理和防火墙\n3.请联系管理员",

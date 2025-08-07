@@ -22,12 +22,11 @@ import {
 	initLangSetting,
 	printLogo,
 	loadLocalLanguageExtensions,
-	LangSetting,
 } from "./base/common"
 import { ZgsmAuthApi, ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService, ZgsmAuthStorage } from "./auth"
 import { initCodeReview } from "./code-review"
 import { initTelemetry } from "./telemetry"
-import { initErrorCodeManager, ErrorCodeManager } from "./error-code"
+import { initErrorCodeManager } from "./error-code"
 import { Package } from "../../shared/package"
 import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
 import { initZgsmCodeBase, ZgsmCodeBaseSyncService } from "./codebase"
@@ -135,14 +134,6 @@ export async function activate(
 		if (e.affectsConfiguration(configCodeLens)) {
 			// Function Quick Commands settings changed
 			updateCodelensConfig()
-		}
-		if (e.affectsConfiguration("workbench.language")) {
-			// Language settings changed, refresh error codes
-			try {
-				ErrorCodeManager.getInstance().refreshErrorCodes()
-			} catch (error) {
-				console.error("Failed to refresh error codes on language change:", error)
-			}
 		}
 		CompletionStatusBar.initByConfig()
 	})
