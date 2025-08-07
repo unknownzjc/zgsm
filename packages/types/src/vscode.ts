@@ -8,7 +8,19 @@ export const codeActionIds = ["explainCode", "fixCode", "improveCode", "addToCon
 
 export type CodeActionId = (typeof codeActionIds)[number]
 
-export type CodeActionName = "EXPLAIN" | "FIX" | "IMPROVE" | "ADD_TO_CONTEXT" | "NEW_TASK"
+export type CodeActionName =
+	| "EXPLAIN"
+	| "FIX"
+	| "IMPROVE"
+	| "ADD_TO_CONTEXT"
+	| "NEW_TASK"
+	| "ZGSM_EXPLAIN"
+	| "ZGSM_ADD_COMMENT"
+	| "ZGSM_CODE_REVIEW"
+	| "ZGSM_ADD_DEBUG_CODE"
+	| "ZGSM_ADD_STRONG_CODE"
+	| "ZGSM_SIMPLIFY_CODE"
+	| "ZGSM_PERFORMANCE"
 
 /**
  * TerminalAction

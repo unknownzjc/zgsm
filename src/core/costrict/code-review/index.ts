@@ -16,7 +16,67 @@ import { CommentService } from "../../../integrations/comment"
 import type { ReviewComment } from "./reviewComment"
 import { ReviewTarget, ReviewTargetType } from "./types"
 import { CodeBaseError, type TelemetryErrorType } from "../telemetry"
+const startReview = async (
+	reviewInstance: CodeReviewService,
+	targets: ReviewTarget[],
+	isReviewRepo: boolean = false,
+) => {
+	const visibleProvider = await ClineProvider.getInstance()
+	const codebaseSyncService = ZgsmCodeBaseSyncService.getInstance()
+	if (visibleProvider) {
+		const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
 
+		reviewInstance.setProvider(visibleProvider)
+		if (!isReviewRepo) {
+			try {
+				const success = await vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: t("common:review.tip.file_check"),
+					},
+					async (progress) => {
+						const { success } = await codebaseSyncService.checkIgnoreFile(filePaths)
+						progress.report({ increment: 100 })
+						return success
+					},
+				)
+				if (!success) {
+					vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
+					return
+				}
+			} catch (error) {
+				vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
+				return
+			}
+		}
+		visibleProvider.postMessageToWebview({
+			type: "action",
+			action: "codeReviewButtonClicked",
+		})
+
+		reviewInstance.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
+			issues: [],
+			progress: null,
+			message: t("common:review.tip.codebase_sync"),
+		})
+		try {
+			const { success, code } = await codebaseSyncService.syncCodebase(isReviewRepo ? [] : filePaths)
+			if (success) {
+				await reviewInstance.startReviewTask(targets)
+			} else {
+				if (code === "401") {
+					await reviewInstance.handleAuthError()
+					codebaseSyncService.recordError(CodeBaseError.AuthError as TelemetryErrorType)
+					return
+				}
+				reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.codebase_sync_failed")))
+				codebaseSyncService.recordError(CodeBaseError.SyncFailed as TelemetryErrorType)
+			}
+		} catch (error) {
+			reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.service_unavailable")))
+		}
+	}
+}
 export function initCodeReview(
 	context: vscode.ExtensionContext,
 	provider: ClineProvider,
@@ -26,63 +86,6 @@ export function initCodeReview(
 	const commentService = CommentService.getInstance()
 	reviewInstance.setProvider(provider)
 	reviewInstance.setCommentService(commentService)
-	const startReview = async (targets: ReviewTarget[], isReviewRepo: boolean = false) => {
-		const visibleProvider = await ClineProvider.getInstance()
-		const codebaseSyncService = ZgsmCodeBaseSyncService.getInstance()
-		if (visibleProvider) {
-			const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
-
-			reviewInstance.setProvider(visibleProvider)
-			if (!isReviewRepo) {
-				try {
-					const success = await vscode.window.withProgress(
-						{
-							location: vscode.ProgressLocation.Notification,
-							title: t("common:review.tip.file_check"),
-						},
-						async (progress) => {
-							const { success } = await codebaseSyncService.checkIgnoreFile(filePaths)
-							progress.report({ increment: 100 })
-							return success
-						},
-					)
-					if (!success) {
-						vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
-						return
-					}
-				} catch (error) {
-					vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
-					return
-				}
-			}
-			visibleProvider.postMessageToWebview({
-				type: "action",
-				action: "codeReviewButtonClicked",
-			})
-
-			reviewInstance.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
-				issues: [],
-				progress: null,
-				message: t("common:review.tip.codebase_sync"),
-			})
-			try {
-				const { success, code } = await codebaseSyncService.syncCodebase(isReviewRepo ? [] : filePaths)
-				if (success) {
-					await reviewInstance.startReviewTask(targets)
-				} else {
-					if (code === "401") {
-						await reviewInstance.handleAuthError()
-						codebaseSyncService.recordError(CodeBaseError.AuthError as TelemetryErrorType)
-						return
-					}
-					await reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.codebase_sync_failed")))
-					codebaseSyncService.recordError(CodeBaseError.SyncFailed as TelemetryErrorType)
-				}
-			} catch (error) {
-				await reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.service_unavailable")))
-			}
-		}
-	}
 	const commandMap: Partial<Record<CostrictCommandId, any>> = {
 		codeReviewButtonClicked: async () => {
 			let visibleProvider = getVisibleProviderOrLog(outputChannel)
@@ -125,7 +128,7 @@ export function initCodeReview(
 					}
 				}),
 			)
-			startReview(targets)
+			startReview(reviewInstance, targets)
 		},
 		reviewRepo: async () => {
 			const visibleProvider = await ClineProvider.getInstance()
@@ -133,6 +136,7 @@ export function initCodeReview(
 				return
 			}
 			startReview(
+				reviewInstance,
 				[
 					{
 						type: ReviewTargetType.FOLDER,
@@ -171,4 +175,4 @@ export function initCodeReview(
 	}
 }
 
-export { CodeReviewService }
+export { CodeReviewService, startReview, ReviewTargetType }

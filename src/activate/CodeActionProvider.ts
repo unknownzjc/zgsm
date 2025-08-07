@@ -12,6 +12,15 @@ export const TITLES: Record<CodeActionName, string> = {
 	IMPROVE: "Improve with Costrict",
 	ADD_TO_CONTEXT: "Add to Costrict",
 	NEW_TASK: "New Costrict Task",
+
+	// right menu and quick menu
+	ZGSM_EXPLAIN: "Costrict: Explain Code",
+	ZGSM_ADD_COMMENT: "Costrict: Add Comment",
+	ZGSM_CODE_REVIEW: "Costrict: Code Review",
+	ZGSM_ADD_DEBUG_CODE: "Costrict: Add Debug Code",
+	ZGSM_ADD_STRONG_CODE: "Costrict: Add Strong Code",
+	ZGSM_SIMPLIFY_CODE: "Costrict: Simplify Code",
+	ZGSM_PERFORMANCE: "Costrict: Performance Optimization",
 } as const
 
 export class CodeActionProvider implements vscode.CodeActionProvider {
