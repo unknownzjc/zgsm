@@ -113,7 +113,7 @@ export class ErrorCodeManager {
 	 * @returns 格式化的错误信息对象
 	 */
 	public async parseResponse(error: any, taskId: string, instanceId: string): Promise<string> {
-		const isHtml = error?.headers && error.headers["content-type"].includes("text/")
+		const isHtml = error?.headers && error.headers["content-type"] && error.headers["content-type"] === "text/html"
 		let rawError = error.error?.metadata?.raw ? JSON.stringify(error.error.metadata.raw, null, 2) : error.message
 		let status = error.status as number
 		const unknownError = { message: t("apiErrors:status.unknown"), solution: t("apiErrors:solution.unknown") }
@@ -132,7 +132,7 @@ export class ErrorCodeManager {
 				return { message: "", code: "" }
 			}
 		}
-		if (!jsonBody && typeof zgsmParse(error.message, error.message) === "object") {
+		if (!jsonBody && zgsmParse(error.message, error.message).code !== "") {
 			jsonBody = error.message
 		}
 		const { apiConfiguration } = await this.provider.getState()
