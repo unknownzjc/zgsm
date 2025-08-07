@@ -257,10 +257,12 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		}
 
 		const processedResourcePromises = sources.map(async (source): Promise<ProcessedResource | null> => {
-			if (!(source as UriSource).path) {
+			if (!(source as UriSource).path && !(source as EditorContext).filePath) {
 				return null
 			}
-			const resourceUri = vscode.Uri.parse((source as UriSource).path)
+			const resourceUri = vscode.Uri.parse(
+				(source as UriSource).path || path.join(visibleProvider.cwd, (source as EditorContext).filePath),
+			)
 			return createAliasedPath(resourceUri)
 		})
 

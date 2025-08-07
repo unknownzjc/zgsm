@@ -1,6 +1,6 @@
 {
 	"getZgsmApiKey": "登录 Costrict",
-	"introduction": "通过一系列内置和可扩展的模式，Costrict 让你能够以前所未有的方式进行规划、架构设计、编码、调试并提升工作效率。",
+	"introduction": "<strong>Costrict 严肃开发的AI智能伙伴</strong>，开源免费，可私有化部署，重视效果可控、质量为先，提供AI Agent、AI CodeReview、AI Completion三大核心能力，登录即可体验。",
 	"greeting": "你好，我是 Costrict！",
 	"telemetry": {
 		"title": "帮助改进 Costrict"

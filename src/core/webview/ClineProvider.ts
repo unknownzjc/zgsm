@@ -40,7 +40,7 @@ import { CloudService, getRooCodeApiUrl } from "@roo-code/cloud"
 
 import { Package } from "../../shared/package"
 import { findLast } from "../../shared/array"
-import { supportPrompt } from "../../shared/support-prompt"
+import { supportPrompt, type SupportPromptType } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { ExtensionMessage, MarketplaceInstalledMetadata } from "../../shared/ExtensionMessage"
 import { Mode, defaultModeSlug, getModeBySlug } from "../../shared/modes"
@@ -66,7 +66,7 @@ import { MdmService } from "../../services/mdm/MdmService"
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
 import { getWorkspaceGitInfo } from "../../utils/git"
-import { getWorkspacePath } from "../../utils/path"
+import { getWorkspacePath, toRelativePath } from "../../utils/path"
 
 import { setPanel } from "../../activate/registerCommands"
 
@@ -87,6 +87,7 @@ import { getUri } from "./getUri"
 import { ZgsmAuthCommands } from "../costrict/auth"
 import { getClientId } from "../../utils/getClientId"
 import { defaultCodebaseIndexEnabled } from "../../services/code-index/constants"
+import { CodeReviewService, startReview, ReviewTargetType } from "../costrict/code-review"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -446,7 +447,6 @@ export class ClineProvider
 	): Promise<void> {
 		// Capture telemetry for code action usage
 		TelemetryService.instance.captureCodeActionUsed(promptType)
-
 		const visibleProvider = await ClineProvider.getInstance()
 
 		if (!visibleProvider) {
@@ -455,8 +455,19 @@ export class ClineProvider
 
 		const { customSupportPrompts } = await visibleProvider.getState()
 
+		if (promptType === "ZGSM_CODE_REVIEW") {
+			const reviewInstance = CodeReviewService.getInstance()
+			startReview(reviewInstance, [
+				{
+					type: ReviewTargetType.CODE,
+					file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),
+					line_range: [Number(params.startLine), Number(params.endLine)],
+				},
+			])
+		}
+
 		// TODO: Improve type safety for promptType.
-		const prompt = supportPrompt.create(promptType, params, customSupportPrompts)
+		const prompt = supportPrompt.create(promptType as SupportPromptType, params, customSupportPrompts)
 
 		if (command === "addToContext") {
 			await visibleProvider.postMessageToWebview({ type: "invoke", invoke: "setChatBoxMessage", text: prompt })

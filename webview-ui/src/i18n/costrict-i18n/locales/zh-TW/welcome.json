@@ -1,7 +1,7 @@
 {
 	"getZgsmApiKey": "登录 Costrict",
 	"greeting": "你好，我是 Costrict！",
-	"introduction": "<strong>Costrict is the premiere autonomous coding agent.</strong> Get ready to architect, code, debug, and boost your productivity like you've never seen before. To continue, Costrict requires an API key.",
+	"introduction": "<strong>Costrict 嚴肅開發的AI智慧夥伴</strong>，開源免費，可私有化部署，重視效果可控、品質為先，提供AI Agent、AI CodeReview、AI Completion三大核心能力，登入即可體驗。",
 	"telemetry": {
 		"title": "幫助改進 Costrict"
 	},
