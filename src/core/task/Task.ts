@@ -101,6 +101,7 @@ import { restoreTodoListForTask } from "../tools/updateTodoListTool"
 import { ZgsmAuthService } from "../costrict/auth"
 import { getShell } from "../../utils/shell"
 import { AutoApprovalHandler } from "./AutoApprovalHandler"
+import { ErrorCodeManager } from "../costrict/error-code"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 
@@ -2062,6 +2063,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			yield firstChunk.value
 			this.isWaitingForFirstChunk = false
 		} catch (error) {
+			const errorMsg = await ErrorCodeManager.getInstance().parseResponse(error, this.taskId, this.instanceId)
 			if (error.status === 401 && apiConfiguration?.apiProvider === "zgsm") {
 				ZgsmAuthService.openStatusBarLoginTip()
 			}
@@ -2069,16 +2071,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.isWaitingForFirstChunk = false
 			// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
 			if (autoApprovalEnabled && alwaysApproveResubmit) {
-				let errorMsg
-
-				if (error.error?.metadata?.raw) {
-					errorMsg = JSON.stringify(error.error.metadata.raw, null, 2)
-				} else if (error.message) {
-					errorMsg = error.message
-				} else {
-					errorMsg = "Unknown error"
-				}
-
 				const baseDelay = requestDelaySeconds || 5
 				let exponentialDelay = Math.min(
 					Math.ceil(baseDelay * Math.pow(2, retryAttempt)),
@@ -2126,10 +2118,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 				return
 			} else {
-				const { response } = await this.ask(
-					"api_req_failed",
-					error.message ?? JSON.stringify(serializeError(error), null, 2),
-				)
+				const { response } = await this.ask("api_req_failed", errorMsg)
 
 				if (response !== "yesButtonClicked") {
 					// This will never happen since if noButtonClicked, we will

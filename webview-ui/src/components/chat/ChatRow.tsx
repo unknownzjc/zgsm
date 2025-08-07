@@ -1020,7 +1020,10 @@ export const ChatRowContent = ({
 								apiReqStreamingFailedMessage) && (
 								<>
 									<p style={{ ...pStyle, color: "var(--vscode-errorForeground)" }}>
-										{apiRequestFailedMessage || apiReqStreamingFailedMessage}
+										<span
+											dangerouslySetInnerHTML={{
+												__html: (apiRequestFailedMessage || apiReqStreamingFailedMessage) ?? "",
+											}}></span>
 										{apiRequestFailedMessage?.toLowerCase().includes("powershell") && (
 											<>
 												<br />

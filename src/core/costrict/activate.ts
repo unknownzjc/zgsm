@@ -22,11 +22,11 @@ import {
 	initLangSetting,
 	printLogo,
 	loadLocalLanguageExtensions,
-	LangSetting,
 } from "./base/common"
 import { ZgsmAuthApi, ZgsmAuthCommands, ZgsmAuthConfig, ZgsmAuthService, ZgsmAuthStorage } from "./auth"
 import { initCodeReview } from "./code-review"
 import { initTelemetry } from "./telemetry"
+import { initErrorCodeManager } from "./error-code"
 import { Package } from "../../shared/package"
 import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
 import { initZgsmCodeBase, ZgsmCodeBaseSyncService } from "./codebase"
@@ -56,6 +56,7 @@ export async function activate(
 	outputChannel: vscode.OutputChannel,
 ) {
 	createLogger(Package.outputChannel, { channel: outputChannel })
+	initErrorCodeManager(provider)
 	await initialize(provider)
 	startIPCServer()
 	connectIPC()

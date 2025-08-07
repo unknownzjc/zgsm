@@ -14,6 +14,7 @@
 import * as vscode from "vscode"
 import path from "node:path"
 import type { AxiosRequestConfig } from "axios"
+import { v7 as uuidv7 } from "uuid"
 
 import { ReviewTarget, ReviewTask, TaskData } from "./types"
 import { createReviewTaskAPI, getReviewResultsAPI, updateIssueStatusAPI, cancelReviewTaskAPI } from "./api"
@@ -110,6 +111,7 @@ export class CodeReviewService {
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
 				"Accept-Language": language,
+				"X-Request-ID": uuidv7(),
 			},
 		}
 	}

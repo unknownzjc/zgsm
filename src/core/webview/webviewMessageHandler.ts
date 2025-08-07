@@ -58,6 +58,7 @@ import { MarketplaceManager, MarketplaceItemType } from "../../services/marketpl
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
 import { CodeReviewService } from "../costrict/code-review"
+import { ErrorCodeManager } from "../costrict/error-code"
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
@@ -1328,6 +1329,7 @@ export const webviewMessageHandler = async (
 		case "language":
 			changeLanguage(message.text ?? "en")
 			await updateGlobalState("language", message.text as Language)
+			ErrorCodeManager.getInstance().refreshErrorCodes()
 			await provider.postStateToWebview()
 			break
 		case "showRooIgnoredFiles":
