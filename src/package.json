@@ -252,15 +252,15 @@
 			],
 			"zgsm.explorerSubmenu": [
 				{
-					"command": "zgsm.reviewFilesAndFolders",
+					"command": "zgsm.addFileToContext",
 					"group": "zgsm.explorerSubmenu@1"
 				},
 				{
-					"command": "zgsm.reviewRepo",
+					"command": "zgsm.reviewFilesAndFolders",
 					"group": "zgsm.explorerSubmenu@2"
 				},
 				{
-					"command": "zgsm.addFileToContext",
+					"command": "zgsm.reviewRepo",
 					"group": "zgsm.explorerSubmenu@3"
 				}
 			],
@@ -632,12 +632,6 @@
 				"key": "ctrl+l",
 				"mac": "cmd+l",
 				"when": "editorHasSelection"
-			},
-			{
-				"command": "zgsm.addFileToContext",
-				"key": "ctrl+l",
-				"mac": "cmd+l",
-				"when": "filesExplorerFocus"
 			}
 		]
 	},
