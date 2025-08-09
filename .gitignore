@@ -1,5 +1,5 @@
 .pnpm-store
-dist
+**/dist/**
 out
 out-*
 node_modules
@@ -8,7 +8,7 @@ coverage/
 mock/
 .history
 .DS_Store
-
+.coignore
 # IDEs
 .idea
 

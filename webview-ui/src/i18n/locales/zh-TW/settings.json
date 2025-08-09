@@ -832,5 +832,14 @@
 	"includeMaxOutputTokensDescription": "在 API 請求中傳送最大輸出 Token 參數。某些提供商可能不支援此功能。",
 	"limitMaxTokensDescription": "限制回應中的最大 Token 數量",
 	"maxOutputTokensLabel": "最大輸出 Token 數",
-	"maxTokensGenerateDescription": "回應中產生的最大 Token 數"
+	"maxTokensGenerateDescription": "回應中產生的最大 Token 數",
+	"providerChangeWarning": {
+		"title": "供應商切換警告",
+		"description": "切換供應商將會影響以下功能：",
+		"impact1": "程式碼補全功能效果降低",
+		"impact2": "程式碼審查功能無法正常使用",
+		"impact3": "模型無法對程式碼上下文進行有效分析",
+		"cancelButton": "取消",
+		"confirmButton": "確認切換"
+	}
 }

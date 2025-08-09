@@ -28,10 +28,8 @@ import { ZgsmAuthConfig, ZgsmAuthService } from "../../core/costrict/auth"
 import { getZgsmSelectedModelInfo, setZgsmFullResponseData } from "../../shared/getZgsmSelectedModelInfo"
 import { getClientId } from "../../utils/getClientId"
 import { getWorkspacePath } from "../../utils/path"
-let modelsCache = [] as string[]
-// TODO: Rename this to OpenAICompatibleHandler. Also, I think the
-// `OpenAINativeHandler` can subclass from this, since it's obviously
-// compatible with the OpenAI API. We can also rename it to `OpenAIHandler`.
+let modelsCache = new WeakRef<string[]>([])
+
 export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
 	private client: OpenAI
@@ -85,24 +83,36 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
+		// Performance monitoring log
+		const requestId = uuidv7()
+
+		// 1. Cache calculation results and configuration
 		const { info: modelInfo, reasoning } = this.getModel()
 		const modelUrl = this.baseURL || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 		const modelId = this.options.zgsmModelId || zgsmDefaultModelId
 		const enabledR1Format = this.options.openAiR1FormatEnabled ?? false
 		const enabledLegacyFormat = this.options.openAiLegacyFormat ?? false
-		const isAzureAiInference = this._isAzureAiInference(modelUrl)
-		const deepseekReasoner = modelId.includes("deepseek-reasoner") || enabledR1Format
-		const ark = modelUrl.includes(".volces.com")
 
-		const _headers = {
-			...this.headers,
-			"Accept-Language": metadata?.language || "en",
-			"x-quota-identity": this.chatType,
-			"zgsm-task-id": metadata?.taskId,
-			"x-request-id": `${metadata?.instanceId}-${Date.now().toString()}`,
-			"zgsm-client-id": getClientId(),
-			"zgsm-project-path": encodeURI(getWorkspacePath()),
-			"X-Request-ID": uuidv7(),
+		// Cache boolean calculation results
+		const isAzureAiInference = this._isAzureAiInference(modelUrl)
+		const isDeepseekReasoner = modelId.includes("deepseek-reasoner")
+		const deepseekReasoner = isDeepseekReasoner || enabledR1Format
+		const isArk = modelUrl.includes(".volces.com")
+		const ark = isArk
+		const isGrokXAI = this._isGrokXAI(this.baseURL)
+		const isO1Family = modelId.includes("o1") || modelId.includes("o3") || modelId.includes("o4")
+
+		// 2. Cache async call results
+		const cachedClientId = getClientId()
+		const cachedWorkspacePath = getWorkspacePath()
+
+		// 3. Pre-build headers to avoid repeated creation
+		const _headers = this.buildHeaders(metadata, requestId, cachedClientId, cachedWorkspacePath)
+
+		// 4. Handle O1 family models
+		if (isO1Family) {
+			yield* this.handleO3FamilyMessage(modelId, systemPrompt, messages)
+			return
 		}
 
 		try {
@@ -114,80 +124,25 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			)
 		}
 
-		if (modelId.includes("o1") || modelId.includes("o3") || modelId.includes("o4")) {
-			yield* this.handleO3FamilyMessage(modelId, systemPrompt, messages)
-			return
-		}
-
+		// 5. Handle streaming and non-streaming requests
 		if (this.options.openAiStreamingEnabled ?? true) {
-			let systemMessage: OpenAI.Chat.ChatCompletionSystemMessageParam = {
-				role: "system",
-				content: systemPrompt,
-			}
+			const convertedMessages = this.convertMessages(
+				systemPrompt,
+				messages,
+				deepseekReasoner,
+				ark,
+				enabledLegacyFormat,
+				modelInfo,
+			)
 
-			let convertedMessages
-
-			if (deepseekReasoner) {
-				convertedMessages = convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
-			} else if (ark || enabledLegacyFormat) {
-				convertedMessages = [systemMessage, ...convertToSimpleMessages(messages)]
-			} else {
-				if (modelInfo.supportsPromptCache) {
-					systemMessage = {
-						role: "system",
-						content: [
-							{
-								type: "text",
-								text: systemPrompt,
-								// @ts-ignore-next-line
-								cache_control: { type: "ephemeral" },
-							},
-						],
-					}
-				}
-
-				convertedMessages = [systemMessage, ...convertToOpenAiMessages(messages)]
-
-				if (modelInfo.supportsPromptCache) {
-					// Note: the following logic is copied from openrouter:
-					// Add cache_control to the last two user messages
-					// (note: this works because we only ever add one user message at a time, but if we added multiple we'd need to mark the user message before the last assistant message)
-					const lastTwoUserMessages = convertedMessages.filter((msg) => msg.role === "user").slice(-2)
-
-					lastTwoUserMessages.forEach((msg) => {
-						if (typeof msg.content === "string") {
-							msg.content = [{ type: "text", text: msg.content }]
-						}
-
-						if (Array.isArray(msg.content)) {
-							// NOTE: this is fine since env details will always be added at the end. but if it weren't there, and the user added a image_url type message, it would pop a text part before it and then move it after to the end.
-							let lastTextPart = msg.content.filter((part) => part.type === "text").pop()
-
-							if (!lastTextPart) {
-								lastTextPart = { type: "text", text: "..." }
-								msg.content.push(lastTextPart)
-							}
-
-							// @ts-ignore-next-line
-							lastTextPart["cache_control"] = { type: "ephemeral" }
-						}
-					})
-				}
-			}
-
-			const isGrokXAI = this._isGrokXAI(this.baseURL)
-
-			const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
-				model: modelId,
-				temperature: this.options.modelTemperature ?? (deepseekReasoner ? DEEP_SEEK_DEFAULT_TEMPERATURE : 0),
-				messages: convertedMessages,
-				stream: true as const,
-				...(isGrokXAI ? {} : { stream_options: { include_usage: true } }),
-				...(reasoning && reasoning),
-			}
-
-			// Add max_tokens if needed
-			this.addMaxTokensIfNeeded(requestOptions, modelInfo)
+			const requestOptions = this.buildStreamingRequestOptions(
+				modelId,
+				convertedMessages,
+				deepseekReasoner,
+				isGrokXAI,
+				reasoning,
+				modelInfo,
+			)
 
 			const stream = await this.client.chat.completions.create(
 				requestOptions,
@@ -196,66 +151,22 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 				}),
 			)
 
-			const matcher = new XmlMatcher(
-				"think",
-				(chunk) =>
-					({
-						type: chunk.matched ? "reasoning" : "text",
-						text: chunk.data,
-					}) as const,
-			)
-
-			let lastUsage
-
-			for await (const chunk of stream) {
-				const delta = chunk.choices[0]?.delta ?? {}
-
-				if (delta.content) {
-					for (const chunk of matcher.update(delta.content)) {
-						yield chunk
-					}
-				}
-
-				if ("reasoning_content" in delta && delta.reasoning_content) {
-					yield {
-						type: "reasoning",
-						text: (delta.reasoning_content as string | undefined) || "",
-					}
-				}
-				if (chunk.usage) {
-					lastUsage = chunk.usage
-				}
-			}
-
-			for (const chunk of matcher.final()) {
-				yield chunk
-			}
-
-			if (lastUsage) {
-				yield this.processUsageMetrics(lastUsage, modelInfo)
-			}
+			// 6. Optimize stream processing - use batch processing and buffer
+			yield* this.handleOptimizedStream(stream, modelInfo)
 		} else {
-			// o1 for instance doesnt support streaming, non-1 temp, or system prompt
-			const systemMessage: OpenAI.Chat.ChatCompletionUserMessageParam = {
-				role: "user",
-				content: systemPrompt,
-			}
-
-			const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
-				model: modelId,
-				messages: deepseekReasoner
-					? convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
-					: enabledLegacyFormat
-						? [systemMessage, ...convertToSimpleMessages(messages)]
-						: [systemMessage, ...convertToOpenAiMessages(messages)],
-			}
-
-			// Add max_tokens if needed
-			this.addMaxTokensIfNeeded(requestOptions, modelInfo)
+			// Non-streaming processing
+			const requestOptions = this.buildNonStreamingRequestOptions(
+				modelId,
+				systemPrompt,
+				messages,
+				deepseekReasoner,
+				enabledLegacyFormat,
+				modelInfo,
+			)
 
 			const response = await this.client.chat.completions.create(
 				requestOptions,
-				Object.assign(this._isAzureAiInference(modelUrl) ? { path: OPENAI_AZURE_AI_INFERENCE_PATH } : {}, {
+				Object.assign(isAzureAiInference ? { path: OPENAI_AZURE_AI_INFERENCE_PATH } : {}, {
 					headers: _headers,
 				}),
 			)
@@ -276,6 +187,221 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			outputTokens: usage?.completion_tokens || 0,
 			cacheWriteTokens: usage?.cache_creation_input_tokens || undefined,
 			cacheReadTokens: usage?.cache_read_input_tokens || undefined,
+		}
+	}
+
+	/**
+	 * Build request headers (optimize memory allocation)
+	 */
+	private buildHeaders(
+		metadata: ApiHandlerCreateMessageMetadata | undefined,
+		requestId: string,
+		clientId: string,
+		workspacePath: string,
+	): Record<string, string> {
+		return {
+			...this.headers,
+			"Accept-Language": metadata?.language || "en",
+			"x-quota-identity": this.chatType || "system",
+			"X-Request-ID": requestId,
+			"zgsm-task-id": metadata?.taskId || "",
+			"zgsm-request-id": requestId,
+			"zgsm-client-id": clientId,
+			"zgsm-project-path": encodeURI(workspacePath),
+		}
+	}
+
+	/**
+	 * Unified message conversion logic (using strategy pattern)
+	 */
+	private convertMessages(
+		systemPrompt: string,
+		messages: Anthropic.Messages.MessageParam[],
+		isDeepseekReasoner: boolean,
+		isArk: boolean,
+		isLegacyFormat: boolean,
+		modelInfo: ModelInfo,
+	): OpenAI.Chat.ChatCompletionMessageParam[] {
+		let convertedMessages: OpenAI.Chat.ChatCompletionMessageParam[]
+
+		if (isDeepseekReasoner) {
+			convertedMessages = convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
+		} else if (isArk || isLegacyFormat) {
+			convertedMessages = [{ role: "system", content: systemPrompt }, ...convertToSimpleMessages(messages)]
+		} else {
+			const systemMessage = modelInfo.supportsPromptCache
+				? {
+						role: "system" as const,
+						content: [
+							{
+								type: "text" as const,
+								text: systemPrompt,
+								cache_control: { type: "ephemeral" },
+							},
+						],
+					}
+				: { role: "system" as const, content: systemPrompt }
+
+			convertedMessages = [systemMessage, ...convertToOpenAiMessages(messages)]
+		}
+
+		// Apply cache control logic
+		this.applyCacheControlLogic(convertedMessages, modelInfo)
+
+		return convertedMessages
+	}
+
+	/**
+	 * Apply cache control logic (extracted as separate method)
+	 */
+	private applyCacheControlLogic(messages: OpenAI.Chat.ChatCompletionMessageParam[], modelInfo: ModelInfo): void {
+		if (!modelInfo.supportsPromptCache) {
+			return
+		}
+
+		const lastTwoUserMessages = messages.filter((msg) => msg.role === "user").slice(-2)
+
+		for (const msg of lastTwoUserMessages) {
+			if (typeof msg.content === "string") {
+				msg.content = [{ type: "text", text: msg.content }]
+			}
+
+			if (Array.isArray(msg.content)) {
+				let lastTextPart = msg.content.filter((part) => part.type === "text").pop()
+
+				if (!lastTextPart) {
+					lastTextPart = { type: "text", text: "..." }
+					msg.content.push(lastTextPart)
+				}
+
+				// @ts-ignore-next-line
+				lastTextPart["cache_control"] = { type: "ephemeral" }
+			}
+		}
+	}
+
+	/**
+	 * Build streaming request options
+	 */
+	private buildStreamingRequestOptions(
+		modelId: string,
+		messages: OpenAI.Chat.ChatCompletionMessageParam[],
+		isDeepseekReasoner: boolean,
+		isGrokXAI: boolean,
+		reasoning: any,
+		modelInfo: ModelInfo,
+	): OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
+		const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+			model: modelId,
+			temperature: this.options.modelTemperature ?? (isDeepseekReasoner ? DEEP_SEEK_DEFAULT_TEMPERATURE : 0),
+			messages,
+			stream: true as const,
+			...(isGrokXAI ? {} : { stream_options: { include_usage: true } }),
+			...(reasoning && reasoning),
+		}
+
+		this.addMaxTokensIfNeeded(requestOptions, modelInfo)
+		return requestOptions
+	}
+
+	/**
+	 * Build non-streaming request options
+	 */
+	private buildNonStreamingRequestOptions(
+		modelId: string,
+		systemPrompt: string,
+		messages: Anthropic.Messages.MessageParam[],
+		isDeepseekReasoner: boolean,
+		isLegacyFormat: boolean,
+		modelInfo: ModelInfo,
+	): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
+		const systemMessage: OpenAI.Chat.ChatCompletionUserMessageParam = {
+			role: "user",
+			content: systemPrompt,
+		}
+
+		const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
+			model: modelId,
+			messages: isDeepseekReasoner
+				? convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
+				: isLegacyFormat
+					? [systemMessage, ...convertToSimpleMessages(messages)]
+					: [systemMessage, ...convertToOpenAiMessages(messages)],
+		}
+
+		this.addMaxTokensIfNeeded(requestOptions, modelInfo)
+		return requestOptions
+	}
+
+	/**
+	 * Optimized stream processing method (improves memory usage and performance)
+	 */
+	private async *handleOptimizedStream(
+		stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+		modelInfo: ModelInfo,
+	): ApiStream {
+		const matcher = new XmlMatcher(
+			"think",
+			(chunk) =>
+				({
+					type: chunk.matched ? "reasoning" : "text",
+					text: chunk.data,
+				}) as const,
+		)
+
+		let lastUsage
+
+		// Use content buffer to reduce matcher.update() calls
+		const contentBuffer: string[] = []
+		let time = Date.now() + 50
+		for await (const chunk of stream) {
+			const delta = chunk.choices[0]?.delta ?? {}
+
+			// Cache content for batch processing
+			if (delta.content) {
+				contentBuffer.push(delta.content)
+
+				// Process in batch when threshold is reached
+				if (contentBuffer.length >= 3 && Date.now() >= time) {
+					const batchedContent = contentBuffer.join("")
+					for (const processedChunk of matcher.update(batchedContent)) {
+						yield processedChunk
+					}
+					contentBuffer.length = 0 // Clear buffer
+					time = Date.now() + 50
+				}
+			}
+
+			// Process reasoning content
+			if ("reasoning_content" in delta && delta.reasoning_content) {
+				yield {
+					type: "reasoning",
+					text: (delta.reasoning_content as string | undefined) || "",
+				}
+			}
+
+			// Cache usage information
+			if (chunk.usage) {
+				lastUsage = chunk.usage
+			}
+		}
+
+		// Process remaining content
+		if (contentBuffer.length > 0) {
+			const remainingContent = contentBuffer.join("")
+			for (const processedChunk of matcher.update(remainingContent)) {
+				yield processedChunk
+			}
+		}
+
+		// Output final results
+		for (const chunk of matcher.final()) {
+			yield chunk
+		}
+
+		// Process usage metrics
+		if (lastUsage) {
+			yield this.processUsageMetrics(lastUsage, modelInfo)
 		}
 	}
 
@@ -459,7 +585,10 @@ export async function getZgsmModels(baseUrl?: string, apiKey?: string, openAiHea
 			return []
 		}
 
-		if (!URL.canParse(baseUrl)) {
+		// Trim whitespace from baseUrl to handle cases where users accidentally include spaces
+		const trimmedBaseUrl = baseUrl.trim()
+
+		if (!URL.canParse(trimmedBaseUrl)) {
 			return []
 		}
 
@@ -467,6 +596,7 @@ export async function getZgsmModels(baseUrl?: string, apiKey?: string, openAiHea
 		const headers: Record<string, string> = {
 			...DEFAULT_HEADERS,
 			...(openAiHeaders || {}),
+			"X-Request-ID": uuidv7(),
 		}
 
 		if (apiKey) {
@@ -481,11 +611,12 @@ export async function getZgsmModels(baseUrl?: string, apiKey?: string, openAiHea
 		const fullResponseData = response.data?.data || []
 		const modelsArray = fullResponseData?.map((model: any) => model.id) || []
 		const result = [...new Set<string>(modelsArray)]
-		modelsCache = result
+
+		modelsCache = new WeakRef(result)
 		setZgsmFullResponseData(fullResponseData)
 
 		return result
 	} catch (error) {
-		return modelsCache || []
+		return modelsCache.deref() || []
 	}
 }

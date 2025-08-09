@@ -8,6 +8,7 @@ import type {
 	MarketplaceItem,
 	ShareVisibility,
 } from "@roo-code/types"
+import type { IndexStatusResponse } from "../core/costrict/codebase-index/types"
 import { marketplaceItemSchema } from "@roo-code/types"
 
 import { Mode } from "./modes"
@@ -165,7 +166,6 @@ export interface WebviewMessage {
 		| "remoteBrowserEnabled"
 		| "language"
 		| "maxReadFileLine"
-		| "maxReadFileChars"
 		| "maxImageFileSize"
 		| "maxTotalImageSize"
 		| "maxConcurrentFileReads"
@@ -184,6 +184,8 @@ export interface WebviewMessage {
 		| "clearIndexData"
 		| "indexingStatusUpdate"
 		| "indexCleared"
+		| "codebaseIndexStatusResponse"
+		| "zgsmRebuildCodebaseIndex"
 		| "focusPanelRequest"
 		| "profileThresholds"
 		| "setHistoryPreviewCollapsed"
@@ -199,10 +201,14 @@ export interface WebviewMessage {
 		| "switchTab"
 		// zgsm
 		| "zgsmDeleteProfile"
+		| "zgsmPollCodebaseIndexStatus"
+		| "zgsmCodebaseIndexEnabled"
 		| "zgsmLogin"
 		| "zgsmLogout"
 		| "zgsmAbort"
 		| "requestZgsmModels"
+		| "useZgsmCustomConfig"
+		| "zgsmCodebaseIndexEnabled"
 		// zgsm
 		| "profileThresholds"
 		| "shareTaskSuccess"
@@ -266,6 +272,7 @@ export interface WebviewMessage {
 	checkOnly?: boolean // For deleteCustomMode check
 	codeIndexSettings?: {
 		// Global state settings
+		zgsmCodebaseIndexEnabled: boolean
 		codebaseIndexEnabled: boolean
 		codebaseIndexQdrantUrl: string
 		codebaseIndexEmbedderProvider: "openai" | "ollama" | "openai-compatible" | "gemini" | "mistral"
@@ -313,6 +320,17 @@ export interface IndexClearedPayload {
 	error?: string
 }
 
+export interface CodebaseIndexStatusPayload {
+	workspace: string
+	status: IndexStatusResponse
+}
+
+export interface RebuildCodebaseIndexPayload {
+	type: "embedding" | "codegraph" | "all"
+	workspace?: string
+	path?: string
+}
+
 export const installMarketplaceItemWithParametersPayloadSchema = z.object({
 	item: marketplaceItemSchema,
 	parameters: z.record(z.string(), z.any()),
@@ -327,5 +345,7 @@ export type WebViewMessagePayload =
 	| CheckpointRestorePayload
 	| IndexingStatusPayload
 	| IndexClearedPayload
+	| CodebaseIndexStatusPayload
+	| RebuildCodebaseIndexPayload
 	| InstallMarketplaceItemWithParametersPayload
 	| UpdateTodoListPayload

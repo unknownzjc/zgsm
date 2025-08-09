@@ -45,6 +45,8 @@ export const globalSettingsSchema = z.object({
 	condensingApiConfigId: z.string().optional(),
 	customCondensingPrompt: z.string().optional(),
 
+	useZgsmCustomConfig: z.boolean().optional(),
+	zgsmCodebaseIndexEnabled: z.boolean().optional(),
 	autoApprovalEnabled: z.boolean().optional(),
 	showAutoApproveSettingsAtChat: z.boolean().optional(),
 	alwaysAllowReadOnly: z.boolean().optional(),
@@ -103,7 +105,6 @@ export const globalSettingsSchema = z.object({
 	maxWorkspaceFiles: z.number().optional(),
 	showRooIgnoredFiles: z.boolean().optional(),
 	maxReadFileLine: z.number().optional(),
-	maxReadFileChars: z.number().optional(),
 	maxImageFileSize: z.number().optional(),
 	maxTotalImageSize: z.number().optional(),
 
@@ -289,7 +290,6 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	maxWorkspaceFiles: 200,
 	showRooIgnoredFiles: true,
 	maxReadFileLine: -1, // -1 to enable full file reading.
-	maxReadFileChars: -1, // -1 to enable full file reading.
 
 	includeDiagnosticMessages: true,
 	maxDiagnosticMessages: 50,

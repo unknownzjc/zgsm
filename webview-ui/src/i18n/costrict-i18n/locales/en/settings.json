@@ -119,5 +119,14 @@
 	},
 	"prompts": {
 		"description": "Configure support prompts for quick actions like enhancing prompts, explaining code, and fixing issues. These prompts help Costrict provide better support for common development tasks."
+	},
+	"providerChangeWarning": {
+		"title": "Provider Change Warning",
+		"description": "Changing the provider will affect your current conversation and settings:",
+		"impact1": "Current conversation context will be lost",
+		"impact2": "Provider-specific settings will be reset",
+		"impact3": "You may need to reconfigure your API keys and model selection",
+		"cancelButton": "Cancel",
+		"confirmButton": "Continue"
 	}
 }

@@ -110,6 +110,8 @@ export type TaskOptions = {
 	apiConfiguration: ProviderSettings
 	enableDiff?: boolean
 	enableCheckpoints?: boolean
+	useZgsmCustomConfig?: boolean
+	zgsmCodebaseIndexEnabled?: boolean
 	fuzzyMatchThreshold?: number
 	consecutiveMistakeLimit?: number
 	task?: string

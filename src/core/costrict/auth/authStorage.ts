@@ -2,9 +2,9 @@ import { jwtDecode } from "jwt-decode"
 import type { ZgsmAuthTokens, ZgsmLoginState } from "./types"
 import type { ClineProvider } from "../../webview/ClineProvider"
 import { sendZgsmTokens } from "./ipc/client"
-import { initZgsmCodeBase } from "../codebase"
-import { ZgsmAuthConfig } from "./authConfig"
 import { getClientId } from "../../../utils/getClientId"
+import { zgsmCodebaseIndexManager } from "../codebase-index"
+import { workspaceEventMonitor } from "../codebase-index/workspace-event-monitor"
 
 export class ZgsmAuthStorage {
 	private static clineProvider?: ClineProvider
@@ -62,10 +62,11 @@ export class ZgsmAuthStorage {
 
 		sendZgsmTokens(tokens)
 
-		initZgsmCodeBase(
-			state.apiConfiguration.zgsmBaseUrl?.trim() || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
-			tokens.access_token,
-		)
+		// 重新初始化 codebase-index 客户端
+		zgsmCodebaseIndexManager.writeAccessToken(tokens.access_token).then(async () => {
+			await zgsmCodebaseIndexManager.initialize()
+			workspaceEventMonitor.initialize()
+		})
 	}
 
 	/**

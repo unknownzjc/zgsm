@@ -20,7 +20,7 @@ const tips = [
 					type: "action",
 					action: "openCreateModeDialog",
 				})
-			})
+			}, 16)
 		},
 		titleKey: "rooTips.customizableModes.title",
 		descriptionKey: "rooTips.customizableModes.description",

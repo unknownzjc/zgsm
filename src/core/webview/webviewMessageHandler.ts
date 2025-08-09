@@ -30,7 +30,7 @@ import { experimentDefault } from "../../shared/experiments"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { getZgsmFullResponseData } from "../../shared/getZgsmSelectedModelInfo"
 import { openFile } from "../../integrations/misc/open-file"
-import { CodeIndexManager } from "../../services/code-index/manager"
+// import { CodeIndexManager } from "../../services/code-index/manager"
 import { openImage, saveImage } from "../../integrations/misc/image-handler"
 import { selectImages } from "../../integrations/misc/process-images"
 import { getTheme } from "../../integrations/theme/getTheme"
@@ -59,6 +59,7 @@ import { MarketplaceManager, MarketplaceItemType } from "../../services/marketpl
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
 import { CodeReviewService } from "../costrict/code-review"
+import { ZgsmCodebaseIndexManager, IndexSwitchRequest } from "../costrict/codebase-index"
 import { ErrorCodeManager } from "../costrict/error-code"
 
 export const webviewMessageHandler = async (
@@ -732,10 +733,10 @@ export const webviewMessageHandler = async (
 
 				// 获取完整响应数据并发送到 WebView
 				const fullResponseData = getZgsmFullResponseData()
-
+				const modelsArray = Array.isArray(openAiModels) ? openAiModels : []
 				provider.postMessageToWebview({
 					type: "zgsmModels",
-					openAiModels,
+					openAiModels: modelsArray,
 					fullResponseData,
 				})
 			}
@@ -1037,6 +1038,11 @@ export const webviewMessageHandler = async (
 		case "enableCheckpoints":
 			const enableCheckpoints = message.bool ?? true
 			await updateGlobalState("enableCheckpoints", enableCheckpoints)
+			await provider.postStateToWebview()
+			break
+		case "useZgsmCustomConfig":
+			const useZgsmCustomConfig = message.bool ?? true
+			await updateGlobalState("useZgsmCustomConfig", useZgsmCustomConfig)
 			await provider.postStateToWebview()
 			break
 		case "browserViewportSize":
@@ -2346,6 +2352,47 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "zgsmPollCodebaseIndexStatus": {
+			try {
+				// 获取当前工作区路径
+				const workspacePath = getWorkspacePath()
+				if (!workspacePath) {
+					provider.postMessageToWebview({
+						type: "codebaseIndexStatusResponse",
+						payload: {
+							success: false,
+							error: "No workspace folder open",
+						},
+					})
+					return
+				}
+
+				// 调用 ZgsmCodebaseIndexManager.getIndexStatus()
+				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
+				const response = await zgsmCodebaseIndexManager.getIndexStatus(workspacePath)
+
+				// 返回响应消息
+				provider.postMessageToWebview({
+					type: "codebaseIndexStatusResponse",
+					payload: {
+						workspace: workspacePath,
+						status: response.data,
+					},
+				})
+			} catch (error) {
+				provider.log(
+					`Error polling codebase index status: ${error instanceof Error ? error.message : String(error)}`,
+				)
+				provider.postMessageToWebview({
+					type: "codebaseIndexStatusResponse",
+					payload: {
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					},
+				})
+			}
+			break
+		}
 		case "focusPanelRequest": {
 			// Execute the focusPanel command to focus the WebView
 			await vscode.commands.executeCommand(getCommand("focusPanel"))
@@ -2673,6 +2720,91 @@ export const webviewMessageHandler = async (
 					type: "insertTextIntoTextarea",
 					text: text,
 				})
+			}
+			break
+		}
+		case "zgsmCodebaseIndexEnabled": {
+			try {
+				// 从 message.bool 获取开关状态
+				const isEnabled = message.bool
+
+				if (isEnabled === undefined) {
+					provider.log("codebaseIndexEnabled 消息缺少 bool 参数", "error", "ZgsmCodebaseIndexManager")
+					vscode.window.showErrorMessage("代码库索引开关状态无效")
+					break
+				}
+
+				// 获取当前工作区路径
+				const workspacePath = getWorkspacePath()
+				if (!workspacePath) {
+					provider.log("无法获取工作区路径", "error", "ZgsmCodebaseIndexManager")
+					vscode.window.showErrorMessage("无法获取工作区路径")
+					break
+				}
+
+				// 构建 IndexSwitchRequest 对象
+				const switchRequest: IndexSwitchRequest = {
+					workspace: workspacePath,
+					switch: isEnabled ? "on" : "off",
+				}
+
+				// 获取 ZgsmCodebaseIndexManager 实例并调用 toggleIndexSwitch 方法
+				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
+				const result = await zgsmCodebaseIndexManager.toggleIndexSwitch(switchRequest)
+
+				if (result.success) {
+					// 保存状态到全局存储
+					const currentConfig = getGlobalState("zgsmCodebaseIndexEnabled") || {}
+					await updateGlobalState("zgsmCodebaseIndexEnabled", isEnabled)
+
+					// 更新 UI 状态
+					await provider.postStateToWebview()
+
+					provider.log(
+						`代码库索引功能已${isEnabled ? "开启" : "关闭"}: ${workspacePath}`,
+						"info",
+						"ZgsmCodebaseIndexManager",
+					)
+				} else {
+					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
+					vscode.window.showErrorMessage(`代码库索引开关操作失败: ${result.message}`)
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : "代码库索引开关操作时发生未知错误"
+				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+				vscode.window.showErrorMessage(`代码库索引开关操作失败: ${errorMessage}`)
+			}
+			break
+		}
+		case "zgsmRebuildCodebaseIndex": {
+			try {
+				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
+
+				// 获取工作区路径
+				const workspacePath = getWorkspacePath() || ""
+				const rebuildType = message.values?.type || "all"
+				const path = message.values?.path || workspacePath
+
+				// 构建 IndexBuildRequest
+				const indexBuildRequest = {
+					workspace: workspacePath,
+					path: path,
+					type: rebuildType,
+				}
+
+				// 调用 ZgsmCodebaseIndexManager.triggerIndexBuild()
+				const result = await zgsmCodebaseIndexManager.triggerIndexBuild(indexBuildRequest)
+
+				if (result.success) {
+					provider.log(`成功触发索引重新构建: ${rebuildType}`, "info", "ZgsmCodebaseIndexManager")
+				} else {
+					provider.log(`触发索引重新构建失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
+					vscode.window.showErrorMessage(`索引重新构建失败: ${result.message}`)
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : "触发索引重新构建时发生未知错误"
+				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+				vscode.window.showErrorMessage(`索引重新构建失败: ${errorMessage}`)
 			}
 			break
 		}

@@ -23,6 +23,7 @@ import { inputEventTransform, noTransform } from "../transforms"
 import { ModelPicker } from "../ModelPicker"
 import { R1FormatSetting } from "../R1FormatSetting"
 import { ThinkingBudget } from "../ThinkingBudget"
+import { SetCachedStateField } from "../types"
 
 type OpenAICompatibleProps = {
 	fromWelcomeView?: boolean
@@ -30,17 +31,20 @@ type OpenAICompatibleProps = {
 	setApiConfigurationField: (field: keyof ProviderSettings, value: ProviderSettings[keyof ProviderSettings]) => void
 	organizationAllowList: OrganizationAllowList
 	modelValidationError?: string
+	useZgsmCustomConfig?: boolean
+	setCachedStateField: SetCachedStateField<"useZgsmCustomConfig">
 }
 
 export const ZgsmAI = ({
 	apiConfiguration,
 	fromWelcomeView,
 	setApiConfigurationField,
+	setCachedStateField,
 	organizationAllowList,
 	modelValidationError,
+	useZgsmCustomConfig,
 }: OpenAICompatibleProps) => {
 	const { t } = useAppTranslation()
-	const [useZgsmCustomConfig, setUseZgsmCustomConfig] = useState(!!apiConfiguration?.useZgsmCustomConfig)
 
 	const [azureApiVersionSelected, setAzureApiVersionSelected] = useState(!!apiConfiguration?.azureApiVersion)
 	const [openAiLegacyFormatSelected, setOpenAiLegacyFormatSelected] = useState(!!apiConfiguration?.openAiLegacyFormat)
@@ -150,9 +154,7 @@ export const ZgsmAI = ({
 						<VSCodeCheckbox
 							checked={useZgsmCustomConfig}
 							onChange={(e: any) => {
-								const isChecked = e.target.checked
-								setApiConfigurationField("useZgsmCustomConfig", isChecked)
-								setUseZgsmCustomConfig(isChecked)
+								setCachedStateField("useZgsmCustomConfig", e.target.checked)
 							}}>
 							<label className="block font-medium mb-1">{t("settings:显示自定义配置")}</label>
 						</VSCodeCheckbox>

@@ -961,10 +961,10 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		const renderNonEditModeControls = () => (
 			<div className={cn("flex", "justify-between", "items-center", "mt-auto")}>
 				<div className={cn("flex", "items-center", "gap-1", "min-w-0")}>
-					<div className="shrink-0">{renderModeSelector()}</div>
+					<div className="shrink-0 bg-vscode-input-background opacity-90">{renderModeSelector()}</div>
 
 					<div
-						className={cn("flex-1", "min-w-0", "overflow-hidden", "bg-vscode-input-background opacity-85")}>
+						className={cn("flex-1", "min-w-0", "overflow-hidden", "bg-vscode-input-background opacity-90")}>
 						{/* <ApiConfigSelector
 							value={currentConfigId}
 							displayName={displayName}
@@ -999,7 +999,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									"relative inline-flex items-center justify-center",
 									"bg-transparent border-none p-1.5",
 									"rounded-md min-w-[28px] min-h-[28px]",
-									"text-vscode-foreground opacity-85",
+									"text-vscode-foreground opacity-90",
 									"transition-all duration-150",
 									"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
 									"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
@@ -1012,7 +1012,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					)}
 					<SlashCommandsPopover />
 					{/* todo: IndexingStatusBadge */}
-					{/* <IndexingStatusBadge className={cn("bg-vscode-input-background  opacity-85")} /> */}
+					{/* <IndexingStatusBadge className={cn("bg-vscode-input-background  opacity-90")} /> */}
 
 					<StandardTooltip content={t("chat:addImages")}>
 						<button
@@ -1023,7 +1023,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								"relative inline-flex items-center justify-center",
 								"bg-transparent border-none p-1.5",
 								"rounded-md min-w-[28px] min-h-[28px]",
-								"text-vscode-foreground opacity-85",
+								"text-vscode-foreground opacity-90",
 								"transition-all duration-150",
 								"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
 								"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
@@ -1032,7 +1032,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								shouldDisableImages &&
 									"opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
 								"mr-1",
-								"bg-vscode-input-background  opacity-85",
+								"bg-vscode-input-background  opacity-90",
 							)}>
 							<Image className="w-4 h-4" />
 						</button>

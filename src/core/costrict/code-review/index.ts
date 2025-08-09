@@ -9,20 +9,19 @@ import { t } from "../../../i18n"
 import { IssueStatus, TaskStatus } from "../../../shared/codeReview"
 import { getVisibleProviderOrLog } from "../../../activate/registerCommands"
 
-import { ZgsmCodeBaseSyncService } from "../codebase/client"
-
 import { CodeReviewService } from "./codeReviewService"
 import { CommentService } from "../../../integrations/comment"
 import type { ReviewComment } from "./reviewComment"
 import { ReviewTarget, ReviewTargetType } from "./types"
 import { CodeBaseError, type TelemetryErrorType } from "../telemetry"
+import { zgsmCodebaseIndexManager } from "../codebase-index"
 const startReview = async (
 	reviewInstance: CodeReviewService,
 	targets: ReviewTarget[],
 	isReviewRepo: boolean = false,
 ) => {
 	const visibleProvider = await ClineProvider.getInstance()
-	const codebaseSyncService = ZgsmCodeBaseSyncService.getInstance()
+	const codebaseSyncService = zgsmCodebaseIndexManager
 	if (visibleProvider) {
 		const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
 
@@ -35,7 +34,7 @@ const startReview = async (
 						title: t("common:review.tip.file_check"),
 					},
 					async (progress) => {
-						const { success } = await codebaseSyncService.checkIgnoreFile(filePaths)
+						const { success } = await codebaseSyncService.checkIgnoreFiles({ paths: filePaths })
 						progress.report({ increment: 100 })
 						return success
 					},
@@ -60,7 +59,7 @@ const startReview = async (
 			message: t("common:review.tip.codebase_sync"),
 		})
 		try {
-			const { success, code } = await codebaseSyncService.syncCodebase(isReviewRepo ? [] : filePaths)
+			const { success, code } = await codebaseSyncService.syncCodebase(isReviewRepo ? [] : filePaths) // todo
 			if (success) {
 				await reviewInstance.startReviewTask(targets)
 			} else {

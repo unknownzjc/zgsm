@@ -29,9 +29,10 @@ import { initTelemetry } from "./telemetry"
 import { initErrorCodeManager } from "./error-code"
 import { Package } from "../../shared/package"
 import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
-import { initZgsmCodeBase, ZgsmCodeBaseSyncService } from "./codebase"
 import { connectIPC, disconnectIPC, onZgsmLogout, onZgsmTokensUpdate, startIPCServer, stopIPCServer } from "./auth/ipc"
 import { getClientId } from "../../utils/getClientId"
+import ZgsmCodebaseIndexManager, { zgsmCodebaseIndexManager } from "./codebase-index"
+import { workspaceEventMonitor } from "./codebase-index/workspace-event-monitor"
 
 /**
  * Initialization entry
@@ -39,9 +40,9 @@ import { getClientId } from "../../utils/getClientId"
 async function initialize(provider: ClineProvider) {
 	ZgsmAuthStorage.setProvider(provider)
 	ZgsmAuthApi.setProvider(provider)
-	ZgsmCodeBaseSyncService.setProvider(provider)
 	ZgsmAuthService.setProvider(provider)
 	ZgsmAuthCommands.setProvider(provider)
+	zgsmCodebaseIndexManager.setLogProvider(provider)
 	printLogo()
 	initLangSetting()
 	loadLocalLanguageExtensions()
@@ -89,12 +90,14 @@ export async function activate(
 
 		if (isLoggedIn) {
 			provider.log("插件启动时检测到登录状态：有效")
-			zgsmAuthService.getTokens().then((tokens) => {
+			zgsmAuthService.getTokens().then(async (tokens) => {
 				if (!tokens) {
 					return
 				}
-				initZgsmCodeBase(ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(), tokens.access_token)
-
+				zgsmCodebaseIndexManager.writeAccessToken(tokens.access_token).then(async () => {
+					await zgsmCodebaseIndexManager.initialize()
+					workspaceEventMonitor.initialize()
+				})
 				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
 				zgsmAuthService.updateUserInfo(tokens.access_token)
 			})
@@ -166,10 +169,43 @@ export async function activate(
  * Deactivation function for ZGSM
  */
 export function deactivate() {
-	ZgsmCodeBaseSyncService.stopSync()
+	ZgsmCodebaseIndexManager.getInstance().stopExistingClient()
 	// Clean up IPC connections
 	disconnectIPC()
 	stopIPCServer()
+	// 清理工作区事件监控
+	workspaceEventMonitor.handleVSCodeClose()
+
 	// Currently no specific cleanup needed
 	loggerDeactivate()
+}
+
+async function initWorkspaceWatch(
+	context: vscode.ExtensionContext,
+	provider: ClineProvider,
+	outputChannel: vscode.OutputChannel,
+) {
+	// Initialize workspace event monitoring
+	try {
+		const workspaceEventConfig = vscode.workspace.getConfiguration("zgsm.workspaceEvents")
+		const enabled = workspaceEventConfig.get<boolean>("enabled", true)
+		const debounceMs = workspaceEventConfig.get<number>("debounceMs", 1000)
+		const batchSize = workspaceEventConfig.get<number>("batchSize", 50)
+
+		if (enabled) {
+			workspaceEventMonitor.updateConfig({
+				enabled,
+				debounceMs,
+				batchSize,
+			})
+			await workspaceEventMonitor.initialize()
+			outputChannel.appendLine("[WorkspaceEventMonitor] 工作区事件监控已初始化")
+		} else {
+			outputChannel.appendLine("[WorkspaceEventMonitor] 工作区事件监控已禁用")
+		}
+	} catch (error) {
+		outputChannel.appendLine(
+			`[WorkspaceEventMonitor] 初始化失败: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
 }

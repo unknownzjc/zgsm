@@ -13,6 +13,7 @@ import { Section } from "./Section"
 import { vscode } from "@/utils/vscode"
 
 type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
+	zgsmCodebaseIndexEnabled: boolean
 	autoCondenseContext: boolean
 	autoCondenseContextPercent: number
 	listApiConfigMeta: any[]
@@ -20,7 +21,6 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	maxWorkspaceFiles: number
 	showRooIgnoredFiles?: boolean
 	maxReadFileLine?: number
-	maxReadFileChars?: number
 	maxImageFileSize?: number
 	maxTotalImageSize?: number
 	maxConcurrentFileReads?: number
@@ -35,7 +35,6 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "maxWorkspaceFiles"
 		| "showRooIgnoredFiles"
 		| "maxReadFileLine"
-		| "maxReadFileChars"
 		| "maxImageFileSize"
 		| "maxTotalImageSize"
 		| "maxConcurrentFileReads"
@@ -47,6 +46,7 @@ type ContextManagementSettingsProps = HTMLAttributes<HTMLDivElement> & {
 }
 
 export const ContextManagementSettings = ({
+	zgsmCodebaseIndexEnabled,
 	autoCondenseContext,
 	autoCondenseContextPercent,
 	listApiConfigMeta,
@@ -55,7 +55,6 @@ export const ContextManagementSettings = ({
 	showRooIgnoredFiles,
 	setCachedStateField,
 	maxReadFileLine,
-	maxReadFileChars,
 	maxImageFileSize,
 	maxTotalImageSize,
 	maxConcurrentFileReads,
@@ -204,7 +203,6 @@ export const ContextManagementSettings = ({
 								checked={maxReadFileLine === -1}
 								onChange={(e: any) => {
 									setCachedStateField("maxReadFileLine", e.target.checked ? -1 : 500)
-									setCachedStateField("maxReadFileChars", e.target.checked ? -1 : 20_000)
 								}}
 								data-testid="max-read-file-always-full-checkbox">
 								{t("settings:contextManagement.maxReadFile.always_full_read")}

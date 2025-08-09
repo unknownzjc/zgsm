@@ -360,6 +360,7 @@ export async function addCustomInstructions(
 		sections.push(`Rules:\n\n${rules.join("\n\n")}`)
 	}
 
+	sections.push(MUST_FOLLOW_RULES)
 	const joinedSections = sections.join("\n\n")
 
 	return joinedSections
@@ -371,7 +372,7 @@ USER'S CUSTOM INSTRUCTIONS
 The following additional instructions are provided by the user, and should be followed to the best of your ability without interfering with the TOOL USE guidelines.
 
 ${joinedSections}`
-		: ""
+		: MUST_FOLLOW_RULES
 }
 
 /**
@@ -414,3 +415,9 @@ function shouldIncludeRuleFile(filename: string): boolean {
 		}
 	})
 }
+
+export const MUST_FOLLOW_RULES = `MUST FOLLOW RULES:
+1. If in a new shell, you should \`cd\` to the appropriate directory and do necessary setup in addition to running the command. By default, the shell will initialize in the project root.
+2. If in the same shell, LOOK IN CHAT HISTORY for your current working directory.
+3. Before using the execute_command tool, you must first think about the <environment_details> context provided to understand the user's environment and tailor your commands to ensure they are compatible with their system. 
+`

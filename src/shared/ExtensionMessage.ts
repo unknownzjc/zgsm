@@ -103,7 +103,6 @@ export interface ExtensionMessage {
 		| "ttsStart"
 		| "ttsStop"
 		| "maxReadFileLine"
-		| "maxReadFileChars"
 		| "fileSearchResults"
 		| "toggleApiConfigPin"
 		| "acceptInput"
@@ -123,6 +122,7 @@ export interface ExtensionMessage {
 		| "shareTaskSuccess"
 		| "codeIndexSettingsSaved"
 		| "codeIndexSecretStatus"
+		| "codebaseIndexStatusResponse"
 		| "showDeleteMessageDialog"
 		| "showEditMessageDialog"
 		| "reviewTaskUpdate"
@@ -218,6 +218,8 @@ export interface ExtensionMessage {
 export type ExtensionState = Pick<
 	GlobalSettings,
 	| "currentApiConfigName"
+	| "useZgsmCustomConfig"
+	| "zgsmCodebaseIndexEnabled"
 	| "listApiConfigMeta"
 	| "pinnedApiConfigs"
 	// | "lastShownAnnouncementId"
@@ -257,7 +259,6 @@ export type ExtensionState = Pick<
 	// | "maxWorkspaceFiles" // Optional in GlobalSettings, required here.
 	// | "showRooIgnoredFiles" // Optional in GlobalSettings, required here.
 	// | "maxReadFileLine" // Optional in GlobalSettings, required here.
-	// | "maxReadFileChars" // Optional in GlobalSettings, required here.
 	| "maxConcurrentFileReads" // Optional in GlobalSettings, required here.
 	| "terminalOutputLineLimit"
 	| "terminalOutputCharacterLimit"
@@ -309,7 +310,6 @@ export type ExtensionState = Pick<
 	maxWorkspaceFiles: number // Maximum number of files to include in current working directory details (0-500)
 	showRooIgnoredFiles: boolean // Whether to show .rooignore'd files in listings
 	maxReadFileLine: number // Maximum number of lines to read from a file before truncating
-	maxReadFileChars: number // Maximum number of lines to read from a file before truncating
 	maxImageFileSize: number // Maximum size of image files to process in MB
 	maxTotalImageSize: number // Maximum total size for all images in a single read operation in MB
 

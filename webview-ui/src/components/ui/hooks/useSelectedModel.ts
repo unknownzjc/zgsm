@@ -57,6 +57,7 @@ import { useRouterModels } from "./useRouterModels"
 import { useOpenRouterModelProviders } from "./useOpenRouterModelProviders"
 import { useLmStudioModels } from "./useLmStudioModels"
 import { ExtensionMessage } from "@roo/ExtensionMessage"
+import { getZgsmSelectedModelInfo } from "@roo/getZgsmSelectedModelInfo"
 
 let webViewZgsmFullResponseData: any[] = []
 
@@ -130,9 +131,12 @@ function getSelectedModel({
 	// this gives a better UX than showing the default model
 	switch (provider) {
 		case "zgsm": {
+			const openAiCustomModelInfo = apiConfiguration?.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults
 			const id = apiConfiguration.zgsmModelId ?? zgsmDefaultModelId
-			const fullResponseData = getWebViewZgsmFullResponseData()
-			const info = fullResponseData.find((item) => item.id === id)
+			const info = !apiConfiguration.useZgsmCustomConfig
+				? getWebViewZgsmFullResponseData().find((item) => item.id === id) || getZgsmSelectedModelInfo(id)
+				: openAiCustomModelInfo
+
 			return { id, info }
 		}
 		case "openrouter": {

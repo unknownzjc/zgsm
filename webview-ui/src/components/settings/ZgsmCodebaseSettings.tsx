@@ -1,0 +1,773 @@
+import { useState, useEffect } from "react"
+import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
+
+import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { vscode } from "@/utils/vscode"
+import {
+	Button,
+	Progress,
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+	Popover,
+	PopoverTrigger,
+	PopoverContent,
+	Badge,
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui"
+
+import { SectionHeader } from "./SectionHeader"
+import { Section } from "./Section"
+import { ExtensionStateContextType } from "@/context/ExtensionStateContext"
+import { useExtensionState } from "@/context/ExtensionStateContext"
+
+interface ZgsmCodebaseSettingsProps {
+	apiConfiguration: ExtensionStateContextType["apiConfiguration"]
+}
+
+interface IndexStatus {
+	fileCount: number
+	lastUpdated: string
+	progress: number
+	status: "syncing" | "success" | "error"
+	errorMessage?: string
+	failedFiles?: string[]
+}
+
+// 后端返回的索引状态信息类型
+interface IndexStatusInfo {
+	status: "success" | "failed" | "running" | "pending"
+	process: number
+	totalFiles: number
+	totalSucceed: number
+	totalFailed: number
+	failedReason: string
+	failedFiles: string[]
+	processTs: number
+	totalChunks?: number
+}
+
+// 将后端的 IndexStatusInfo 转换为前端组件使用的 IndexStatus 格式
+const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStatus => {
+	let status: "syncing" | "success" | "error" = "success"
+	let errorMessage: string | undefined
+	let progress = 0
+
+	switch (statusInfo.status) {
+		case "running":
+		case "pending":
+			status = "syncing"
+			progress = statusInfo.process
+			break
+		case "success":
+			status = "success"
+			progress = 100
+			break
+		case "failed":
+			status = "error"
+			progress = 100
+			errorMessage = statusInfo.failedReason || "索引构建失败"
+			break
+	}
+
+	const lastUpdated = new Date(statusInfo.processTs).toLocaleString()
+
+	return {
+		fileCount: statusInfo.totalFiles,
+		lastUpdated,
+		progress,
+		status,
+		errorMessage,
+		failedFiles: statusInfo.failedFiles,
+	}
+}
+
+export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsProps) => {
+	const { zgsmCodebaseIndexEnabled, setZgsmCodebaseIndexEnabled } = useExtensionState()
+	const [showDisableConfirmDialog, setShowDisableConfirmDialog] = useState(false)
+	const [isProcessing, setIsProcessing] = useState(false)
+
+	// 轮询相关状态
+	const [pollingIntervalId, setPollingIntervalId] = useState<NodeJS.Timeout | null>(null)
+	const [isPolling, setIsPolling] = useState(false)
+
+	// 判断是否处于【待启用】状态 - 仅当API提供商不是zgsm时
+	const isPendingEnable = apiConfiguration?.apiProvider !== "zgsm"
+
+	// 判断功能是否已禁用
+	const isDisabled = !zgsmCodebaseIndexEnabled
+
+	// 判断是否应该禁用所有操作（待启用状态或功能已禁用）
+	const shouldDisableAll = isPendingEnable || isDisabled
+
+	// 监听全局状态变化，更新本地状态
+	useEffect(() => {
+		if (zgsmCodebaseIndexEnabled !== undefined) {
+			setZgsmCodebaseIndexEnabled(zgsmCodebaseIndexEnabled)
+		}
+	}, [setZgsmCodebaseIndexEnabled, zgsmCodebaseIndexEnabled])
+
+	// 添加状态变化监听器
+	useEffect(() => {
+		console.log("🔍 [DEBUG] State changed:", {
+			zgsmCodebaseIndexEnabled,
+			showDisableConfirmDialog,
+		})
+	}, [zgsmCodebaseIndexEnabled, showDisableConfirmDialog])
+
+	const [semanticIndex, setSemanticIndex] = useState<IndexStatus>({
+		fileCount: 460,
+		lastUpdated: "2025/07/30 10:00:00",
+		progress: 100.0,
+		status: "success",
+	})
+
+	const [codeIndex, setCodeIndex] = useState<IndexStatus>({
+		fileCount: 460,
+		lastUpdated: "2025/07/30 10:00:00",
+		progress: 100.0,
+		status: "success",
+	})
+
+	// 测试环境标识，在生产环境中应该为 false
+	const isDevelopment = process.env.NODE_ENV === "development"
+
+	// 轮询相关函数
+	const startPolling = (delay = 10_000) => {
+		console.log("codebase-index startPolling")
+
+		if (isPolling) return
+
+		setIsPolling(true)
+		const intervalId = setInterval(() => {
+			fetchCodebaseIndexStatus()
+		}, delay) // 每3秒轮询一次
+
+		setPollingIntervalId(intervalId)
+	}
+
+	const stopPolling = () => {
+		if (pollingIntervalId) {
+			clearInterval(pollingIntervalId)
+			setPollingIntervalId(null)
+		}
+		setIsPolling(false)
+	}
+
+	const fetchCodebaseIndexStatus = () => {
+		vscode.postMessage({
+			type: "zgsmPollCodebaseIndexStatus",
+		})
+	}
+
+	// 组件加载时开始轮询，组件销毁时停止轮询
+	useEffect(() => {
+		// 发送重新构建消息到扩展
+		vscode.postMessage({
+			type: "zgsmRebuildCodebaseIndex",
+			values: {
+				type: "all",
+			},
+		})
+		startPolling()
+		return () => {
+			stopPolling()
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []) // 空依赖数组，只在组件挂载和卸载时执行
+
+	// 处理来自扩展的消息
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent) => {
+			const message = event.data
+
+			if (message.type === "codebaseIndexStatusResponse" && message?.payload && message.payload?.status) {
+				const { embedding, codegraph } = message.payload.status
+				setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
+				setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
+
+				// 如果状态为 success 或 error，可以考虑停止轮询
+				if (
+					(embedding.status === "success" || embedding.status === "error") &&
+					(codegraph.status === "success" || codegraph.status === "error")
+				) {
+					// 所有索引都已完成，可以停止轮询
+					// stopPolling() // 注释掉以保持轮询，以便后续状态更新
+				}
+			}
+		}
+
+		window.addEventListener("message", handleMessage)
+		return () => {
+			window.removeEventListener("message", handleMessage)
+		}
+	}, [])
+
+	const handleCodebaseIndexToggle = (checked: boolean) => {
+		console.log("🔍 handleCodebaseIndexToggle called:", {
+			checked,
+			current: zgsmCodebaseIndexEnabled,
+			isProcessing,
+		})
+
+		// 如果正在处理中，防止重复触发
+		if (isProcessing) {
+			console.log("🚫 Blocked by processing lock")
+			return
+		}
+
+		// 如果状态没有变化，直接返回
+		if (checked === zgsmCodebaseIndexEnabled) {
+			console.log("🔄 State unchanged, skipping")
+			return
+		}
+
+		// 如果是从开启状态切换到关闭状态，需要确认
+		if (!checked && zgsmCodebaseIndexEnabled) {
+			console.log("⚠️  Showing disable confirmation dialog")
+			setShowDisableConfirmDialog(true)
+			return
+		}
+
+		console.log("✅ Updating state:", checked)
+		// 只有当状态确实需要改变时才更新
+		setZgsmCodebaseIndexEnabled(checked)
+		// 发送消息到扩展
+		vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: checked })
+	}
+
+	const handleConfirmDisable = async () => {
+		// 设置处理状态锁，防止重复处理
+		setIsProcessing(true)
+
+		// 先更新状态
+		setZgsmCodebaseIndexEnabled(false)
+		// 发送消息到扩展
+		await vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: false })
+
+		// 使用 setTimeout 确保状态更新完成后再关闭弹窗
+		setShowDisableConfirmDialog(false)
+		// 重置处理状态锁
+		setIsProcessing(false)
+	}
+
+	const handleCancelDisable = () => {
+		setShowDisableConfirmDialog(false)
+	}
+
+	const handleRebuildSemanticIndex = () => {
+		setSemanticIndex((prev) => ({ ...prev, status: "syncing", progress: 0 }))
+
+		// 发送重新构建消息到扩展
+		vscode.postMessage({
+			type: "zgsmRebuildCodebaseIndex",
+			values: {
+				type: "embedding",
+			},
+		})
+
+		// 先取消之前的轮询，再开始新的轮询
+		stopPolling()
+		startPolling(5000)
+
+		// 立即触发一次轮询以获取最新状态
+		fetchCodebaseIndexStatus()
+	}
+
+	const handleRebuildCodeIndex = () => {
+		setCodeIndex((prev) => ({ ...prev, status: "syncing", progress: 0 }))
+
+		// 发送重新构建消息到扩展
+		vscode.postMessage({
+			type: "zgsmRebuildCodebaseIndex",
+			values: {
+				type: "codegraph",
+			},
+		})
+
+		// 先取消之前的轮询，再开始新的轮询
+		stopPolling()
+		startPolling(5000)
+
+		// 立即触发一次轮询以获取最新状态
+		fetchCodebaseIndexStatus()
+	}
+
+	const handleEditIgnoreFile = () => {
+		vscode.postMessage({
+			type: "openFile",
+			text: "./.coignore",
+			values: { create: true, content: "" },
+		})
+	}
+
+	const handleOpenFailedFile = (filePath: string) => {
+		vscode.postMessage({
+			type: "openFile",
+			text: filePath,
+			values: {},
+		})
+	}
+
+	// 语义索引测试状态切换函数
+	const handleSetSemanticIndexSyncing = () => {
+		setSemanticIndex((prev) => ({
+			...prev,
+			status: "syncing",
+			progress: 75,
+			fileCount: prev.fileCount + 40,
+			errorMessage: undefined,
+			failedFiles: undefined,
+		}))
+	}
+
+	const handleSetSemanticIndexSuccess = () => {
+		setSemanticIndex((prev) => ({
+			...prev,
+			status: "success",
+			progress: 100,
+			fileCount: prev.fileCount + 20,
+			lastUpdated: new Date()
+				.toLocaleString("zh-CN", {
+					year: "numeric",
+					month: "2-digit",
+					day: "2-digit",
+					hour: "2-digit",
+					minute: "2-digit",
+					second: "2-digit",
+				})
+				.replace(/\//g, "/"),
+			errorMessage: undefined,
+			failedFiles: undefined,
+		}))
+	}
+
+	const handleSetSemanticIndexError = () => {
+		setSemanticIndex((prev) => ({
+			...prev,
+			status: "error",
+			progress: 100,
+			errorMessage: "语义索引构建失败，请检查文件格式或网络连接",
+			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
+		}))
+	}
+
+	// 代码索引测试状态切换函数
+	const handleSetCodeIndexSyncing = () => {
+		setCodeIndex((prev) => ({
+			...prev,
+			status: "syncing",
+			progress: 75,
+			fileCount: prev.fileCount + 40,
+			errorMessage: undefined,
+			failedFiles: undefined,
+		}))
+	}
+
+	const handleSetCodeIndexSuccess = () => {
+		setCodeIndex((prev) => ({
+			...prev,
+			status: "success",
+			progress: 100,
+			fileCount: prev.fileCount + 20,
+			lastUpdated: new Date()
+				.toLocaleString("zh-CN", {
+					year: "numeric",
+					month: "2-digit",
+					day: "2-digit",
+					hour: "2-digit",
+					minute: "2-digit",
+					second: "2-digit",
+				})
+				.replace(/\//g, "/"),
+			errorMessage: undefined,
+			failedFiles: undefined,
+		}))
+	}
+
+	const handleSetCodeIndexError = () => {
+		setCodeIndex((prev) => ({
+			...prev,
+			status: "error",
+			progress: 100,
+			errorMessage: "代码索引构建失败，请检查文件格式或网络连接",
+			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
+		}))
+	}
+
+	const renderIndexSection = (
+		title: string,
+		description: string,
+		indexStatus: IndexStatus,
+		onRebuild: () => void,
+		disabled: boolean = false,
+	) => {
+		const isPendingEnableSection = shouldDisableAll || disabled
+
+		return (
+			<div
+				className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
+				<div className="flex items-center gap-4 font-bold">
+					<FileText className="w-4 h-4" />
+					<div>{title}</div>
+				</div>
+				<div className="text-vscode-descriptionForeground text-sm mb-3">{description}</div>
+
+				{isPendingEnableSection ? (
+					<div className="text-vscode-descriptionForeground text-sm italic py-4">启用后显示详细信息</div>
+				) : (
+					<>
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<div className="text-vscode-descriptionForeground text-sm">文件数</div>
+								<div className="font-medium">{indexStatus.fileCount}</div>
+							</div>
+							<div>
+								<div className="text-vscode-descriptionForeground text-sm">最新更新时间</div>
+								<div className="font-medium">{indexStatus.lastUpdated}</div>
+							</div>
+						</div>
+
+						<div className="mt-2">
+							<div className="flex justify-between text-sm mb-1">
+								<span>构建进度</span>
+								<span>{indexStatus.progress.toFixed(1)}%</span>
+							</div>
+							<Progress value={indexStatus.progress} className="h-2" />
+						</div>
+					</>
+				)}
+
+				<div className="flex items-center justify-between mt-3">
+					<div className="flex items-center gap-2">
+						{isPendingEnableSection ? (
+							<div className="flex items-center gap-2">
+								<div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+								<span>待启用</span>
+							</div>
+						) : (
+							<>
+								{indexStatus.status === "syncing" && (
+									<div className="flex items-center gap-2">
+										<div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+										<span>同步中...</span>
+									</div>
+								)}
+								{indexStatus.status === "success" && (
+									<div className="flex items-center gap-2">
+										<div className="w-3 h-3 bg-green-500 rounded-full"></div>
+										<span>同步成功</span>
+									</div>
+								)}
+								{indexStatus.status === "error" && (
+									<div className="flex items-center gap-2">
+										<TooltipProvider>
+											<Tooltip>
+												<TooltipTrigger>
+													<div className="flex items-center gap-2">
+														<div className="w-3 h-3 bg-red-500 rounded-full"></div>
+														<span>同步失败</span>
+														<Badge variant="destructive" className="text-xs">
+															{indexStatus.failedFiles?.length || 0}
+														</Badge>
+													</div>
+												</TooltipTrigger>
+												<TooltipContent>
+													<p>{indexStatus.errorMessage || "同步失败文件"}</p>
+												</TooltipContent>
+											</Tooltip>
+										</TooltipProvider>
+
+										<Popover>
+											<PopoverTrigger asChild>
+												<Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+													<AlertCircle className="w-3 h-3 mr-1" />
+													查看详情
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-80 max-h-60 overflow-y-auto">
+												<div className="space-y-3">
+													<div className="flex items-center gap-2">
+														<AlertCircle className="w-4 h-4 text-red-500" />
+														<h4 className="font-medium">同步失败文件</h4>
+													</div>
+
+													{indexStatus.errorMessage && (
+														<p className="text-sm text-vscode-errorForeground">
+															{indexStatus.errorMessage}
+														</p>
+													)}
+
+													{indexStatus.failedFiles && indexStatus.failedFiles.length > 0 ? (
+														<div className="space-y-2">
+															<div className="flex justify-between items-center">
+																<p className="text-sm font-medium">失败文件列表:</p>
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	className="h-6 px-2 text-xs"
+																	onClick={() => {
+																		const fileText =
+																			indexStatus.failedFiles?.join("\n") || ""
+																		navigator.clipboard.writeText(fileText)
+																	}}
+																	disabled={disabled}>
+																	<Copy className="w-3 h-3 mr-1" />
+																	复制
+																</Button>
+															</div>
+															<div className="max-h-40 overflow-y-auto border border-vscode-input-border rounded p-2 bg-vscode-textBlockQuote-background">
+																<ul className="text-xs space-y-1">
+																	{indexStatus.failedFiles.map((file, index) => (
+																		<li
+																			key={index}
+																			className={`text-vscode-errorForeground font-mono p-1 rounded transition-colors duration-150 ${disabled ? "" : "hover:bg-vscode-list-hoverBackground cursor-pointer hover:text-vscode-foreground hover:underline"}`}
+																			onClick={() =>
+																				!disabled && handleOpenFailedFile(file)
+																			}>
+																			{file}
+																		</li>
+																	))}
+																</ul>
+															</div>
+														</div>
+													) : (
+														<p className="text-sm text-vscode-descriptionForeground">
+															暂无失败文件信息
+														</p>
+													)}
+												</div>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
+							</>
+						)}
+					</div>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div>
+									<Button
+										onClick={onRebuild}
+										variant="outline"
+										size="sm"
+										className="flex items-center gap-1"
+										disabled={indexStatus.status === "syncing" || isPendingEnableSection}>
+										<RefreshCw
+											className={`w-3 h-3 ${indexStatus.status === "syncing" ? "animate-spin" : ""}`}
+										/>
+										重新构建
+									</Button>
+								</div>
+							</TooltipTrigger>
+							{isPendingEnableSection && (
+								<TooltipContent>
+									<p>
+										{isPendingEnable
+											? "只有在 zgsm 提供商才能使用这个功能"
+											: "Codebase 索引构建已禁用"}
+									</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+				</div>
+			</div>
+		)
+	}
+
+	return (
+		<div>
+			<AlertDialog
+				open={showDisableConfirmDialog}
+				onOpenChange={(open) => {
+					setShowDisableConfirmDialog(open)
+				}}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>确认禁用 Codebase 索引构建</AlertDialogTitle>
+						<AlertDialogDescription>
+							确定要禁用 Codebase 索引构建功能吗？
+							<br />
+							<br />
+							禁用后将导致以下影响：
+							<ul className="list-disc list-inside mt-2 space-y-1">
+								<li>代码补全功能效果降低</li>
+								<li>代码审查功能无法正常使用</li>
+								<li>模型无法对代码上下文进行有效分析</li>
+							</ul>
+							<br />
+							您确定要继续吗？
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel onClick={handleCancelDisable}>取消</AlertDialogCancel>
+						<AlertDialogAction onClick={handleConfirmDisable}>确认</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			<SectionHeader>
+				<div className="flex items-center gap-2">
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<div className="flex items-center gap-2">
+									<VSCodeCheckbox
+										checked={zgsmCodebaseIndexEnabled}
+										onChange={(e: any) => {
+											// 在测试中e.preventDefault可能不存在
+											if (e && e.preventDefault) {
+												e.preventDefault()
+											}
+											handleCodebaseIndexToggle(!zgsmCodebaseIndexEnabled)
+										}}
+										disabled={isPendingEnable}
+									/>
+									<div>Codebase索引构建</div>
+								</div>
+							</TooltipTrigger>
+							{isPendingEnable && (
+								<TooltipContent>
+									<p>只有在 zgsm 提供商才能使用这个功能</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+				</div>
+			</SectionHeader>
+
+			<Section>
+				<div className={`space-y-6 ${!zgsmCodebaseIndexEnabled ? "opacity-50" : ""}`}>
+					{renderIndexSection(
+						"语义索引构建",
+						"为提高代码补全等功能效果，系统会自动将相关语义索引同步构建上传，方便模型对上下文进行分析理解。",
+						semanticIndex,
+						handleRebuildSemanticIndex,
+						!zgsmCodebaseIndexEnabled,
+					)}
+
+					{renderIndexSection(
+						"代码索引构建",
+						"为保证代码审查功能的正常使用，系统会自动将相关代码索引同步构建上传，方便模型对上下文进行分析理解。",
+						codeIndex,
+						handleRebuildCodeIndex,
+						!zgsmCodebaseIndexEnabled,
+					)}
+
+					<div
+						className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background ${!zgsmCodebaseIndexEnabled ? "pointer-events-none" : ""}`}>
+						<div className="flex items-center gap-4 font-bold">
+							<FileText className="w-4 h-4" />
+							<div>Ignore文件设置</div>
+						</div>
+						<div className="text-vscode-descriptionForeground text-sm mb-3">
+							无需同步上传的索引文件可添加到.coignore文件中
+						</div>
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<div>
+										<Button
+											onClick={handleEditIgnoreFile}
+											variant="outline"
+											size="sm"
+											className="w-fit"
+											disabled={shouldDisableAll}>
+											编辑
+										</Button>
+									</div>
+								</TooltipTrigger>
+								{shouldDisableAll && (
+									<TooltipContent>
+										<p>
+											{isPendingEnable
+												? "只有在 zgsm 提供商才能使用这个功能"
+												: "Codebase 索引构建已禁用"}
+										</p>
+									</TooltipContent>
+								)}
+							</Tooltip>
+						</TooltipProvider>
+					</div>
+				</div>
+			</Section>
+
+			{/* 测试按钮区域 - 仅在开发环境显示 */}
+			{isDevelopment && (
+				<>
+					<div className="mt-8 pt-6 border-t border-vscode-panel-border">
+						<div className="text-lg font-semibold mb-4 text-vscode-foreground">测试工具</div>
+
+						<div className="space-y-6">
+							{/* 语义索引测试按钮 */}
+							<div className="p-4 rounded-lg bg-vscode-textBlockQuote-background border border-vscode-textBlockQuote-border">
+								<h3 className="font-medium mb-3 text-vscode-foreground">语义索引状态测试</h3>
+								<div className="flex flex-wrap gap-2">
+									<Button
+										onClick={handleSetSemanticIndexSyncing}
+										variant="outline"
+										size="sm"
+										className="border-yellow-500 text-yellow-600 hover:bg-yellow-500 hover:text-white">
+										同步中
+									</Button>
+									<Button
+										onClick={handleSetSemanticIndexSuccess}
+										variant="outline"
+										size="sm"
+										className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white">
+										同步成功
+									</Button>
+									<Button
+										onClick={handleSetSemanticIndexError}
+										variant="outline"
+										size="sm"
+										className="border-red-500 text-red-600 hover:bg-red-500 hover:text-white">
+										同步失败
+									</Button>
+								</div>
+							</div>
+
+							{/* 代码索引测试按钮 */}
+							<div className="p-4 rounded-lg bg-vscode-textBlockQuote-background border border-vscode-textBlockQuote-border">
+								<h3 className="font-medium mb-3 text-vscode-foreground">代码索引状态测试</h3>
+								<div className="flex flex-wrap gap-2">
+									<Button
+										onClick={handleSetCodeIndexSyncing}
+										variant="outline"
+										size="sm"
+										className="border-yellow-500 text-yellow-600 hover:bg-yellow-500 hover:text-white">
+										同步中
+									</Button>
+									<Button
+										onClick={handleSetCodeIndexSuccess}
+										variant="outline"
+										size="sm"
+										className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white">
+										同步成功
+									</Button>
+									<Button
+										onClick={handleSetCodeIndexError}
+										variant="outline"
+										size="sm"
+										className="border-red-500 text-red-600 hover:bg-red-500 hover:text-white">
+										同步失败
+									</Button>
+								</div>
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+		</div>
+	)
+}

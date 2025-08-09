@@ -124,6 +124,27 @@ vi.mock("@/components/ui", () => ({
 	CollapsibleContent: ({ children, className }: any) => (
 		<div className={`collapsible-content-mock ${className || ""}`}>{children}</div>
 	),
+	// Add AlertDialog components for provider change warning
+	AlertDialog: ({ children, open }: any) => (
+		<div className="alert-dialog-mock" data-open={open} style={{ display: open ? "block" : "none" }}>
+			{children}
+		</div>
+	),
+	AlertDialogContent: ({ children }: any) => <div className="alert-dialog-content-mock">{children}</div>,
+	AlertDialogHeader: ({ children }: any) => <div className="alert-dialog-header-mock">{children}</div>,
+	AlertDialogTitle: ({ children }: any) => <div className="alert-dialog-title-mock">{children}</div>,
+	AlertDialogDescription: ({ children }: any) => <div className="alert-dialog-description-mock">{children}</div>,
+	AlertDialogFooter: ({ children }: any) => <div className="alert-dialog-footer-mock">{children}</div>,
+	AlertDialogCancel: ({ children, onClick }: any) => (
+		<button className="alert-dialog-cancel-mock" onClick={onClick}>
+			{children}
+		</button>
+	),
+	AlertDialogAction: ({ children, onClick }: any) => (
+		<button className="alert-dialog-action-mock" onClick={onClick}>
+			{children}
+		</button>
+	),
 }))
 
 vi.mock("../TemperatureControl", () => ({
@@ -276,6 +297,7 @@ const renderApiOptions = (props: Partial<ApiOptionsProps> = {}) => {
 					uriScheme={undefined}
 					apiConfiguration={{}}
 					setApiConfigurationField={() => {}}
+					setCachedStateField={() => {}}
 					{...props}
 				/>
 			</QueryClientProvider>

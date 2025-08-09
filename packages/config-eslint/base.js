@@ -27,7 +27,7 @@ export const config = [
 		},
 	},
 	{
-		ignores: ["dist/**"],
+		ignores: ["dist/**", "**/dist/**"],
 	},
 	{
 		rules: {

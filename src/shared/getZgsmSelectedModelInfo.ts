@@ -7,19 +7,25 @@ import {
 	openAiNativeDefaultModelId,
 	zgsmModels,
 } from "@roo-code/types"
-// import { ModelInfo } from "../schemas"
-// import {
-// 	anthropicDefaultModelId,
-// 	deepSeekDefaultModelId,
-// 	geminiDefaultModelId,
-// 	mistralDefaultModelId,
-// 	openAiNativeDefaultModelId,
-// 	zgsmModelInfos,
-// } from "./api"
 
-export const getZgsmSelectedModelInfo = (modelId: string): ModelInfo => {
+interface IZgsmModelResponseData extends ModelInfo {
+	id?: string
+}
+// Module-level variable to store full response data
+let zgsmFullResponseData: WeakRef<IZgsmModelResponseData[]> = new WeakRef([])
+
+export const getZgsmSelectedModelInfo = (modelId: string): IZgsmModelResponseData => {
 	if (!modelId) {
-		return {} as ModelInfo
+		return {} as IZgsmModelResponseData
+	}
+
+	const responseData = zgsmFullResponseData.deref()
+	if (responseData && responseData.length) {
+		const modelInfo = responseData.find((item) => item.id === modelId)
+
+		if (modelInfo) {
+			return modelInfo
+		}
 	}
 
 	const ids = Object.keys(zgsmModels as Record<string, ModelInfo>)
@@ -40,18 +46,15 @@ export const getZgsmSelectedModelInfo = (modelId: string): ModelInfo => {
 		}
 	}
 
-	return (zgsmModels as Record<string, ModelInfo>)[`${mastchKey}`] || zgsmModels.default
+	return (zgsmModels as Record<string, IZgsmModelResponseData>)[`${mastchKey}`] || zgsmModels.default
 }
 
-// Module-level variable to store full response data
-let zgsmFullResponseData: ModelInfo[] = []
-
 // Function to set full response data
-export const setZgsmFullResponseData = (data: ModelInfo[]): void => {
-	zgsmFullResponseData = data
+export const setZgsmFullResponseData = (data: IZgsmModelResponseData[]): void => {
+	zgsmFullResponseData = new WeakRef(data)
 }
 
 // Function to get full response data
-export const getZgsmFullResponseData = (): ModelInfo[] => {
-	return zgsmFullResponseData
+export const getZgsmFullResponseData = (): IZgsmModelResponseData[] => {
+	return zgsmFullResponseData.deref() || []
 }

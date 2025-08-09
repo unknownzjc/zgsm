@@ -57,6 +57,7 @@ import {
 	CollapsibleTrigger,
 	CollapsibleContent,
 } from "@src/components/ui"
+import { ProviderChangeWarningDialog } from "./ProviderChangeWarningDialog"
 
 import {
 	Anthropic,
@@ -103,6 +104,7 @@ import { ConsecutiveMistakeLimitControl } from "./ConsecutiveMistakeLimitControl
 import { BedrockCustomArn } from "./providers/BedrockCustomArn"
 // import { buildDocLink } from "@src/utils/docLinks"
 import { GeminiCli } from "./providers/GeminiCli"
+import { SetCachedStateField } from "./types"
 
 export interface ApiOptionsProps {
 	uriScheme: string | undefined
@@ -111,6 +113,8 @@ export interface ApiOptionsProps {
 	fromWelcomeView?: boolean
 	errorMessage: string | undefined
 	setErrorMessage: React.Dispatch<React.SetStateAction<string | undefined>>
+	useZgsmCustomConfig?: boolean
+	setCachedStateField: SetCachedStateField<"useZgsmCustomConfig">
 }
 
 const ApiOptions = ({
@@ -120,6 +124,8 @@ const ApiOptions = ({
 	fromWelcomeView,
 	errorMessage,
 	setErrorMessage,
+	useZgsmCustomConfig,
+	setCachedStateField,
 }: ApiOptionsProps) => {
 	const { t } = useAppTranslation()
 	const { organizationAllowList } = useExtensionState()
@@ -157,6 +163,8 @@ const ApiOptions = ({
 
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 	const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false)
+	const [showProviderChangeWarning, setShowProviderChangeWarning] = useState(false)
+	const [pendingProviderChange, setPendingProviderChange] = useState<ProviderName | null>(null)
 
 	const handleInputChange = useCallback(
 		<K extends keyof ProviderSettings, E>(
@@ -356,6 +364,29 @@ const ApiOptions = ({
 		[setApiConfigurationField, apiConfiguration],
 	)
 
+	const executeProviderChange = useCallback(
+		async (value: ProviderName) => {
+			// 如果从 zgsm 切换到其他提供商，显示确认对话框
+			if (!fromWelcomeView && selectedProvider === "zgsm" && value !== "zgsm") {
+				setPendingProviderChange(value)
+				setShowProviderChangeWarning(true)
+				return
+			}
+
+			// 执行实际的提供商切换逻辑
+			onProviderChange(value)
+		},
+		[selectedProvider, fromWelcomeView, onProviderChange],
+	)
+
+	const handleProviderChangeConfirm = useCallback(() => {
+		if (pendingProviderChange) {
+			onProviderChange(pendingProviderChange)
+			setPendingProviderChange(null)
+			setShowProviderChangeWarning(false)
+		}
+	}, [pendingProviderChange, onProviderChange])
+
 	const modelValidationError = useMemo(() => {
 		return getModelValidationError(apiConfiguration, routerModels, organizationAllowList)
 	}, [apiConfiguration, routerModels, organizationAllowList])
@@ -404,7 +435,7 @@ const ApiOptions = ({
 				</div>
 				<SearchableSelect
 					value={selectedProvider}
-					onValueChange={(value) => onProviderChange(value as ProviderName)}
+					onValueChange={(value) => executeProviderChange(value as ProviderName)}
 					options={providerOptions}
 					placeholder={t("settings:common.select")}
 					searchPlaceholder={t("settings:providers.searchProviderPlaceholder")}
@@ -422,6 +453,8 @@ const ApiOptions = ({
 					setApiConfigurationField={setApiConfigurationField}
 					organizationAllowList={organizationAllowList}
 					modelValidationError={modelValidationError}
+					useZgsmCustomConfig={useZgsmCustomConfig}
+					setCachedStateField={setCachedStateField}
 				/>
 			)}
 			{selectedProvider === "openrouter" && (
@@ -648,13 +681,13 @@ const ApiOptions = ({
 				modelInfo={selectedModelInfo}
 			/>
 
-			<Verbosity
-				apiConfiguration={apiConfiguration}
-				setApiConfigurationField={setApiConfigurationField}
-				modelInfo={selectedModelInfo}
-			/>
-			{(selectedProvider !== "zgsm" || !!apiConfiguration?.useZgsmCustomConfig) && (
+			{(selectedProvider !== "zgsm" || useZgsmCustomConfig) && (
 				<>
+					<Verbosity
+						apiConfiguration={apiConfiguration}
+						setApiConfigurationField={setApiConfigurationField}
+						modelInfo={selectedModelInfo}
+					/>
 					{!fromWelcomeView && (
 						<Collapsible open={isAdvancedSettingsOpen} onOpenChange={setIsAdvancedSettingsOpen}>
 							<CollapsibleTrigger className="flex items-center gap-1 w-full cursor-pointer hover:opacity-80 mb-2">
@@ -738,6 +771,12 @@ const ApiOptions = ({
 					)}
 				</>
 			)}
+
+			<ProviderChangeWarningDialog
+				open={showProviderChangeWarning}
+				onOpenChange={setShowProviderChangeWarning}
+				onConfirm={handleProviderChangeConfirm}
+			/>
 		</div>
 	)
 }

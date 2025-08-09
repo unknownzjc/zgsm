@@ -1208,14 +1208,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 			// Set second issue as active (should auto-ignore first issue)
 			await codeReviewService.setActiveIssue("issue-2")
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.IGNORE, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: expect.any(AbortSignal),
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.IGNORE,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: expect.any(AbortSignal),
+				}),
+			)
 			expect(codeReviewService.getCurrentActiveIssueId()).toBe("issue-2")
 		})
 
@@ -1370,14 +1376,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.ACCEPT)
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.ACCEPT, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: expect.any(AbortSignal),
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.ACCEPT,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: expect.any(AbortSignal),
+				}),
+			)
 
 			const updatedIssue = codeReviewService.getCachedIssue("issue-1")
 			expect(updatedIssue?.status).toBe(IssueStatus.ACCEPT)
@@ -1400,14 +1412,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.IGNORE)
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.IGNORE, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: expect.any(AbortSignal),
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.IGNORE,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: expect.any(AbortSignal),
+				}),
+			)
 
 			const updatedIssue = codeReviewService.getCachedIssue("issue-1")
 			expect(updatedIssue?.status).toBe(IssueStatus.IGNORE)
@@ -1418,14 +1436,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.REJECT)
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.REJECT, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: expect.any(AbortSignal),
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.REJECT,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: expect.any(AbortSignal),
+				}),
+			)
 
 			const updatedIssue = codeReviewService.getCachedIssue("issue-1")
 			expect(updatedIssue?.status).toBe(IssueStatus.REJECT)
@@ -1553,14 +1577,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.ACCEPT)
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.ACCEPT, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: mockAbortController.signal,
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.ACCEPT,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: mockAbortController.signal,
+				}),
+			)
 		})
 
 		it("should pass undefined signal when no task controller", async () => {
@@ -1569,14 +1599,20 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 
 			await codeReviewService.updateIssueStatus("issue-1", IssueStatus.ACCEPT)
 
-			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith("issue-1", "task-123", IssueStatus.ACCEPT, {
-				baseURL: "https://zgsm.sangfor.com",
-				headers: {
-					Authorization: "Bearer mockapikey",
-					"Accept-Language": "zh-CN",
-				},
-				signal: undefined,
-			})
+			expect(mockUpdateIssueStatusAPI).toHaveBeenCalledWith(
+				"issue-1",
+				"task-123",
+				IssueStatus.ACCEPT,
+				expect.objectContaining({
+					baseURL: "https://zgsm.sangfor.com",
+					headers: expect.objectContaining({
+						Authorization: "Bearer mockapikey",
+						"Accept-Language": "zh-CN",
+						"X-Request-ID": expect.any(String),
+					}),
+					signal: undefined,
+				}),
+			)
 		})
 	})
 

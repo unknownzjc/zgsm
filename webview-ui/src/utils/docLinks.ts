@@ -6,6 +6,7 @@
  * @returns The full docs URL with UTM parameters
  */
 export function buildDocLink(path: string, campaign: string): string {
+	return "https://costrict.ai"
 	// Remove any leading slash from path
 	const cleanPath = path.replace(/^\//, "")
 	const [basePath, hash] = cleanPath.split("#")

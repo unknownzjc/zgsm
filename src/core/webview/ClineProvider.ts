@@ -657,7 +657,13 @@ export class ClineProvider
 		options: Partial<
 			Pick<
 				TaskOptions,
-				"enableDiff" | "enableCheckpoints" | "fuzzyMatchThreshold" | "consecutiveMistakeLimit" | "experiments"
+				| "enableDiff"
+				| "enableCheckpoints"
+				| "useZgsmCustomConfig"
+				| "zgsmCodebaseIndexEnabled"
+				| "fuzzyMatchThreshold"
+				| "consecutiveMistakeLimit"
+				| "experiments"
 			>
 		> = {},
 	) {
@@ -666,6 +672,8 @@ export class ClineProvider
 			organizationAllowList,
 			diffEnabled: enableDiff,
 			enableCheckpoints,
+			useZgsmCustomConfig,
+			zgsmCodebaseIndexEnabled,
 			fuzzyMatchThreshold,
 			experiments,
 		} = await this.getState()
@@ -679,6 +687,8 @@ export class ClineProvider
 			apiConfiguration,
 			enableDiff,
 			enableCheckpoints,
+			useZgsmCustomConfig,
+			zgsmCodebaseIndexEnabled,
 			fuzzyMatchThreshold,
 			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			task: text,
@@ -750,6 +760,7 @@ export class ClineProvider
 			apiConfiguration,
 			diffEnabled: enableDiff,
 			enableCheckpoints,
+			useZgsmCustomConfig,
 			fuzzyMatchThreshold,
 			experiments,
 		} = await this.getState()
@@ -759,6 +770,7 @@ export class ClineProvider
 			apiConfiguration,
 			enableDiff,
 			enableCheckpoints,
+			useZgsmCustomConfig,
 			fuzzyMatchThreshold,
 			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			historyItem,
@@ -1589,6 +1601,8 @@ export class ClineProvider
 			ttsSpeed,
 			diffEnabled,
 			enableCheckpoints,
+			useZgsmCustomConfig,
+			zgsmCodebaseIndexEnabled,
 			taskHistory,
 			soundVolume,
 			browserViewportSize,
@@ -1629,7 +1643,6 @@ export class ClineProvider
 			showRooIgnoredFiles,
 			language,
 			maxReadFileLine,
-			maxReadFileChars,
 			maxImageFileSize,
 			maxTotalImageSize,
 			terminalCompressProgressBar,
@@ -1694,6 +1707,8 @@ export class ClineProvider
 			ttsSpeed: ttsSpeed ?? 1.0,
 			diffEnabled: diffEnabled ?? true,
 			enableCheckpoints: enableCheckpoints ?? true,
+			useZgsmCustomConfig: useZgsmCustomConfig ?? false,
+			zgsmCodebaseIndexEnabled: zgsmCodebaseIndexEnabled ?? true,
 			shouldShowAnnouncement:
 				telemetrySetting !== "disabled" && lastShownAnnouncementId !== this.latestAnnouncementId,
 			allowedCommands: mergedAllowedCommands,
@@ -1742,7 +1757,6 @@ export class ClineProvider
 			language: language ?? formatLanguage(vscode.env.language),
 			renderContext: this.renderContext,
 			maxReadFileLine: maxReadFileLine ?? -1,
-			maxReadFileChars: maxReadFileChars ?? -1,
 			maxImageFileSize: maxImageFileSize ?? 5,
 			maxTotalImageSize: maxTotalImageSize ?? 20,
 			maxConcurrentFileReads: maxConcurrentFileReads ?? 5,
@@ -1887,6 +1901,8 @@ export class ClineProvider
 			ttsSpeed: stateValues.ttsSpeed ?? 1.0,
 			diffEnabled: stateValues.diffEnabled ?? true,
 			enableCheckpoints: stateValues.enableCheckpoints ?? true,
+			useZgsmCustomConfig: stateValues.useZgsmCustomConfig ?? false,
+			zgsmCodebaseIndexEnabled: stateValues.zgsmCodebaseIndexEnabled ?? false,
 			soundVolume: stateValues.soundVolume,
 			browserViewportSize: stateValues.browserViewportSize ?? "900x600",
 			screenshotQuality: stateValues.screenshotQuality ?? 75,
@@ -1931,7 +1947,6 @@ export class ClineProvider
 			telemetrySetting: stateValues.telemetrySetting || "disabled",
 			showRooIgnoredFiles: stateValues.showRooIgnoredFiles ?? true,
 			maxReadFileLine: stateValues.maxReadFileLine ?? -1,
-			maxReadFileChars: stateValues.maxReadFileChars ?? -1,
 			maxImageFileSize: stateValues.maxImageFileSize ?? 5,
 			maxTotalImageSize: stateValues.maxTotalImageSize ?? 20,
 			maxConcurrentFileReads: stateValues.maxConcurrentFileReads ?? 5,

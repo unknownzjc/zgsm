@@ -775,14 +775,16 @@ describe("addCustomInstructions", () => {
 		expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining("AGENTS.md"), "utf-8")
 	})
 
-	it("should return empty string when no instructions provided", async () => {
+	it("should return MUST_FOLLOW_RULES when no instructions provided", async () => {
 		// Simulate no .roo/rules directory
 		statMock.mockRejectedValueOnce({ code: "ENOENT" })
 
 		readFileMock.mockRejectedValue({ code: "ENOENT" })
 
 		const result = await addCustomInstructions("", "", "/fake/path", "", {})
-		expect(result).toBe("")
+		// When no instructions are provided, the function should still return MUST_FOLLOW_RULES
+		expect(result).toContain("MUST FOLLOW RULES:")
+		// expect(result).toContain("If in a new shell, you should `cd` to the appropriate directory")
 	})
 
 	it("should handle missing mode-specific rules file", async () => {
