@@ -131,7 +131,7 @@ const ProviderRenderer: React.FC<ProviderRendererProps> = ({
 		zgsm: {
 			modelIdKey: "zgsmModelId",
 			serviceName: "zgsm",
-			defaultModelId: zgsmDefaultModelId,
+			defaultModelId: apiConfiguration.zgsmModelId || zgsmDefaultModelId,
 			serviceUrl: apiConfiguration.zgsmBaseUrl?.trim() || "",
 			models: openAiModels ?? {},
 		},

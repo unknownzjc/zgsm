@@ -49,6 +49,7 @@ import {
 	mainlandZAiModels,
 	fireworksModels,
 	fireworksDefaultModelId,
+	zgsmModels,
 } from "@roo-code/types"
 
 import type { ModelRecord, RouterModels } from "@roo/api"
@@ -96,7 +97,10 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 					openRouterModelProviders: openRouterModelProviders.data,
 					lmStudioModels: lmStudioModels.data,
 				})
-			: { id: zgsmDefaultModelId, info: undefined }
+			: {
+					id: apiConfiguration?.zgsmModelId || apiConfiguration?.apiModelId || zgsmDefaultModelId,
+					info: zgsmModels.default,
+				}
 
 	return {
 		provider,
