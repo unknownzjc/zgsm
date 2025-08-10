@@ -6,6 +6,8 @@ import { PlatformDetector } from "./platform"
 import { PackageInfoResponse, VersionInfo } from "./types"
 import path from "path"
 import * as crypto from "crypto"
+import { createLogger, ILogger } from "../../../utils/logger"
+import { Package } from "../../../shared/package"
 
 /**
  * 下载进度回调函数类型
@@ -25,7 +27,7 @@ export class FileDownloader {
 	private publicKey: string
 	private abortController: AbortController | null = null
 	private timeout: number
-
+	private logger: ILogger
 	/**
 	 * 构造函数
 	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/shenma/api/v1
@@ -36,6 +38,7 @@ export class FileDownloader {
 		this.baseUrl = baseUrl
 		this.publicKey = publicKey
 		this.timeout = timeout
+		this.logger = createLogger(Package.outputChannel)
 	}
 
 	/**
@@ -161,7 +164,7 @@ export class FileDownloader {
 								await fs.promises.unlink(targetPath)
 							}
 						} catch (cleanupError) {
-							console.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
+							this.logger.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
 						}
 						reject(err)
 					})
@@ -173,7 +176,7 @@ export class FileDownloader {
 							await fs.promises.unlink(targetPath)
 						}
 					} catch (cleanupError) {
-						console.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
+						this.logger.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
 					}
 					reject(err)
 				})
@@ -199,7 +202,7 @@ export class FileDownloader {
 					)
 				}
 
-				console.log(`Download attempt ${attempt + 1} failed, retrying...`)
+				this.logger.info(`Download attempt ${attempt + 1} failed, retrying...`)
 				await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)))
 			}
 		}

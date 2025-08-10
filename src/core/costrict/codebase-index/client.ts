@@ -23,6 +23,8 @@ import { execPromise } from "./utils"
 import getPort, { portNumbers } from "get-port"
 import { exec } from "child_process"
 import { v7 as uuidv7 } from "uuid"
+import { createLogger, ILogger } from "../../../utils/logger"
+import { Package } from "../../../shared/package"
 
 /**
  * codebase-index 客户端主类
@@ -34,6 +36,7 @@ export class CodebaseIndexClient {
 	private packageInfoApi: PackageInfoApi
 	private fileDownloader: FileDownloader
 	private processName = "costrict-keeper"
+	private logger: ILogger
 
 	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
 	private serverEndpoint: string = "http://localhost:8888"
@@ -47,7 +50,7 @@ export class CodebaseIndexClient {
 		if (!config.baseUrl) {
 			throw new Error("baseUrl is required")
 		}
-
+		this.logger = createLogger(Package.outputChannel)
 		this.config = {
 			baseUrl: config.baseUrl,
 			downloadTimeout: config.downloadTimeout || 30_000,
@@ -270,7 +273,7 @@ export class CodebaseIndexClient {
 				await execPromise(`pkill -x "${this.processName}"`).catch(() => {})
 			}
 		} catch (error) {
-			console.warn(`Failed to stop existing ${this.processName} process: ${error}`)
+			this.logger.warn(`Failed to stop existing ${this.processName} process: ${error}`)
 		}
 	}
 
