@@ -1,4 +1,4 @@
-import type { ClineProvider } from "../../webview/ClineProvider"
+import { ILogger } from "../../../utils/logger"
 
 /**
  * 版本 ID 接口
@@ -171,9 +171,9 @@ export interface ICodebaseIndexManager {
 
 	/**
 	 * 设置日志提供者
-	 * @param provider 日志提供者
+	 * @param logger 日志提供者
 	 */
-	setLogProvider(provider: ClineProvider): void
+	setLogger(logger: ILogger): void
 
 	/**
 	 * 设置服务器端点

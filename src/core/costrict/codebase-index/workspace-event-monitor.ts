@@ -1,11 +1,10 @@
 import * as vscode from "vscode"
-import * as path from "path"
-import * as fs from "fs"
 import { watch, FSWatcher } from "chokidar"
 import { ZgsmCodebaseIndexManager } from "./index"
-import { WorkspaceEventType, WorkspaceEventData, WorkspaceEventRequest } from "./types"
+import { WorkspaceEventData, WorkspaceEventRequest } from "./types"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeBaseError } from "../telemetry/constants"
+import { ILogger } from "../../../utils/logger"
 
 /**
  * 工作区事件监控配置
@@ -41,7 +40,7 @@ export class WorkspaceEventMonitor {
 	private eventBuffer: Map<string, WorkspaceEventData> = new Map()
 	private flushTimer: NodeJS.Timeout | null = null
 	private lastFlushTime = 0
-
+	private logger?: ILogger
 	// 用于解决命令行删除文件问题的文件系统监控器
 	private fileSystemWatcher: FSWatcher | null = null
 
@@ -53,6 +52,9 @@ export class WorkspaceEventMonitor {
 	 */
 	private constructor() {}
 
+	private get log(): ILogger | Console {
+		return this.logger || console
+	}
 	/**
 	 * 获取单例实例
 	 */
@@ -68,12 +70,12 @@ export class WorkspaceEventMonitor {
 	 */
 	public async initialize(): Promise<void> {
 		if (this.isInitialized) {
-			console.log("[WorkspaceEventMonitor] 事件监控器已经初始化，跳过")
+			this.log.info("[WorkspaceEventMonitor] 事件监控器已经初始化，跳过")
 			return
 		}
 
 		try {
-			console.log("[WorkspaceEventMonitor] 开始初始化事件监控器")
+			this.log.info("[WorkspaceEventMonitor] 开始初始化事件监控器")
 
 			// 注册VSCode事件监听器
 			this.registerEventListeners()
@@ -82,10 +84,10 @@ export class WorkspaceEventMonitor {
 			this.handleInitialWorkspaceOpen()
 
 			this.isInitialized = true
-			console.log("[WorkspaceEventMonitor] 事件监控器初始化成功")
+			this.log.info("[WorkspaceEventMonitor] 事件监控器初始化成功")
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "初始化事件监控器时发生未知错误"
-			console.error("[WorkspaceEventMonitor] 初始化失败:", errorMessage)
+			this.log.error("[WorkspaceEventMonitor] 初始化失败:", errorMessage)
 			// 在测试环境中跳过遥测服务
 			try {
 				if (TelemetryService.instance) {
@@ -102,7 +104,7 @@ export class WorkspaceEventMonitor {
 	 * 处理VSCode关闭事件
 	 */
 	public async handleVSCodeClose(): Promise<void> {
-		console.log("[WorkspaceEventMonitor] 检测到VSCode关闭事件")
+		this.log.info("[WorkspaceEventMonitor] 检测到VSCode关闭事件")
 
 		// 发送工作区关闭事件
 		await this.sendWorkspaceCloseEvents()
@@ -124,7 +126,7 @@ export class WorkspaceEventMonitor {
 
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			console.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
 			return
 		}
 
@@ -149,7 +151,7 @@ export class WorkspaceEventMonitor {
 	 * 销毁事件监控器
 	 */
 	public async dispose() {
-		console.log("[WorkspaceEventMonitor] 开始销毁事件监控器")
+		this.log.info("[WorkspaceEventMonitor] 开始销毁事件监控器")
 		// 取消定时器
 		if (this.flushTimer) {
 			clearTimeout(this.flushTimer)
@@ -164,12 +166,12 @@ export class WorkspaceEventMonitor {
 		if (this.fileSystemWatcher) {
 			this.fileSystemWatcher.close()
 			this.fileSystemWatcher = null
-			console.log("[WorkspaceEventMonitor] 文件系统监控器已关闭")
+			this.log.info("[WorkspaceEventMonitor] 文件系统监控器已关闭")
 		}
 
 		// 清理文档内容缓存
 		this.documentContentCache.clear()
-		console.log("[WorkspaceEventMonitor] 文档内容缓存已清理")
+		this.log.info("[WorkspaceEventMonitor] 文档内容缓存已清理")
 
 		// 发送剩余事件
 		if (this.eventBuffer.size > 0) {
@@ -177,7 +179,7 @@ export class WorkspaceEventMonitor {
 		}
 
 		this.isInitialized = false
-		console.log("[WorkspaceEventMonitor] 事件监控器已销毁")
+		this.log.info("[WorkspaceEventMonitor] 事件监控器已销毁")
 	}
 
 	/**
@@ -185,7 +187,7 @@ export class WorkspaceEventMonitor {
 	 */
 	public updateConfig(newConfig: Partial<WorkspaceEventMonitorConfig>): void {
 		this.config = { ...this.config, ...newConfig }
-		console.log("[WorkspaceEventMonitor] 配置已更新:", this.config)
+		this.log.info("[WorkspaceEventMonitor] 配置已更新:", this.config)
 	}
 
 	/**
@@ -194,7 +196,7 @@ export class WorkspaceEventMonitor {
 	private registerEventListeners(): void {
 		// 安全地检查 VSCode API 是否存在
 		if (typeof vscode === "undefined" || !vscode.workspace) {
-			console.warn("[WorkspaceEventMonitor] VSCode API 不可用，跳过事件监听器注册")
+			this.log.warn("[WorkspaceEventMonitor] VSCode API 不可用，跳过事件监听器注册")
 			return
 		}
 
@@ -227,7 +229,7 @@ export class WorkspaceEventMonitor {
 			// 注册文件系统监控器来解决命令行删除文件问题
 			this.registerFileSystemWatcher()
 		} catch (error) {
-			console.warn("[WorkspaceEventMonitor] 注册事件监听器失败:", error)
+			this.log.warn("[WorkspaceEventMonitor] 注册事件监听器失败:", error)
 		}
 	}
 
@@ -237,7 +239,7 @@ export class WorkspaceEventMonitor {
 	private registerFileSystemWatcher(): void {
 		const workspaceFolders = vscode.workspace.workspaceFolders
 		if (!workspaceFolders || workspaceFolders.length === 0) {
-			console.warn("[WorkspaceEventMonitor] 没有工作区文件夹，跳过文件系统监控器注册")
+			this.log.warn("[WorkspaceEventMonitor] 没有工作区文件夹，跳过文件系统监控器注册")
 			return
 		}
 
@@ -257,13 +259,13 @@ export class WorkspaceEventMonitor {
 
 			// 监听文件删除事件
 			this.fileSystemWatcher.on("unlink", (filePath: string) => {
-				console.log(`[WorkspaceEventMonitor] 文件系统监控器检测到文件删除: ${filePath}`)
+				this.log.info(`[WorkspaceEventMonitor] 文件系统监控器检测到文件删除: ${filePath}`)
 				this.handleFileSystemFileDelete(filePath)
 			})
 
-			console.log(`[WorkspaceEventMonitor] 文件系统监控器已注册，监控路径: ${watchPaths.join(", ")}`)
+			this.log.info(`[WorkspaceEventMonitor] 文件系统监控器已注册，监控路径: ${watchPaths.join(", ")}`)
 		} catch (error) {
-			console.error("[WorkspaceEventMonitor] 注册文件系统监控器失败:", error)
+			this.log.error("[WorkspaceEventMonitor] 注册文件系统监控器失败:", error)
 		}
 	}
 
@@ -282,7 +284,7 @@ export class WorkspaceEventMonitor {
 		}
 
 		this.addEvent(eventKey, eventData)
-		console.log(`[WorkspaceEventMonitor] 文件系统删除事件已添加到缓冲区: ${filePath}`)
+		this.log.info(`[WorkspaceEventMonitor] 文件系统删除事件已添加到缓冲区: ${filePath}`)
 	}
 
 	/**
@@ -319,10 +321,10 @@ export class WorkspaceEventMonitor {
 		const currentVersion = document.version
 
 		// 调试日志：记录保存事件触发
-		console.log(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
-		console.log(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
-		console.log(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
-		console.log(`[WorkspaceEventMonitor] 文档内容长度: ${currentContent.length}`)
+		this.log.info(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
+		this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
+		this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
+		this.log.info(`[WorkspaceEventMonitor] 文档内容长度: ${currentContent.length}`)
 
 		// 检查文档内容是否真的发生了变化
 		const cachedInfo = this.documentContentCache.get(filePath)
@@ -331,10 +333,10 @@ export class WorkspaceEventMonitor {
 		if (cachedInfo) {
 			// 比较内容
 			hasContentChanged = cachedInfo.content !== currentContent
-			console.log(`[WorkspaceEventMonitor] 内容变更检查: ${hasContentChanged ? "有变更" : "无变更"}`)
-			console.log(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
+			this.log.info(`[WorkspaceEventMonitor] 内容变更检查: ${hasContentChanged ? "有变更" : "无变更"}`)
+			this.log.info(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
 		} else {
-			console.log(`[WorkspaceEventMonitor] 首次保存文档，无缓存信息`)
+			this.log.info(`[WorkspaceEventMonitor] 首次保存文档，无缓存信息`)
 		}
 
 		// 更新缓存
@@ -345,7 +347,7 @@ export class WorkspaceEventMonitor {
 
 		// 只有在内容真正发生变化时才触发事件
 		if (hasContentChanged) {
-			console.log(`[WorkspaceEventMonitor] 文档内容有变更，触发修改事件`)
+			this.log.info(`[WorkspaceEventMonitor] 文档内容有变更，触发修改事件`)
 			const eventKey = `modify:${filePath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "modify_file",
@@ -356,7 +358,7 @@ export class WorkspaceEventMonitor {
 
 			this.addEvent(eventKey, eventData)
 		} else {
-			console.log(`[WorkspaceEventMonitor] 文档内容无变更，跳过事件触发`)
+			this.log.info(`[WorkspaceEventMonitor] 文档内容无变更，跳过事件触发`)
 		}
 	}
 
@@ -367,14 +369,14 @@ export class WorkspaceEventMonitor {
 		if (!this.config.enabled) return
 
 		// 调试日志：记录删除事件触发
-		console.log(`[WorkspaceEventMonitor] 文件删除事件触发，删除文件数量: ${event.files.length}`)
-		console.log(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
+		this.log.info(`[WorkspaceEventMonitor] 文件删除事件触发，删除文件数量: ${event.files.length}`)
+		this.log.info(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
 
 		event.files.forEach((uri) => {
 			if (uri.scheme !== "file") return
 
-			console.log(`[WorkspaceEventMonitor] 删除文件: ${uri.fsPath}`)
-			console.log(`[WorkspaceEventMonitor] 删除文件 scheme: ${uri.scheme}`)
+			this.log.info(`[WorkspaceEventMonitor] 删除文件: ${uri.fsPath}`)
+			this.log.info(`[WorkspaceEventMonitor] 删除文件 scheme: ${uri.scheme}`)
 
 			const eventKey = `delete:${uri.fsPath}`
 			const eventData: WorkspaceEventData = {
@@ -510,7 +512,7 @@ export class WorkspaceEventMonitor {
 			try {
 				await this.flushEvents()
 			} catch (error) {
-				console.error("[WorkspaceEventMonitor] 刷新事件时发生错误:", error)
+				this.log.error("[WorkspaceEventMonitor] 刷新事件时发生错误:", error)
 				// 确保在错误情况下也重置定时器
 			} finally {
 				this.flushTimer = null
@@ -527,7 +529,7 @@ export class WorkspaceEventMonitor {
 		// 获取当前工作区
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			console.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
 			return
 		}
 
@@ -554,7 +556,7 @@ export class WorkspaceEventMonitor {
 		// 获取当前工作区
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			console.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
 			return
 		}
 
@@ -589,14 +591,14 @@ export class WorkspaceEventMonitor {
 
 		while (retryCount <= this.config.maxRetries) {
 			try {
-				console.log(`[WorkspaceEventMonitor] ${evts} 发送 ${events.length} 个事件到服务端`)
+				this.log.info(`[WorkspaceEventMonitor] ${evts} 发送 ${events.length} 个事件到服务端`)
 				const response = await ZgsmCodebaseIndexManager.getInstance().publishWorkspaceEvents(request)
 
 				if (response.success) {
-					console.log(`[WorkspaceEventMonitor] ${evts} 事件发送成功，消息响应: ${response.data}`)
+					this.log.info(`[WorkspaceEventMonitor] ${evts} 事件发送成功，消息响应: ${response.data}`)
 					return
 				} else {
-					console.warn(`[WorkspaceEventMonitor] ${evts} 事件发送失败: ${response.message}`)
+					this.log.warn(`[WorkspaceEventMonitor] ${evts} 事件发送失败: ${response.message}`)
 				}
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "未知错误"
@@ -604,16 +606,11 @@ export class WorkspaceEventMonitor {
 				// 检查是否达到总重试时间限制（防止无限循环）
 				const elapsedTime = Date.now() - startTime
 				if (elapsedTime >= maxTotalRetryTime) {
-					console.error(
+					this.log.error(
 						`[WorkspaceEventMonitor] ${evts} 达到总重试时间限制(${maxTotalRetryTime}ms)，放弃重试`,
 					)
 					break
 				}
-
-				console.error(
-					`[WorkspaceEventMonitor] ${evts} 发送事件失败 (尝试 ${retryCount + 1}/${this.config.maxRetries}):`,
-					errorMessage,
-				)
 
 				if (retryCount < this.config.maxRetries) {
 					// 使用指数退避策略
@@ -621,11 +618,12 @@ export class WorkspaceEventMonitor {
 						this.config.retryDelayMs * Math.pow(2, retryCount),
 						10000, // 最大延迟10秒
 					)
-					console.log(`[WorkspaceEventMonitor] ${evts} ${delayMs}ms后重试...`)
+					this.log.error(`[WorkspaceEventMonitor] ${evts} 发送事件失败 (${delayMs}ms 后重试):`, errorMessage)
+					this.log.info(`[WorkspaceEventMonitor] ${evts} ${retryCount + 1}/${this.config.maxRetries}重试失败`)
 					await this.delay(delayMs)
 					retryCount++
 				} else {
-					console.error(
+					this.log.error(
 						`[WorkspaceEventMonitor] ${evts} 达到最大重试次数(${this.config.maxRetries})，事件发送失败`,
 					)
 					try {
@@ -657,6 +655,10 @@ export class WorkspaceEventMonitor {
 	 */
 	private delay(ms: number): Promise<void> {
 		return new Promise((resolve) => setTimeout(resolve, ms))
+	}
+
+	public setLogger(logger: ILogger): void {
+		this.logger = logger
 	}
 
 	/**

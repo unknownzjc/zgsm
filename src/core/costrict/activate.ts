@@ -28,7 +28,7 @@ import { initCodeReview } from "./code-review"
 import { initTelemetry } from "./telemetry"
 import { initErrorCodeManager } from "./error-code"
 import { Package } from "../../shared/package"
-import { createLogger, deactivate as loggerDeactivate } from "../../utils/logger"
+import { createLogger, ILogger, deactivate as loggerDeactivate } from "../../utils/logger"
 import { connectIPC, disconnectIPC, onZgsmLogout, onZgsmTokensUpdate, startIPCServer, stopIPCServer } from "./auth/ipc"
 import { getClientId } from "../../utils/getClientId"
 import ZgsmCodebaseIndexManager, { zgsmCodebaseIndexManager } from "./codebase-index"
@@ -37,12 +37,13 @@ import { workspaceEventMonitor } from "./codebase-index/workspace-event-monitor"
 /**
  * Initialization entry
  */
-async function initialize(provider: ClineProvider) {
+async function initialize(provider: ClineProvider, logger: ILogger) {
 	ZgsmAuthStorage.setProvider(provider)
 	ZgsmAuthApi.setProvider(provider)
 	ZgsmAuthService.setProvider(provider)
 	ZgsmAuthCommands.setProvider(provider)
-	zgsmCodebaseIndexManager.setLogProvider(provider)
+	zgsmCodebaseIndexManager.setLogger(logger)
+	workspaceEventMonitor.setLogger(logger)
 	printLogo()
 	initLangSetting()
 	loadLocalLanguageExtensions()
@@ -56,9 +57,9 @@ export async function activate(
 	provider: ClineProvider,
 	outputChannel: vscode.OutputChannel,
 ) {
-	createLogger(Package.outputChannel, { channel: outputChannel })
+	const logger = createLogger(Package.outputChannel, { channel: outputChannel })
 	initErrorCodeManager(provider)
-	await initialize(provider)
+	await initialize(provider, logger)
 	startIPCServer()
 	connectIPC()
 
@@ -178,34 +179,4 @@ export function deactivate() {
 
 	// Currently no specific cleanup needed
 	loggerDeactivate()
-}
-
-async function initWorkspaceWatch(
-	context: vscode.ExtensionContext,
-	provider: ClineProvider,
-	outputChannel: vscode.OutputChannel,
-) {
-	// Initialize workspace event monitoring
-	try {
-		const workspaceEventConfig = vscode.workspace.getConfiguration("zgsm.workspaceEvents")
-		const enabled = workspaceEventConfig.get<boolean>("enabled", true)
-		const debounceMs = workspaceEventConfig.get<number>("debounceMs", 1000)
-		const batchSize = workspaceEventConfig.get<number>("batchSize", 50)
-
-		if (enabled) {
-			workspaceEventMonitor.updateConfig({
-				enabled,
-				debounceMs,
-				batchSize,
-			})
-			await workspaceEventMonitor.initialize()
-			outputChannel.appendLine("[WorkspaceEventMonitor] 工作区事件监控已初始化")
-		} else {
-			outputChannel.appendLine("[WorkspaceEventMonitor] 工作区事件监控已禁用")
-		}
-	} catch (error) {
-		outputChannel.appendLine(
-			`[WorkspaceEventMonitor] 初始化失败: ${error instanceof Error ? error.message : String(error)}`,
-		)
-	}
 }

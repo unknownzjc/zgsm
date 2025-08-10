@@ -1,4 +1,3 @@
-import * as vscode from "vscode"
 import * as fs from "fs"
 import * as path from "path"
 import { CodebaseIndexClient } from "./client"
@@ -14,11 +13,11 @@ import {
 	IndexSwitchRequest,
 	ApiResponse,
 } from "./types"
-import type { ClineProvider } from "../../webview/ClineProvider"
 import { TelemetryErrorType } from "../telemetry"
 import { TelemetryService } from "@roo-code/telemetry"
 import { ZgsmAuthService } from "../auth"
 import { getClientId } from "../../../utils/getClientId"
+import { ILogger } from "../../../utils/logger"
 
 /**
  * CodebaseIndex 管理器实现类（单例模式）
@@ -27,7 +26,7 @@ import { getClientId } from "../../../utils/getClientId"
 export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public static instance: ZgsmCodebaseIndexManager
 	public client: CodebaseIndexClient | null = null
-	private logProvider: ClineProvider | null = null
+	private logger: ILogger | null = null
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
 	private baseUrl = "https://zgsm.sangfor.com/shenma/api/v1"
@@ -51,10 +50,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 	/**
 	 * 设置日志提供者
-	 * @param provider 日志提供者
+	 * @param logger 日志提供者
 	 */
-	public setLogProvider(provider: ClineProvider): void {
-		this.logProvider = provider
+	public setLogger(logger: ILogger): void {
+		this.logger = logger
 	}
 
 	/**
@@ -64,14 +63,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 * @param id 日志ID
 	 */
 	private log(message: string, type: "info" | "error" = "info", id: string = ""): void {
-		if (this.logProvider) {
-			this.logProvider.log(message, type, id)
+		// 如果没有提供日志提供者，使用 console.log
+		const prefix = [new Date().toLocaleString(), type, id]
+			.filter((s) => s)
+			.map((s) => `[${s}]`)
+			.join(" ")
+		if (this.logger?.info) {
+			this.logger.info(`${prefix}${message}`)
 		} else {
-			// 如果没有提供日志提供者，使用 console.log
-			const prefix = [new Date().toLocaleString(), type, id]
-				.filter((s) => s)
-				.map((s) => `[${s}]`)
-				.join(" ")
 			console.log(`${prefix}${message}`)
 		}
 	}
@@ -380,7 +379,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		try {
 			await this.ensureClientInited()
 			this.log(`发布工作区事件: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
-
 			// 读取访问令牌
 			const token = await this.readAccessToken()
 			return await this.client!.publishWorkspaceEvents(request, token)
