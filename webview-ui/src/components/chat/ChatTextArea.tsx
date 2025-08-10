@@ -242,6 +242,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 		const [isDraggingOver, setIsDraggingOver] = useState(false)
 		const [textAreaBaseHeight, setTextAreaBaseHeight] = useState<number | undefined>(undefined)
+		const [chatWrapBaseHeight, setChatWrapBaseHeight] = useState<number | undefined>(undefined)
 		const [showContextMenu, setShowContextMenu] = useState(false)
 		const [cursorPosition, setCursorPosition] = useState(0)
 		const [searchQuery, setSearchQuery] = useState("")
@@ -751,46 +752,49 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			setIsMouseDownOnMenu(true)
 		}, [])
 
-		const updateHighlights = useCallback(() => {
-			if (!textAreaRef.current || !highlightLayerRef.current) return
+		const updateHighlights = useCallback(
+			(isEditMode = false) => {
+				if (!textAreaRef.current || !highlightLayerRef.current) return
 
-			const text = textAreaRef.current.value
+				const text = textAreaRef.current.value
 
-			// Helper function to check if a command is valid
-			const isValidCommand = (commandName: string): boolean => {
-				return commands?.some((cmd) => cmd.name === commandName) || false
-			}
-
-			// Process the text to highlight mentions and valid commands
-			let processedText = text
-				.replace(/\n$/, "\n\n")
-				.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c] || c)
-				.replace(mentionRegexGlobal, '<mark class="mention-context-textarea-highlight">$&</mark>')
-
-			// Custom replacement for commands - only highlight valid ones
-			processedText = processedText.replace(commandRegexGlobal, (match, commandName) => {
-				// Only highlight if the command exists in the valid commands list
-				if (isValidCommand(commandName)) {
-					// Check if the match starts with a space
-					const startsWithSpace = match.startsWith(" ")
-					const commandPart = `/${commandName}`
-
-					if (startsWithSpace) {
-						// Keep the space but only highlight the command part
-						return ` <mark class="mention-context-textarea-highlight">${commandPart}</mark>`
-					} else {
-						// Highlight the entire command (starts at beginning of line)
-						return `<mark class="mention-context-textarea-highlight">${commandPart}</mark>`
-					}
+				// Helper function to check if a command is valid
+				const isValidCommand = (commandName: string): boolean => {
+					return commands?.some((cmd) => cmd.name === commandName) || false
 				}
-				return match // Return unhighlighted if command is not valid
-			})
 
-			highlightLayerRef.current.innerHTML = processedText
+				// Process the text to highlight mentions and valid commands
+				let processedText = text
+					.replace(/\n$/, "\n\n")
+					.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c] || c)
+					.replace(mentionRegexGlobal, '<mark class="mention-context-textarea-highlight">$&</mark>')
 
-			highlightLayerRef.current.scrollTop = textAreaRef.current.scrollTop
-			highlightLayerRef.current.scrollLeft = textAreaRef.current.scrollLeft
-		}, [commands])
+				// Custom replacement for commands - only highlight valid ones
+				processedText = processedText.replace(commandRegexGlobal, (match, commandName) => {
+					// Only highlight if the command exists in the valid commands list
+					if (isValidCommand(commandName)) {
+						// Check if the match starts with a space
+						const startsWithSpace = match.startsWith(" ")
+						const commandPart = `/${commandName}`
+
+						if (startsWithSpace) {
+							// Keep the space but only highlight the command part
+							return ` <mark class="mention-context-textarea-highlight">${commandPart}</mark>`
+						} else {
+							// Highlight the entire command (starts at beginning of line)
+							return `<mark class="mention-context-textarea-highlight">${commandPart}</mark>`
+						}
+					}
+					return match // Return unhighlighted if command is not valid
+				})
+
+				highlightLayerRef.current.innerHTML = processedText
+				textAreaRef.current.scrollTop += isEditMode ? 32 : 0
+				highlightLayerRef.current.scrollTop = textAreaRef.current.scrollTop
+				highlightLayerRef.current.scrollLeft = textAreaRef.current.scrollLeft
+			},
+			[commands],
+		)
 
 		useLayoutEffect(() => {
 			updateHighlights()
@@ -1076,6 +1080,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						"px-[8px]",
 						"pr-9",
 						"z-10",
+						"pb-[32px]",
 						"forced-color-adjust-none",
 					)}
 					style={{
@@ -1094,7 +1099,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					value={inputValue}
 					onChange={(e) => {
 						handleInputChange(e)
-						updateHighlights()
+						updateHighlights(true)
 					}}
 					onFocus={() => setIsFocused(true)}
 					onKeyDown={handleKeyDown}
@@ -1108,10 +1113,11 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							setTextAreaBaseHeight(height)
 						}
 
+						setChatWrapBaseHeight(height + 32)
 						onHeightChange?.(height)
 					}}
 					placeholder={placeholderText}
-					minRows={3}
+					minRows={5}
 					maxRows={15}
 					autoFocus={true}
 					className={cn(
@@ -1133,6 +1139,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						"transition-background-color duration-150 ease-in-out",
 						"will-change-background-color",
 						"min-h-[90px]",
+						"pb-[32px]",
 						"box-border",
 						"rounded",
 						"resize-none",
@@ -1229,6 +1236,9 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				<div className="relative">
 					<div
 						className={cn("chat-text-area", "relative", "flex", "flex-col", "outline-none")}
+						style={{
+							height: chatWrapBaseHeight ? `${chatWrapBaseHeight}px` : undefined,
+						}}
 						onDrop={handleDrop}
 						onDragOver={(e) => {
 							// Only allowed to drop images/files on shift key pressed.
