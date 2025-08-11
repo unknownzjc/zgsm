@@ -33,6 +33,7 @@ import { connectIPC, disconnectIPC, onZgsmLogout, onZgsmTokensUpdate, startIPCSe
 import { getClientId } from "../../utils/getClientId"
 import ZgsmCodebaseIndexManager, { zgsmCodebaseIndexManager } from "./codebase-index"
 import { workspaceEventMonitor } from "./codebase-index/workspace-event-monitor"
+import { initGitCheckoutDetector } from "./codebase-index/git-checkout-detector"
 
 /**
  * Initialization entry
@@ -59,6 +60,7 @@ export async function activate(
 ) {
 	const logger = createLogger(Package.outputChannel, { channel: outputChannel })
 	initErrorCodeManager(provider)
+	initGitCheckoutDetector(context, logger)
 	await initialize(provider, logger)
 	startIPCServer()
 	connectIPC()

@@ -37,7 +37,7 @@ interface IndexStatus {
 	fileCount: number
 	lastUpdated: string
 	progress: number
-	status: "syncing" | "success" | "error"
+	status: "success" | "failed" | "running" | "pending"
 	errorMessage?: string
 	failedFiles?: string[]
 }
@@ -57,22 +57,18 @@ interface IndexStatusInfo {
 
 // 将后端的 IndexStatusInfo 转换为前端组件使用的 IndexStatus 格式
 const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStatus => {
-	let status: "syncing" | "success" | "error" = "success"
 	let errorMessage: string | undefined
 	let progress = 0
 
 	switch (statusInfo.status) {
 		case "running":
 		case "pending":
-			status = "syncing"
 			progress = statusInfo.process
 			break
 		case "success":
-			status = "success"
 			progress = 100
 			break
 		case "failed":
-			status = "error"
 			progress = 100
 			errorMessage = statusInfo.failedReason || "索引构建失败"
 			break
@@ -84,7 +80,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 		fileCount: statusInfo.totalFiles,
 		lastUpdated,
 		progress,
-		status,
+		status: statusInfo.status,
 		errorMessage,
 		failedFiles: statusInfo.failedFiles,
 	}
@@ -196,8 +192,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 				// 如果状态为 success 或 error，可以考虑停止轮询
 				if (
-					(embedding.status === "success" || embedding.status === "error") &&
-					(codegraph.status === "success" || codegraph.status === "error")
+					(embedding.status === "success" || embedding.status === "failed") &&
+					(codegraph.status === "success" || codegraph.status === "failed")
 				) {
 					// 所有索引都已完成，可以停止轮询
 					// stopPolling() // 注释掉以保持轮询，以便后续状态更新
@@ -264,7 +260,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	}
 
 	const handleRebuildSemanticIndex = () => {
-		setSemanticIndex((prev) => ({ ...prev, status: "syncing", progress: 0 }))
+		setSemanticIndex((prev) => ({ ...prev, status: "running", progress: 0 }))
 
 		// 发送重新构建消息到扩展
 		vscode.postMessage({
@@ -283,7 +279,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	}
 
 	const handleRebuildCodeIndex = () => {
-		setCodeIndex((prev) => ({ ...prev, status: "syncing", progress: 0 }))
+		setCodeIndex((prev) => ({ ...prev, status: "running", progress: 0 }))
 
 		// 发送重新构建消息到扩展
 		vscode.postMessage({
@@ -321,7 +317,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	const handleSetSemanticIndexSyncing = () => {
 		setSemanticIndex((prev) => ({
 			...prev,
-			status: "syncing",
+			status: "running",
 			progress: 75,
 			fileCount: prev.fileCount + 40,
 			errorMessage: undefined,
@@ -353,7 +349,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	const handleSetSemanticIndexError = () => {
 		setSemanticIndex((prev) => ({
 			...prev,
-			status: "error",
+			status: "failed",
 			progress: 100,
 			errorMessage: "语义索引构建失败，请检查文件格式或网络连接",
 			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
@@ -364,7 +360,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	const handleSetCodeIndexSyncing = () => {
 		setCodeIndex((prev) => ({
 			...prev,
-			status: "syncing",
+			status: "running",
 			progress: 75,
 			fileCount: prev.fileCount + 40,
 			errorMessage: undefined,
@@ -396,7 +392,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	const handleSetCodeIndexError = () => {
 		setCodeIndex((prev) => ({
 			...prev,
-			status: "error",
+			status: "failed",
 			progress: 100,
 			errorMessage: "代码索引构建失败，请检查文件格式或网络连接",
 			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
@@ -455,7 +451,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							</div>
 						) : (
 							<>
-								{indexStatus.status === "syncing" && (
+								{indexStatus.status === "running" && (
 									<div className="flex items-center gap-2">
 										<div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
 										<span>同步中...</span>
@@ -467,7 +463,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 										<span>同步成功</span>
 									</div>
 								)}
-								{indexStatus.status === "error" && (
+								{indexStatus.status === "failed" && (
 									<div className="flex items-center gap-2">
 										<TooltipProvider>
 											<Tooltip>
@@ -561,9 +557,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 										variant="outline"
 										size="sm"
 										className="flex items-center gap-1"
-										disabled={indexStatus.status === "syncing" || isPendingEnableSection}>
+										disabled={indexStatus.status === "running" || isPendingEnableSection}>
 										<RefreshCw
-											className={`w-3 h-3 ${indexStatus.status === "syncing" ? "animate-spin" : ""}`}
+											className={`w-3 h-3 ${indexStatus.status === "running" ? "animate-spin" : ""}`}
 										/>
 										重新构建
 									</Button>
