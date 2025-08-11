@@ -189,7 +189,11 @@ const ProviderRenderer: React.FC<ProviderRendererProps> = ({
 		<ModelPicker
 			apiConfiguration={apiConfiguration}
 			setApiConfigurationField={setApiConfigurationField}
-			defaultModelId={config.defaultModelId}
+			defaultModelId={
+				(apiConfiguration.apiProvider === "zgsm"
+					? apiConfiguration.zgsmModelId
+					: apiConfiguration.apiModelId) || config.defaultModelId
+			}
 			models={config?.models ?? {}}
 			modelIdKey={config.modelIdKey as any}
 			serviceName={config.serviceName}
@@ -209,7 +213,10 @@ const ProviderRenderer: React.FC<ProviderRendererProps> = ({
 					<Select
 						value={selectedModelId === "custom-arn" ? "custom-arn" : selectedModelId}
 						onValueChange={(value) => {
-							setApiConfigurationField("apiModelId", value)
+							setApiConfigurationField(
+								apiConfiguration.apiProvider === "zgsm" ? "zgsmModelId" : "apiModelId",
+								value,
+							)
 
 							// Clear custom ARN if not using custom ARN option.
 							if (value !== "custom-arn" && selectedProvider === "bedrock") {

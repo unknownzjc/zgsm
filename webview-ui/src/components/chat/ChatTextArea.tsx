@@ -982,7 +982,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						/> */}
 						{apiConfiguration && (
 							<ProviderRenderer
-								selectedProvider={apiConfiguration.apiProvider || ""}
+								selectedProvider={apiConfiguration.apiProvider || "zgsm"}
 								apiConfiguration={apiConfiguration}
 								organizationAllowList={organizationAllowList}
 								setApiConfigurationField={setApiConfigurationField}

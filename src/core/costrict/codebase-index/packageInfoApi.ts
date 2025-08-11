@@ -9,7 +9,7 @@ export class PackageInfoApi {
 
 	/**
 	 * 构造函数
-	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/shenma/api/v1
+	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
 	 */
 	constructor(baseUrl: string) {
 		this.baseUrl = baseUrl

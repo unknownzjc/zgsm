@@ -29,7 +29,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private logger: ILogger | null = null
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
-	private baseUrl = "https://zgsm.sangfor.com/shenma/api/v1"
+	private baseUrl = "https://zgsm.sangfor.com/costrict"
 	/**
 	 * 私有构造函数，确保单例模式
 	 */

@@ -222,7 +222,7 @@ export interface ICodebaseIndexManager {
  */
 export interface CodebaseIndexClientConfig {
 	/**
-	 * API 基础 URL，默认为 https://zgsm.sangfor.com/shenma/api/v1/costrict
+	 * API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
 	 */
 	baseUrl?: string
 	/**

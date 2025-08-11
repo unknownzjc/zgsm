@@ -136,7 +136,7 @@ function getSelectedModel({
 	switch (provider) {
 		case "zgsm": {
 			const openAiCustomModelInfo = apiConfiguration?.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults
-			const id = apiConfiguration.zgsmModelId ?? zgsmDefaultModelId
+			const id = apiConfiguration.zgsmModelId || apiConfiguration.apiModelId || zgsmDefaultModelId
 			const info = !apiConfiguration.useZgsmCustomConfig
 				? getWebViewZgsmFullResponseData().find((item) => item.id === id) || getZgsmSelectedModelInfo(id)
 				: openAiCustomModelInfo

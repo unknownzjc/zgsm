@@ -30,7 +30,7 @@ export class FileDownloader {
 	private logger: ILogger
 	/**
 	 * 构造函数
-	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/shenma/api/v1
+	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
 	 * @param timeout 请求超时时间（毫秒），默认为 30000ms (30秒)
 	 */
 	constructor(baseUrl: string, publicKey: string, timeout: number = 30000) {

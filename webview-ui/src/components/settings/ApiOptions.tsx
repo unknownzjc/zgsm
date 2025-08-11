@@ -160,7 +160,7 @@ const ApiOptions = ({
 		300,
 		[customHeaders, apiConfiguration?.openAiHeaders, setApiConfigurationField],
 	)
-
+	const apiModelIdKey = apiConfiguration.apiProvider === "zgsm" ? "zgsmModelId" : "apiModelId"
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 	const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false)
 	const [showProviderChangeWarning, setShowProviderChangeWarning] = useState(false)
@@ -195,10 +195,10 @@ const ApiOptions = ({
 
 	// Update `apiModelId` whenever `selectedModelId` changes.
 	useEffect(() => {
-		if (selectedModelId && apiConfiguration.apiModelId !== selectedModelId) {
-			setApiConfigurationField("apiModelId", selectedModelId)
+		if (selectedModelId && apiConfiguration[apiModelIdKey] !== selectedModelId) {
+			setApiConfigurationField(apiModelIdKey, selectedModelId)
 		}
-	}, [selectedModelId, setApiConfigurationField, apiConfiguration.apiModelId])
+	}, [apiConfiguration, apiModelIdKey, selectedModelId, setApiConfigurationField])
 
 	// Debounced refresh model updates, only executed 250ms after the user
 	// stops typing.
@@ -634,7 +634,7 @@ const ApiOptions = ({
 						<Select
 							value={selectedModelId === "custom-arn" ? "custom-arn" : selectedModelId}
 							onValueChange={(value) => {
-								setApiConfigurationField("apiModelId", value)
+								setApiConfigurationField(apiModelIdKey, value)
 
 								// Clear custom ARN if not using custom ARN option.
 								if (value !== "custom-arn" && selectedProvider === "bedrock") {
