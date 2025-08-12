@@ -39,6 +39,7 @@ type ModelIdKey = keyof Pick<
 	| "ollamaModelId"
 	| "lmStudioModelId"
 	| "vsCodeLmModelSelector"
+	| "ioIntelligenceModelId"
 >
 
 interface ModelPickerProps {

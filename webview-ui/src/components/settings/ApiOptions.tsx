@@ -33,6 +33,7 @@ import {
 	internationalZAiDefaultModelId,
 	mainlandZAiDefaultModelId,
 	fireworksDefaultModelId,
+	ioIntelligenceDefaultModelId,
 } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
@@ -71,6 +72,7 @@ import {
 	Glama,
 	Groq,
 	HuggingFace,
+	IOIntelligence,
 	LMStudio,
 	LiteLLM,
 	Mistral,
@@ -346,6 +348,7 @@ const ApiOptions = ({
 							: internationalZAiDefaultModelId,
 				},
 				fireworks: { field: "apiModelId", default: fireworksDefaultModelId },
+				"io-intelligence": { field: "ioIntelligenceModelId", default: ioIntelligenceDefaultModelId },
 				openai: { field: "openAiModelId" },
 				zgsm: { field: "zgsmModelId", default: zgsmDefaultModelId },
 				ollama: { field: "ollamaModelId" },
@@ -610,6 +613,15 @@ const ApiOptions = ({
 
 			{selectedProvider === "zai" && (
 				<ZAi apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+			)}
+
+			{selectedProvider === "io-intelligence" && (
+				<IOIntelligence
+					apiConfiguration={apiConfiguration}
+					setApiConfigurationField={setApiConfigurationField}
+					organizationAllowList={organizationAllowList}
+					modelValidationError={modelValidationError}
+				/>
 			)}
 
 			{selectedProvider === "human-relay" && (
