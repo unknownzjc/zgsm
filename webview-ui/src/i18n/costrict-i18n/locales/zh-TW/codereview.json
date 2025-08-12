@@ -21,7 +21,14 @@
 		},
 		"severityLabel": "嚴重程度",
 		"issueLable": "標籤",
-		"filterTooltip": "過濾問題"
+		"filterTooltip": "過濾問題",
+		"confidence": {
+			"low": "低",
+			"middle": "中",
+			"high": "高"
+		},
+		"confidenceLabel": "置信度",
+		"confidenceTooltip": "確信度越高問題的可信度越高，符合條件的問題越少，反之亦然，建議取適中"
 	},
 	"taskStatusBar": {
 		"running": "正在進行 Code Review，{{progress}}%",

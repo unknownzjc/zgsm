@@ -21,7 +21,14 @@
 		},
 		"severityLabel": "Severity",
 		"issueLable": "Label",
-		"filterTooltip": "Filter issues"
+		"filterTooltip": "Filter issues",
+		"confidence": {
+			"low": "Low",
+			"middle": "Medium",
+			"high": "High"
+		},
+		"confidenceLabel": "Confidence",
+		"confidenceTooltip": "The higher the confidence, the higher the credibility of the problem, the fewer the problems that meet the conditions, and vice versa, it is recommended to take moderate"
 	},
 	"taskStatusBar": {
 		"running": "Code Review in progress, {{progress}}%",
