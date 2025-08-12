@@ -118,8 +118,20 @@ export class ZgsmAuthStorage {
 		if (!state.currentApiConfigName) {
 			return
 		}
-		const { zgsmAccessToken, zgsmRefreshToken, zgsmState, ...config } = state.apiConfiguration
+		const config = {
+			zgsmBaseUrl: "",
+			zgsmRefreshToken: "",
+			zgsmAccessToken: "",
+			zgsmState: "",
+			zgsmApiKeyUpdatedAt: "",
+			zgsmApiKeyExpiredAt: "",
+		}
+		await ZgsmAuthStorage.clineProvider?.providerSettingsManager.saveMergeConfig(
+			config,
+			(name) => name !== state.currentApiConfigName,
+		)
 
+		await ZgsmAuthStorage.clineProvider.setValue("zgsmBaseUrl", undefined)
 		await ZgsmAuthStorage.clineProvider.setValue("zgsmAccessToken", undefined)
 		await ZgsmAuthStorage.clineProvider.setValue("zgsmRefreshToken", undefined)
 		await ZgsmAuthStorage.clineProvider.setValue("zgsmState", undefined)

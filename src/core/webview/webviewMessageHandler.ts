@@ -1592,6 +1592,18 @@ export const webviewMessageHandler = async (
 			break
 		case "upsertApiConfiguration":
 			if (message.text && message.apiConfiguration) {
+				if (message.apiConfiguration.apiProvider === "zgsm") {
+					const currentConfigName = getGlobalState("currentApiConfigName") || "default"
+
+					await provider.providerSettingsManager.saveMergeConfig(
+						{
+							zgsmBaseUrl: message.apiConfiguration.zgsmBaseUrl,
+						},
+						(name, { apiProvider }) => {
+							return apiProvider === "zgsm" && name !== currentConfigName
+						},
+					)
+				}
 				await provider.upsertProviderProfile(message.text, message.apiConfiguration)
 			}
 			break
