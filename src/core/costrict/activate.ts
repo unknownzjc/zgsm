@@ -7,6 +7,7 @@
 
 import * as vscode from "vscode"
 import type { ClineProvider } from "../webview/ClineProvider"
+import prettyBytes from "pretty-bytes"
 
 // Import from migrated modules
 import { AICompletionProvider, CompletionStatusBar, shortKeyCut } from "./completion"
@@ -166,6 +167,12 @@ export async function activate(
 			message: OPENAI_CLIENT_NOT_INITIALIZED,
 		})
 	}
+	provider.getState().then((state) => {
+		const size = (state.taskHistory || []).reduce((p, c) => p + Number(c.size), 0)
+		if (size > 1000 * 1000 * 1000 * 3) {
+			vscode.window.showWarningMessage(`历史任务缓存超3GB，您可以手动清理历史记录来释放磁盘空间`)
+		}
+	})
 }
 
 /**

@@ -6,7 +6,7 @@ import { TelemetryService } from "@roo-code/telemetry"
 import { CodeBaseError } from "../telemetry/constants"
 import { ILogger } from "../../../utils/logger"
 import { computeHash } from "../base/common"
-import { RooIgnoreController } from "../../ignore/RooIgnoreController"
+import { CoIgnoreController } from "./CoIgnoreController"
 import { getWorkspacePath } from "../../../utils/path"
 
 /**
@@ -45,7 +45,7 @@ export class WorkspaceEventMonitor {
 	private lastFlushTime = 0
 	private ignoreFilename = ".coignore"
 	private logger?: ILogger
-	private ignoreController: RooIgnoreController
+	private ignoreController: CoIgnoreController
 	// 用于解决命令行删除文件问题的文件系统监控器
 	private fileSystemWatcher: FSWatcher | null = null
 
@@ -56,7 +56,7 @@ export class WorkspaceEventMonitor {
 	 * 私有构造函数，确保单例模式
 	 */
 	private constructor() {
-		this.ignoreController = new RooIgnoreController(getWorkspacePath(), this.ignoreFilename)
+		this.ignoreController = new CoIgnoreController(getWorkspacePath())
 		this.ignoreController.initialize().catch((error) => {
 			this.log.error("[WorkspaceEventMonitor] 初始化忽略控制器失败:", error.message)
 		})
@@ -336,8 +336,8 @@ export class WorkspaceEventMonitor {
 
 		// 调试日志：记录保存事件触发
 		this.log.info(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
-		this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
-		this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
+		// this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
+		// this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
 		this.log.info(`[WorkspaceEventMonitor] 文档内容hash: ${currentContentHash}`)
 
 		// 检查文档内容是否真的发生了变化
@@ -348,8 +348,9 @@ export class WorkspaceEventMonitor {
 			// 比较内容
 			hasContentChanged = cachedInfo.contentHash !== currentContentHash
 			this.log.info(`[WorkspaceEventMonitor] 内容变更检查: ${hasContentChanged ? "有变更" : "无变更"}`)
-			this.log.info(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
+			// this.log.info(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
 		} else {
+			hasContentChanged = true
 			this.log.info(`[WorkspaceEventMonitor] 首次保存文档，无缓存信息`)
 		}
 
@@ -361,7 +362,7 @@ export class WorkspaceEventMonitor {
 
 		// 只有在内容真正发生变化时才触发事件
 		if (hasContentChanged) {
-			this.log.info(`[WorkspaceEventMonitor] 文档内容有变更，触发修改事件`)
+			this.log.info(`[WorkspaceEventMonitor] 触发修改事件`)
 			const eventKey = `modify:${filePath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "modify_file",

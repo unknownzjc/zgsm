@@ -378,7 +378,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public async publishWorkspaceEvents(request: WorkspaceEventRequest): Promise<ApiResponse<number>> {
 		try {
 			await this.ensureClientInited()
-			this.log(`发布工作区事件: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
+			// this.log(`发布工作区事件: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
 			// 读取访问令牌
 			const token = await this.readAccessToken()
 			return await this.client!.publishWorkspaceEvents(request, token)

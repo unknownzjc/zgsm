@@ -20,6 +20,7 @@ import { useAppTranslation } from "@/i18n/TranslationContext"
 import { Tab, TabContent, TabHeader } from "../common/Tab"
 import { useTaskSearch } from "./useTaskSearch"
 import TaskItem from "./TaskItem"
+import prettyBytes from "pretty-bytes"
 
 type HistoryViewProps = {
 	onDone: () => void
@@ -30,6 +31,7 @@ type SortOption = "newest" | "oldest" | "mostExpensive" | "mostTokens" | "mostRe
 const HistoryView = ({ onDone }: HistoryViewProps) => {
 	const {
 		tasks,
+		taskCacheSize,
 		searchQuery,
 		setSearchQuery,
 		sortOption,
@@ -82,7 +84,9 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 		<Tab>
 			<TabHeader className="flex flex-col gap-2">
 				<div className="flex justify-between items-center">
-					<h3 className="text-vscode-foreground m-0">{t("history:history")}</h3>
+					<h3 className="text-vscode-foreground m-0">
+						{t("history:history")}({prettyBytes(taskCacheSize)})
+					</h3>
 					<div className="flex gap-2">
 						<StandardTooltip
 							content={
@@ -253,7 +257,8 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 			{isSelectionMode && selectedTaskIds.length > 0 && (
 				<div className="fixed bottom-0 left-0 right-2 bg-vscode-editor-background border-t border-vscode-panel-border p-2 flex justify-between items-center">
 					<div className="text-vscode-foreground">
-						{t("history:selectedItems", { selected: selectedTaskIds.length, total: tasks.length })}
+						{t("history:selectedItems", { selected: selectedTaskIds.length, total: tasks.length })} -{" "}
+						{prettyBytes(tasks.reduce((acc, task) => acc + (Number(task.size) || 0), 0))}
 					</div>
 					<div className="flex gap-2">
 						<Button variant="secondary" onClick={() => setSelectedTaskIds([])}>

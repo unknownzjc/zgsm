@@ -48,7 +48,7 @@ describe("HistoryView", () => {
 		render(<HistoryView onDone={onDone} />)
 
 		// Check for main UI elements
-		expect(screen.getByText("history:history")).toBeInTheDocument()
+		expect(screen.getByText(/history:history/)).toBeInTheDocument()
 		expect(screen.getByText("history:done")).toBeInTheDocument()
 		expect(screen.getByPlaceholderText("history:searchPlaceholder")).toBeInTheDocument()
 	})

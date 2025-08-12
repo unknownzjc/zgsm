@@ -13,8 +13,8 @@ try {
 	console.warn("Failed to load environment variables:", e)
 }
 
-import { CloudService, ExtensionBridgeService } from "@roo-code/cloud"
-import { TelemetryService, PostHogTelemetryClient } from "@roo-code/telemetry"
+// import { CloudService, ExtensionBridgeService } from "@roo-code/cloud"
+import { TelemetryService /* PostHogTelemetryClient */ } from "@roo-code/telemetry"
 
 import "./utils/path" // Necessary to have access to String.prototype.toPosix.
 import { createOutputChannelLogger, createDualLogger } from "./utils/outputChannelLogger"

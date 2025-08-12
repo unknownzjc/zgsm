@@ -80,6 +80,9 @@ export const useTaskSearch = () => {
 
 	return {
 		tasks,
+		get taskCacheSize() {
+			return taskHistory.reduce((acc, task) => acc + (Number(task.size) || 0), 0)
+		},
 		searchQuery,
 		setSearchQuery,
 		sortOption,
