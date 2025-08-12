@@ -109,6 +109,12 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
+			// 先设置一个不同的内容缓存，这样保存时会检测到变化
+			monitor["documentContentCache"].set("/test/file.txt", {
+				contentHash: "different-hash",
+				version: 0,
+			})
+
 			monitor["handleDocumentSave"](mockDocument)
 			expect(monitor.getStatus().eventBufferSize).toBeGreaterThan(0)
 		})

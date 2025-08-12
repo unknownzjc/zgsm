@@ -36,6 +36,13 @@ const mockSelection = class extends mockRange {
 	}
 }
 
+const mockRelativePattern = class {
+	constructor(base, pattern) {
+		this.base = base
+		this.pattern = pattern
+	}
+}
+
 export const workspace = {
 	workspaceFolders: [],
 	getWorkspaceFolder: () => null,
@@ -43,11 +50,12 @@ export const workspace = {
 	getConfiguration: () => ({
 		get: () => null,
 	}),
-	createFileSystemWatcher: () => ({
+	createFileSystemWatcher: (pattern) => ({
 		onDidCreate: () => mockDisposable,
 		onDidChange: () => mockDisposable,
 		onDidDelete: () => mockDisposable,
 		dispose: () => {},
+		pattern: pattern,
 	}),
 	fs: {
 		readFile: () => Promise.resolve(new Uint8Array()),
@@ -112,6 +120,7 @@ export const Uri = mockUri
 export const Range = mockRange
 export const Position = mockPosition
 export const Selection = mockSelection
+export const RelativePattern = mockRelativePattern
 export const Disposable = mockDisposable
 export const ThemeIcon = class {
 	constructor(id) {
@@ -201,6 +210,7 @@ export default {
 	Range,
 	Position,
 	Selection,
+	RelativePattern,
 	Disposable,
 	ThemeIcon,
 	FileType,

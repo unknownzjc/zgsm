@@ -170,6 +170,12 @@ vi.mock("vscode", () => ({
 		onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
 		onDidOpenTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
 		onDidCloseTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+		createFileSystemWatcher: vi.fn().mockReturnValue({
+			onDidCreate: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidDelete: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			dispose: vi.fn(),
+		}),
 	},
 	env: {
 		uriScheme: "vscode",
@@ -181,6 +187,7 @@ vi.mock("vscode", () => ({
 		Development: 2,
 		Test: 3,
 	},
+	RelativePattern: vi.fn().mockImplementation((base, pattern) => ({ base, pattern })),
 	version: "1.85.0",
 }))
 

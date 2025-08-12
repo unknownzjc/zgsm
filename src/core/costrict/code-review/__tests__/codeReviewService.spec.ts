@@ -54,6 +54,15 @@ vi.mock("vscode", () => ({
 			dispose: vi.fn(),
 		}),
 	},
+	workspace: {
+		createFileSystemWatcher: vi.fn().mockReturnValue({
+			onDidCreate: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidDelete: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			dispose: vi.fn(),
+		}),
+	},
+	RelativePattern: vi.fn().mockImplementation((base, pattern) => ({ base, pattern })),
 	env: {
 		machineId: "mock-machine-id",
 		remoteName: undefined,

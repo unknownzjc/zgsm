@@ -25,7 +25,14 @@ vi.mock("vscode", async (importOriginal) => ({
 				},
 			},
 		],
+		createFileSystemWatcher: vi.fn().mockReturnValue({
+			onDidCreate: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			onDidDelete: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+			dispose: vi.fn(),
+		}),
 	},
+	RelativePattern: vi.fn().mockImplementation((base, pattern) => ({ base, pattern })),
 }))
 
 vi.mock("../../core/webview/ClineProvider")
