@@ -318,7 +318,10 @@ export class CodebaseIndexClient {
 				// Wait a moment to check if the process is still running
 				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				const isRunning = await this.isRunning()
-				if (isRunning) return
+				if (isRunning) {
+					this.startService()
+					break
+				}
 			} catch (err: any) {
 				if (attempts >= maxRetries) {
 					throw new Error(`Failed to start ${this.processName} process after multiple retries`)
@@ -326,6 +329,23 @@ export class CodebaseIndexClient {
 			}
 		}
 	}
+	/**
+	 * 1.开始获取服务信息：5分钟内 5秒一次，超过5分钟后 30秒一次，直到获取到服务信息开始下一步
+	 * 2.获取到 codebase-sync 服务地址信息（name， protocol，port， accessible）
+	 * {
+	 *	"name": "codebase-syncer",//程序名称
+	 *	"startup": "always",//启动模式：always=常驻, once=运行一次, none=不自动运行
+	 *	"command": "codebase-syncer -s",//设定启动的命令行(比如服务模式启动codebase-syncer),如果不指定，则以不带参数方式启动
+	 *	"protocol": "http",
+	 *	//服务对外接口协议
+	 *	"port": "8080",//建议服务端口，实际运行时根据客户端情况会调整
+	 *	"metrics": "/metrics",//指标采集接口的地址
+	 *	"accessible": "local"//可访问性：remote(远程访问)/local(本地访问)
+	 *	}
+	 *  3.启动服务 接口是：/costrict/api/v1/services/{name}/start
+	 *
+	 */
+	startService() {}
 
 	/**
 	 * 将 VersionId 对象格式化为版本字符串

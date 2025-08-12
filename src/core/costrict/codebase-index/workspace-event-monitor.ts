@@ -43,7 +43,6 @@ export class WorkspaceEventMonitor {
 	private eventBuffer: Map<string, WorkspaceEventData> = new Map()
 	private flushTimer: NodeJS.Timeout | null = null
 	private lastFlushTime = 0
-	private ignoreFilename = ".coignore"
 	private logger?: ILogger
 	private ignoreController: CoIgnoreController
 	// 用于解决命令行删除文件问题的文件系统监控器
