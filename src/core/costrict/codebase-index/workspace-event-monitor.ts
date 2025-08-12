@@ -338,7 +338,7 @@ export class WorkspaceEventMonitor {
 		this.log.info(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
 		// this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
 		// this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
-		this.log.info(`[WorkspaceEventMonitor] 文档内容hash: ${currentContentHash}`)
+		// this.log.info(`[WorkspaceEventMonitor] 文档内容hash: ${currentContentHash}`)
 
 		// 检查文档内容是否真的发生了变化
 		const cachedInfo = this.documentContentCache.get(filePath)

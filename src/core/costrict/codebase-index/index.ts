@@ -15,9 +15,10 @@ import {
 } from "./types"
 import { TelemetryErrorType } from "../telemetry"
 import { TelemetryService } from "@roo-code/telemetry"
-import { ZgsmAuthService } from "../auth"
+import { ZgsmAuthApi, ZgsmAuthService, ZgsmAuthConfig } from "../auth"
 import { getClientId } from "../../../utils/getClientId"
 import { ILogger } from "../../../utils/logger"
+import { jwtDecode } from "jwt-decode"
 
 /**
  * CodebaseIndex 管理器实现类（单例模式）
@@ -64,13 +65,13 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private log(message: string, type: "info" | "error" = "info", id: string = ""): void {
 		// 如果没有提供日志提供者，使用 console.log
-		const prefix = [new Date().toLocaleString(), type, id]
-			.filter((s) => s)
-			.map((s) => `[${s}]`)
-			.join(" ")
 		if (this.logger?.info) {
-			this.logger.info(`${prefix}${message}`)
+			this.logger[type](`[${id}] ${message}`)
 		} else {
+			const prefix = [new Date().toLocaleString(), type, id]
+				.filter((s) => s)
+				.map((s) => `[${s}]`)
+				.join(" ")
 			console.log(`${prefix}${message}`)
 		}
 	}
@@ -134,16 +135,30 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			}
 
 			const tokenDir = path.join(homeDir, ".costrict", "share")
-			const tokenFilePath = path.join(tokenDir, "access-token")
+			const tokenFilePath = path.join(tokenDir, "auth.json")
 
 			// 确保目录存在
 			if (!fs.existsSync(tokenDir)) {
 				fs.mkdirSync(tokenDir, { recursive: true })
 			}
-
 			// 写入令牌文件
-			fs.writeFileSync(tokenFilePath, accessToken, "utf8")
-
+			const jwt = jwtDecode(accessToken) as any
+			const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+			fs.writeFileSync(
+				tokenFilePath,
+				JSON.stringify(
+					{
+						id: jwt.id,
+						name: jwt.displayName,
+						access_token: accessToken,
+						machine_id: getClientId(),
+						base_url: zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
+					},
+					null,
+					2,
+				),
+				"utf8",
+			)
 			this.log(`访问令牌已写入文件: ${tokenFilePath}`, "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "写入访问令牌时发生未知错误"

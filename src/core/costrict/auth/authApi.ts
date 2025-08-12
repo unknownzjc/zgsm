@@ -28,7 +28,7 @@ export class ZgsmAuthApi {
 	/**
 	 * 获取API配置
 	 */
-	private async getApiConfiguration(): Promise<ProviderSettings> {
+	async getApiConfiguration(): Promise<ProviderSettings> {
 		if (ZgsmAuthApi.clineProvider) {
 			try {
 				const state = await ZgsmAuthApi.clineProvider.getState()

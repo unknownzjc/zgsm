@@ -1047,7 +1047,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								shouldDisableImages &&
 									"opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
 								"mr-1",
-								"bg-vscode-input-background  opacity-90",
+								"bg-vscode-input-background opacity-90",
 							)}>
 							<Image className="w-4 h-4" />
 						</button>

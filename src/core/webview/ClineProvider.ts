@@ -203,10 +203,10 @@ export class ClineProvider
 			])
 		}
 
-		// Initialize Roo Code Cloud profile sync.
-		this.initializeCloudProfileSync().catch((error) => {
-			this.log(`Failed to initialize cloud profile sync: ${error}`)
-		})
+		// // Initialize Roo Code Cloud profile sync.
+		// this.initializeCloudProfileSync().catch((error) => {
+		// 	this.log(`Failed to initialize cloud profile sync: ${error}`)
+		// })
 	}
 
 	/**
@@ -1904,56 +1904,56 @@ export class ClineProvider
 
 		let organizationAllowList = ORGANIZATION_ALLOW_ALL
 
-		try {
-			organizationAllowList = await CloudService.instance.getAllowList()
-		} catch (error) {
-			console.error(
-				`[getState] failed to get organization allow list: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	organizationAllowList = await CloudService.instance.getAllowList()
+		// } catch (error) {
+		// 	console.error(
+		// 		`[getState] failed to get organization allow list: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 
 		let cloudUserInfo: CloudUserInfo | null = null
 
-		try {
-			cloudUserInfo = CloudService.instance.getUserInfo()
-		} catch (error) {
-			console.error(
-				`[getState] failed to get cloud user info: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	cloudUserInfo = CloudService.instance.getUserInfo()
+		// } catch (error) {
+		// 	console.error(
+		// 		`[getState] failed to get cloud user info: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 
 		let cloudIsAuthenticated: boolean = false
 
-		try {
-			cloudIsAuthenticated = CloudService.instance.isAuthenticated()
-		} catch (error) {
-			console.error(
-				`[getState] failed to get cloud authentication state: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	cloudIsAuthenticated = CloudService.instance.isAuthenticated()
+		// } catch (error) {
+		// 	console.error(
+		// 		`[getState] failed to get cloud authentication state: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 
 		let sharingEnabled: boolean = false
 
-		try {
-			sharingEnabled = await CloudService.instance.canShareTask()
-		} catch (error) {
-			console.error(
-				`[getState] failed to get sharing enabled state: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	sharingEnabled = await CloudService.instance.canShareTask()
+		// } catch (error) {
+		// 	console.error(
+		// 		`[getState] failed to get sharing enabled state: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 
 		let organizationSettingsVersion: number = -1
 
-		try {
-			if (CloudService.hasInstance()) {
-				const settings = CloudService.instance.getOrganizationSettings()
-				organizationSettingsVersion = settings?.version ?? -1
-			}
-		} catch (error) {
-			console.error(
-				`[getState] failed to get organization settings version: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	if (CloudService.hasInstance()) {
+		// 		const settings = CloudService.instance.getOrganizationSettings()
+		// 		organizationSettingsVersion = settings?.version ?? -1
+		// 	}
+		// } catch (error) {
+		// 	console.error(
+		// 		`[getState] failed to get organization settings version: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 
 		// Return the same structure as before
 		return {
