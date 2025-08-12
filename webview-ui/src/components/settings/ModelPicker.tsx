@@ -183,7 +183,7 @@ export const ModelPicker = ({
 							aria-expanded={open}
 							className={cn("w-full", "justify-between", triggerClassName)}
 							data-testid="model-picker-button">
-							<div className={PopoverTriggerContentClassName}>
+							<div className={`truncate ${PopoverTriggerContentClassName}`}>
 								{selectedModelId ?? t("settings:common.select")}
 							</div>
 							{buttonIconType === "upDown" ? (
@@ -230,7 +230,9 @@ export const ModelPicker = ({
 											value={model}
 											onSelect={onSelect}
 											data-testid={`model-option-${model}`}>
-											{model}
+											<span className="truncate" title={model}>
+												{model}
+											</span>
 											<Check
 												className={cn(
 													"size-4 p-0.5 ml-auto",
