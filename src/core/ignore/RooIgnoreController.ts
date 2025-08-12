@@ -16,9 +16,13 @@ export class RooIgnoreController {
 	private ignoreInstance: Ignore
 	private disposables: vscode.Disposable[] = []
 	rooIgnoreContent: string | undefined
+	ignoreFilename = ".rooignore"
 
-	constructor(cwd: string) {
+	constructor(cwd: string, ignoreFileName?: string) {
 		this.cwd = cwd
+		if (ignoreFileName) {
+			this.ignoreFilename = ignoreFileName
+		}
 		this.ignoreInstance = ignore()
 		this.rooIgnoreContent = undefined
 		// Set up file watcher for .rooignore
@@ -37,7 +41,7 @@ export class RooIgnoreController {
 	 * Set up the file watcher for .rooignore changes
 	 */
 	private setupFileWatcher(): void {
-		const rooignorePattern = new vscode.RelativePattern(this.cwd, ".rooignore")
+		const rooignorePattern = new vscode.RelativePattern(this.cwd, this.ignoreFilename)
 		const fileWatcher = vscode.workspace.createFileSystemWatcher(rooignorePattern)
 
 		// Watch for changes and updates
@@ -64,12 +68,12 @@ export class RooIgnoreController {
 		try {
 			// Reset ignore instance to prevent duplicate patterns
 			this.ignoreInstance = ignore()
-			const ignorePath = path.join(this.cwd, ".rooignore")
+			const ignorePath = path.join(this.cwd, this.ignoreFilename)
 			if (await fileExistsAtPath(ignorePath)) {
 				const content = await fs.readFile(ignorePath, "utf8")
 				this.rooIgnoreContent = content
 				this.ignoreInstance.add(content)
-				this.ignoreInstance.add(".rooignore")
+				this.ignoreInstance.add(this.ignoreFilename)
 			} else {
 				this.rooIgnoreContent = undefined
 			}

@@ -5,6 +5,9 @@ import { WorkspaceEventData, WorkspaceEventRequest } from "./types"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeBaseError } from "../telemetry/constants"
 import { ILogger } from "../../../utils/logger"
+import { computeHash } from "../base/common"
+import { RooIgnoreController } from "../../ignore/RooIgnoreController"
+import { getWorkspacePath } from "../../../utils/path"
 
 /**
  * 工作区事件监控配置
@@ -40,17 +43,24 @@ export class WorkspaceEventMonitor {
 	private eventBuffer: Map<string, WorkspaceEventData> = new Map()
 	private flushTimer: NodeJS.Timeout | null = null
 	private lastFlushTime = 0
+	private ignoreFilename = ".coignore"
 	private logger?: ILogger
+	private ignoreController: RooIgnoreController
 	// 用于解决命令行删除文件问题的文件系统监控器
 	private fileSystemWatcher: FSWatcher | null = null
 
 	// 用于解决无内容变更保存问题的文档状态跟踪
-	private documentContentCache: Map<string, { content: string; version: number }> = new Map()
+	private documentContentCache: Map<string, { contentHash: string; version: number }> = new Map()
 
 	/**
 	 * 私有构造函数，确保单例模式
 	 */
-	private constructor() {}
+	private constructor() {
+		this.ignoreController = new RooIgnoreController(getWorkspacePath(), this.ignoreFilename)
+		this.ignoreController.initialize().catch((error) => {
+			this.log.error("[WorkspaceEventMonitor] 初始化忽略控制器失败:", error.message)
+		})
+	}
 
 	private get log(): ILogger | Console {
 		return this.logger || console
@@ -273,6 +283,7 @@ export class WorkspaceEventMonitor {
 	 * 处理文件系统检测到的文件删除事件
 	 */
 	private handleFileSystemFileDelete(filePath: string): void {
+		if (!this.ignoreController.validateAccess(filePath)) return
 		if (!this.config.enabled) return
 
 		const eventKey = `delete:${filePath}`
@@ -294,6 +305,7 @@ export class WorkspaceEventMonitor {
 		if (!this.config.enabled) return
 
 		const uri = document.uri
+		if (!this.ignoreController.validateAccess(uri.fsPath)) return
 		if (uri.scheme !== "file") return
 
 		const eventKey = `open:${uri.fsPath}`
@@ -314,25 +326,27 @@ export class WorkspaceEventMonitor {
 		if (!this.config.enabled) return
 
 		const uri = document.uri
+
 		if (uri.scheme !== "file") return
 
 		const filePath = uri.fsPath
-		const currentContent = document.getText()
+		if (!this.ignoreController.validateAccess(filePath)) return
+		const currentContentHash = computeHash(document.getText())
 		const currentVersion = document.version
 
 		// 调试日志：记录保存事件触发
 		this.log.info(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
 		this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
 		this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
-		this.log.info(`[WorkspaceEventMonitor] 文档内容长度: ${currentContent.length}`)
+		this.log.info(`[WorkspaceEventMonitor] 文档内容hash: ${currentContentHash}`)
 
 		// 检查文档内容是否真的发生了变化
 		const cachedInfo = this.documentContentCache.get(filePath)
-		let hasContentChanged = true
+		let hasContentChanged = false
 
 		if (cachedInfo) {
 			// 比较内容
-			hasContentChanged = cachedInfo.content !== currentContent
+			hasContentChanged = cachedInfo.contentHash !== currentContentHash
 			this.log.info(`[WorkspaceEventMonitor] 内容变更检查: ${hasContentChanged ? "有变更" : "无变更"}`)
 			this.log.info(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
 		} else {
@@ -341,7 +355,7 @@ export class WorkspaceEventMonitor {
 
 		// 更新缓存
 		this.documentContentCache.set(filePath, {
-			content: currentContent,
+			contentHash: currentContentHash,
 			version: currentVersion,
 		})
 
@@ -373,6 +387,7 @@ export class WorkspaceEventMonitor {
 		this.log.info(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
 
 		event.files.forEach((uri) => {
+			if (!this.ignoreController.validateAccess(uri.fsPath)) return
 			if (uri.scheme !== "file") return
 
 			this.log.info(`[WorkspaceEventMonitor] 删除文件: ${uri.fsPath}`)
@@ -397,6 +412,7 @@ export class WorkspaceEventMonitor {
 		if (!this.config.enabled) return
 
 		event.files.forEach(({ oldUri, newUri }) => {
+			if (!this.ignoreController.validateAccess(newUri.fsPath)) return
 			if (oldUri.scheme !== "file" || newUri.scheme !== "file") return
 
 			const eventKey = `rename:${oldUri.fsPath}:${newUri.fsPath}`
@@ -419,6 +435,7 @@ export class WorkspaceEventMonitor {
 
 		// 处理新增的工作区
 		event.added.forEach((folder) => {
+			if (!this.ignoreController.validateAccess(folder.uri.fsPath)) return
 			const eventKey = `workspace:open:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
@@ -430,6 +447,7 @@ export class WorkspaceEventMonitor {
 
 		// 处理移除的工作区
 		event.removed.forEach((folder) => {
+			if (!this.ignoreController.validateAccess(folder.uri.fsPath)) return
 			const eventKey = `workspace:close:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "close_workspace",
@@ -447,6 +465,7 @@ export class WorkspaceEventMonitor {
 		if (!this.config.enabled) return
 
 		event.files.forEach((uri) => {
+			if (!this.ignoreController.validateAccess(uri.fsPath)) return
 			if (uri.scheme !== "file") return
 
 			const eventKey = `create:${uri.fsPath}`
@@ -473,6 +492,7 @@ export class WorkspaceEventMonitor {
 		}
 
 		workspaceFolders.forEach((folder) => {
+			if (!this.ignoreController.validateAccess(folder.uri.fsPath)) return
 			const eventKey = `workspace:initial:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
