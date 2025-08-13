@@ -7,7 +7,8 @@ import {
 	type ModeConfig,
 	type ExperimentId,
 } from "@roo-code/types"
-import { type OrganizationAllowList } from "@roo-code/cloud"
+
+import { type OrganizationAllowList, ORGANIZATION_ALLOW_ALL } from "@roo/cloud"
 
 import { ExtensionMessage, ExtensionState, MarketplaceInstalledMetadata, Command } from "@roo/ExtensionMessage"
 import { findLastIndex } from "@roo/array"
@@ -240,8 +241,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		cloudUserInfo: null,
 		cloudIsAuthenticated: false,
 		sharingEnabled: false,
-		organizationAllowList: { allowAll: true, providers: {} },
-		// organizationAllowList: ORGANIZATION_ALLOW_ALL,
+		// organizationAllowList: { allowAll: true, providers: {} },
+		organizationAllowList: ORGANIZATION_ALLOW_ALL,
 		organizationSettingsVersion: -1,
 		autoCondenseContext: true,
 		autoCondenseContextPercent: 100,

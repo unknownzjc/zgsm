@@ -22,7 +22,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { useSelectedModel } from "../ui/hooks/useSelectedModel"
 import { ChevronUp } from "lucide-react"
-import type { OrganizationAllowList } from "@roo-code/cloud"
+import type { OrganizationAllowList } from "@roo/cloud"
 export interface ProviderRendererProps {
 	selectedProvider: string
 	apiConfiguration: ProviderSettings
