@@ -36,7 +36,7 @@ export class CodebaseIndexClient {
 	private versionApi: VersionApi
 	private packageInfoApi: PackageInfoApi
 	private fileDownloader: FileDownloader
-	private processName = "costrict-keeper"
+	private processName = "costrict"
 	private logger: ILogger
 
 	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
