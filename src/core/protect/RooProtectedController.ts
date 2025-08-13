@@ -13,8 +13,8 @@ export class RooProtectedController {
 
 	// Predefined list of protected Costrict configuration patterns
 	private static readonly PROTECTED_PATTERNS = [
-		".rooignore",
 		".coignore",
+		".rooignore",
 		".roomodes",
 		".roorules*",
 		".clinerules*",
