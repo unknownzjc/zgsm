@@ -208,8 +208,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 检查本地是否已安装客户端
 			const localVersionInfo = await this.getLocalVersion()
-
-			if (!localVersionInfo) {
+			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath(latestVersionInfo).targetPath)) {
 				// 本地没有安装，直接安装最新版本
 				this.log("本地未安装客户端，开始下载最新版本", "info", "ZgsmCodebaseIndexManager")
 				await this.downloadAndInstallClient(latestVersionInfo)

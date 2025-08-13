@@ -8,6 +8,6 @@ export function execPromise(command: string, opt: any = {}): Promise<string> {
 			} else {
 				resolve(stdout?.toString())
 			}
-		})
+		}).unref()
 	})
 }

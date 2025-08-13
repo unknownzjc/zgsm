@@ -22,7 +22,6 @@ import {
 import path from "path"
 import { execPromise } from "./utils"
 import getPort, { portNumbers } from "get-port"
-import { exec } from "child_process"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
@@ -311,7 +310,7 @@ export class CodebaseIndexClient {
 		}
 	}
 
-	async startClient(versionInfo: VersionInfo, maxRetries = 5): Promise<void> {
+	async startClient(versionInfo: VersionInfo, maxRetries = 3): Promise<void> {
 		let attempts = 0
 		const { targetPath } = this.getTargetPath(versionInfo)
 		while (attempts < maxRetries) {
@@ -327,10 +326,9 @@ export class CodebaseIndexClient {
 				const args = ["server", `--listen 0.0.0.0:${port}`].join(" ")
 
 				const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
-				const child = await exec(command, processOptions)
-				child.unref()
+				await execPromise(command, processOptions)
 				// Wait a moment to check if the process is still running
-				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
+				await new Promise((resolve) => setTimeout(resolve, 500))
 				const isRunning = await this.isRunning()
 				if (isRunning) {
 					await this.startService(versionInfo)
@@ -338,8 +336,11 @@ export class CodebaseIndexClient {
 				}
 			} catch (err: any) {
 				if (attempts >= maxRetries) {
-					throw new Error(`Failed to start ${this.processName} process after multiple retries`)
+					throw new Error(
+						`Failed to start ${this.processName} process after multiple retries: ${err.message}`,
+					)
 				}
+				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 			}
 		}
 	}
@@ -394,7 +395,7 @@ export class CodebaseIndexClient {
 	getTargetPath(
 		versionInfo: VersionInfo,
 		fileName: string = this.processName,
-	): { targetDir: string; targetPath: string; cacheDir: string; homeDir: string } {
+	): { targetPath: string; cacheDir: string; homeDir: string } {
 		const platform = this.platformDetector.platform
 		const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
 
@@ -402,13 +403,13 @@ export class CodebaseIndexClient {
 			throw new Error("Failed to determine home directory path")
 		}
 
-		const arch = this.platformDetector.arch
-		const version = this.formatVersionId(versionInfo.versionId)
+		// const arch = this.platformDetector.arch
+		// const version = this.formatVersionId(versionInfo.versionId)
 		const cacheDir = path.join(homeDir, ".costrict", "bin")
-		const targetDir = path.join(cacheDir, version, platform, arch)
-		const targetPath = path.join(targetDir, `${fileName}${platform === "windows" ? ".exe" : ""}`)
+		// const targetDir = path.join(cacheDir, version, platform, arch)
+		const targetPath = path.join(cacheDir, `${fileName}${platform === "windows" ? ".exe" : ""}`)
 
-		return { targetDir, targetPath, cacheDir, homeDir }
+		return { targetPath, cacheDir, homeDir }
 	}
 
 	/**
