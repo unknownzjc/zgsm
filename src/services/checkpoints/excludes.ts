@@ -6,6 +6,8 @@ import { fileExistsAtPath } from "../../utils/fs"
 const getBuildArtifactPatterns = () => [
 	".gradle/",
 	".idea/",
+	".history/",
+	".turbo/",
 	".parcel-cache/",
 	".pytest_cache/",
 	".next/",
@@ -198,6 +200,20 @@ const getLfsPatterns = async (workspacePath: string) => {
 	return []
 }
 
+const getCoIgnorePatterns = async (workspacePath: string) => {
+	try {
+		const coignorePath = join(workspacePath, ".coignore")
+
+		if (await fileExistsAtPath(coignorePath)) {
+			return (await fs.readFile(coignorePath, "utf8"))
+				.split("\n")
+				.filter((line) => line.trim() !== "" && !line.startsWith("#"))
+		}
+	} catch (error) {}
+
+	return []
+}
+
 export const getExcludePatterns = async (workspacePath: string) => [
 	".git/",
 	...getBuildArtifactPatterns(),
@@ -208,5 +224,6 @@ export const getExcludePatterns = async (workspacePath: string) => [
 	...getDatabaseFilePatterns(),
 	...getGeospatialPatterns(),
 	...getLogFilePatterns(),
+	...(await getCoIgnorePatterns(workspacePath)),
 	...(await getLfsPatterns(workspacePath)),
 ]
