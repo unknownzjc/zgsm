@@ -62,8 +62,8 @@ export class ErrorCodeManager {
 	 */
 	private async fetchRemoteCodes(): Promise<IErrorMap> {
 		try {
-			const { language } = await this.provider.getState()
-			const baseUrl = ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+			const { language, apiConfiguration } = await this.provider.getState()
+			const baseUrl = apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 			const response = await axios.get(`${baseUrl}/shenma/api/v1/error-code/error_codes_${language}.json`)
 			return response.data
 		} catch (error) {
