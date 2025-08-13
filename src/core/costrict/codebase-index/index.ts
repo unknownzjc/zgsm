@@ -30,6 +30,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private logger: ILogger | null = null
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
+	private serverEndpoint = ""
 	private baseUrl = "https://zgsm.sangfor.com/costrict"
 	/**
 	 * 私有构造函数，确保单例模式
@@ -84,6 +85,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			this.log("CodebaseKeeper 客户端已经初始化，跳过", "info", "ZgsmCodebaseIndexManager")
 			return
 		}
+
 		// 检查本地是否已安装客户端
 		const localVersionInfo = await this.getLocalVersion()
 		try {
@@ -98,7 +100,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 创建客户端实例
 			this.client = new CodebaseIndexClient(config)
-
+			this.client.setServerEndpoint(this.serverEndpoint)
 			// 检查并升级客户端
 			const state = await this.checkAndUpgradeClient()
 			if (state === "failed") {
@@ -144,6 +146,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// 写入令牌文件
 			const jwt = jwtDecode(accessToken) as any
 			const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+			const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+			this.serverEndpoint = baseUrl
 			fs.writeFileSync(
 				tokenFilePath,
 				JSON.stringify(
@@ -152,7 +156,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 						name: jwt.displayName,
 						access_token: accessToken,
 						machine_id: getClientId(),
-						base_url: zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
+						base_url: baseUrl,
 					},
 					null,
 					2,

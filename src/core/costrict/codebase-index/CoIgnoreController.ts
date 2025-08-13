@@ -58,8 +58,6 @@ export class CoIgnoreController {
 			// Add fileWatcher itself to disposables
 			this.disposables.push(fileWatcher)
 		})
-		// const rooignorePattern = new vscode.RelativePattern(this.cwd, this.ignoreFilename)
-		// const fileWatcher = vscode.workspace.createFileSystemWatcher(rooignorePattern)
 	}
 
 	/**

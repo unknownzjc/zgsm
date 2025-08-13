@@ -1,3 +1,4 @@
+import fs from "fs"
 import { PlatformDetector } from "./platform"
 import { VersionApi } from "./versionApi"
 import { PackageInfoApi } from "./packageInfoApi"
@@ -39,7 +40,10 @@ export class CodebaseIndexClient {
 	private logger: ILogger
 
 	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
-	private serverEndpoint: string = "http://localhost:8888"
+	private serverHost: string = ""
+	private serverEndpoint: string = ""
+
+	private serverName: string = "codebase-indexer"
 	private clientId: string = "145884jkhjsh"
 
 	/**
@@ -72,7 +76,13 @@ export class CodebaseIndexClient {
 			this.config.downloadTimeout,
 		)
 	}
-
+	/**
+	 * 设置服务器端点
+	 * @param endpoint 服务器端点地址
+	 */
+	public setServerHost(host: string): void {
+		this.serverHost = host
+	}
 	/**
 	 * 设置服务器端点
 	 * @param endpoint 服务器端点地址
@@ -149,9 +159,9 @@ export class CodebaseIndexClient {
 			return data
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new Error(`HTTP请求时发生错误: ${error.message}`)
+				throw new Error(`${url} HTTP请求时发生错误: ${error.message}`)
 			} else {
-				throw new Error("HTTP请求时发生未知错误")
+				throw new Error(`${url} HTTP请求时发生未知错误`)
 			}
 		}
 	}
@@ -265,6 +275,9 @@ export class CodebaseIndexClient {
 	 * 停止已存在的客户端
 	 */
 	public async stopExistingClient(): Promise<void> {
+		if (!(await this.isRunning())) {
+			return
+		}
 		try {
 			if (this.platformDetector.platform === "windows") {
 				const exeName = this.processName.endsWith(".exe") ? this.processName : `${this.processName}.exe`
@@ -320,7 +333,7 @@ export class CodebaseIndexClient {
 				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				const isRunning = await this.isRunning()
 				if (isRunning) {
-					this.startService()
+					await this.startService(versionInfo)
 					break
 				}
 			} catch (err: any) {
@@ -332,21 +345,36 @@ export class CodebaseIndexClient {
 	}
 	/**
 	 * 1.开始获取服务信息：5分钟内 5秒一次，超过5分钟后 30秒一次，直到获取到服务信息开始下一步
-	 * 2.获取到 codebase-sync 服务地址信息（name， protocol，port， accessible）
-	 * {
-	 *	"name": "codebase-syncer",//程序名称
-	 *	"startup": "always",//启动模式：always=常驻, once=运行一次, none=不自动运行
-	 *	"command": "codebase-syncer -s",//设定启动的命令行(比如服务模式启动codebase-syncer),如果不指定，则以不带参数方式启动
-	 *	"protocol": "http",
-	 *	//服务对外接口协议
-	 *	"port": "8080",//建议服务端口，实际运行时根据客户端情况会调整
-	 *	"metrics": "/metrics",//指标采集接口的地址
-	 *	"accessible": "local"//可访问性：remote(远程访问)/local(本地访问)
-	 *	}
-	 *  3.启动服务 接口是：/costrict/api/v1/services/{name}/start
-	 *
+	 * 2.获取到 codebase-sync 服务地址信息（name， protocol，port）
 	 */
-	startService() {}
+	async startService(versionInfo: VersionInfo, retryTime = 0) {
+		const { homeDir } = this.getTargetPath(versionInfo)
+		const wellKnownPath = path.join(homeDir, ".costrict", "share", ".well-known.json")
+		try {
+			// 判断 wellKnownPath 文件是否存在
+			if (!fs.existsSync(wellKnownPath)) {
+				throw new Error("wellKnown 文件不存在")
+			}
+
+			// 读取 wellKnownPath
+			const { services } = JSON.parse(fs.readFileSync(wellKnownPath, "utf-8"))
+			const codebaseIndexerServiceConfig = services.find((service: any) => service.name === this.serverName)
+
+			if (!codebaseIndexerServiceConfig) {
+				throw new Error("Failed to find codebase-indexer service in well-known.json")
+			}
+
+			await this.setServerHost(
+				`${codebaseIndexerServiceConfig.protocol}://localhost:${codebaseIndexerServiceConfig.port}`,
+			)
+		} catch (error) {
+			this.logger.error(`[CodebaseIndexService] ${error}`)
+			// 文件不存在，等待 5 s后再次尝试
+			const interval = retryTime < 5 * 60 * 1000 ? 5000 : 30_000
+			await new Promise((resolve) => setTimeout(resolve, interval))
+			await this.startService({ ...versionInfo }, retryTime + interval)
+		}
+	}
 
 	/**
 	 * 将 VersionId 对象格式化为版本字符串
@@ -366,7 +394,7 @@ export class CodebaseIndexClient {
 	getTargetPath(
 		versionInfo: VersionInfo,
 		fileName: string = this.processName,
-	): { targetDir: string; targetPath: string; cacheDir: string } {
+	): { targetDir: string; targetPath: string; cacheDir: string; homeDir: string } {
 		const platform = this.platformDetector.platform
 		const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
 
@@ -380,7 +408,7 @@ export class CodebaseIndexClient {
 		const targetDir = path.join(cacheDir, version, platform, arch)
 		const targetPath = path.join(targetDir, `${fileName}${platform === "windows" ? ".exe" : ""}`)
 
-		return { targetDir, targetPath, cacheDir }
+		return { targetDir, targetPath, cacheDir, homeDir }
 	}
 
 	/**
@@ -394,7 +422,9 @@ export class CodebaseIndexClient {
 		token?: string,
 		keepalive?: boolean,
 	): Promise<ApiResponse<number>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/events`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/events`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -412,7 +442,9 @@ export class CodebaseIndexClient {
 	 * @returns Promise<ApiResponse<number>> 返回响应数据
 	 */
 	async triggerIndexBuild(request: IndexBuildRequest, token?: string): Promise<ApiResponse<number>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/index`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/index`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -428,7 +460,9 @@ export class CodebaseIndexClient {
 	 * @returns Promise<ApiResponse<number>> 返回响应数据
 	 */
 	async healthCheck(token?: string): Promise<ApiResponse<number>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/healthz`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/healthz`
 
 		const options: RequestInit = {
 			method: "GET",
@@ -444,7 +478,9 @@ export class CodebaseIndexClient {
 	 * @returns Promise<ApiResponse<boolean>> 返回响应数据
 	 */
 	async checkIgnoreFiles(request: IgnoreFilesRequest, token?: string): Promise<ApiResponse<boolean>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/files/ignore`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/files/ignore`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -466,7 +502,9 @@ export class CodebaseIndexClient {
 		workspace: string,
 		token?: string,
 	): Promise<ApiResponse<IndexStatusResponse>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/index/status?clientId=${encodeURIComponent(clientId)}&workspace=${encodeURIComponent(workspace)}`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/index/status?clientId=${encodeURIComponent(clientId)}&workspace=${encodeURIComponent(workspace)}`
 
 		const options: RequestInit = {
 			method: "GET",
@@ -482,13 +520,21 @@ export class CodebaseIndexClient {
 	 * @returns Promise<ApiResponse<boolean>> 返回响应数据
 	 */
 	async toggleIndexSwitch(request: IndexSwitchRequest, token?: string): Promise<ApiResponse<boolean>> {
-		const url = `${this.serverEndpoint}/codebase-indexer/api/v1/switch?workspace=${encodeURIComponent(request.workspace)}&switch=${request.switch}`
+		this.serverEndpointAndHostCheck()
+
+		const url = `${this.serverHost}/codebase-indexer/api/v1/switch?workspace=${encodeURIComponent(request.workspace)}&switch=${request.switch}`
 
 		const options: RequestInit = {
 			method: "GET",
 		}
 
 		return this.makeRequest<boolean>(url, options, token)
+	}
+
+	serverEndpointAndHostCheck() {
+		if (!this.serverEndpoint || !this.serverHost) {
+			throw new Error("Server endpoint and host are required")
+		}
 	}
 }
 
