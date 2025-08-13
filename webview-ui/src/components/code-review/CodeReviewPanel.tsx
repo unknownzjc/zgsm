@@ -1,7 +1,7 @@
 import React from "react"
 import TaskStatusBar from "./TaskStatusBar"
 import CodeReviewContent from "./CodeReviewContent"
-import { ReviewIssue, TaskStatus } from "../../../../src/shared/codeReview"
+import { ReviewIssue, TaskStatus } from "@roo/codeReview"
 interface CodeReviewPanelProps {
 	issues: ReviewIssue[]
 	taskStatus: TaskStatus

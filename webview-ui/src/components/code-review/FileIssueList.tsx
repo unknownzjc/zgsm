@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react"
 import IssueItem from "./IssueItem"
 import { ChevronUpIcon, ChevronDownIcon } from "@radix-ui/react-icons"
-import { ReviewIssue, IssueStatus } from "../../../../src/shared/codeReview"
+import { ReviewIssue, IssueStatus } from "@roo/codeReview"
 import SetiFileIcon from "../common/SetiFileIcon"
 
 interface FileIssueListProps {
