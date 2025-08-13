@@ -65,11 +65,13 @@ export class FileDownloader {
 
 			// 验证文件完整性
 			await this.verifyFileChecksum(targetPath, packageInfo.checksum, packageInfo.checksumAlgo)
-			// // todo: 验证文件签名
-			// if (!(await this.verifySignature(packageInfo.checksum, packageInfo.sign, this.publicKey))) {
-			// 	fs.unlink(targetPath, () => {})
-			// 	throw new Error("文件签名验证失败")
-			// }
+			// 验证文件签名
+			if (!(await this.verifySignature(packageInfo.checksum, packageInfo.sign, this.publicKey))) {
+				fs.unlink(targetPath, () => {})
+				throw new Error("文件签名验证失败")
+			} else {
+				this.logger.info("文件签名验证成功") // 记录日志
+			}
 
 			// 如果不是 Windows 平台，设置文件可执行权限
 			if (packageInfo.os !== "windows") {
