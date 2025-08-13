@@ -7,7 +7,6 @@ import {
 	type ProviderSettings,
 	type ModelInfo,
 	type ReasoningEffort,
-	type OrganizationAllowList,
 	azureOpenAiDefaultApiVersion,
 	zgsmModels,
 	zgsmDefaultModelId,
@@ -24,6 +23,7 @@ import { ModelPicker } from "../ModelPicker"
 import { R1FormatSetting } from "../R1FormatSetting"
 import { ThinkingBudget } from "../ThinkingBudget"
 import { SetCachedStateField } from "../types"
+import type { OrganizationAllowList } from "@roo-code/cloud"
 
 type OpenAICompatibleProps = {
 	fromWelcomeView?: boolean

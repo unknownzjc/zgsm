@@ -28,6 +28,8 @@ import { ZgsmAuthConfig, ZgsmAuthService } from "../../core/costrict/auth"
 import { getZgsmSelectedModelInfo, setZgsmFullResponseData } from "../../shared/getZgsmSelectedModelInfo"
 import { getClientId } from "../../utils/getClientId"
 import { getWorkspacePath } from "../../utils/path"
+import { getApiRequestTimeout } from "./utils/timeout-config"
+
 let modelsCache = new WeakRef<string[]>([])
 
 export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandler {
@@ -51,12 +53,13 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			...DEFAULT_HEADERS,
 			...(this.options.openAiHeaders || {}),
 		}
-
+		const timeout = getApiRequestTimeout()
 		if (isAzureAiInference) {
 			// Azure AI Inference Service (e.g., for DeepSeek) uses a different path structure
 			this.client = new OpenAI({
 				baseURL: this.baseURL,
 				apiKey,
+				timeout,
 				defaultHeaders: this.headers,
 				defaultQuery: { "api-version": this.options.azureApiVersion || "2024-05-01-preview" },
 			})
@@ -66,6 +69,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			this.client = new AzureOpenAI({
 				baseURL: this.baseURL,
 				apiKey,
+				timeout,
 				apiVersion: this.options.azureApiVersion || azureOpenAiDefaultApiVersion,
 				defaultHeaders: this.headers,
 			})
@@ -73,6 +77,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			this.client = new OpenAI({
 				baseURL: this.baseURL,
 				apiKey,
+				timeout,
 				defaultHeaders: this.headers,
 			})
 		}

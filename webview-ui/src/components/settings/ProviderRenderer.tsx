@@ -11,7 +11,6 @@ import {
 	glamaDefaultModelId,
 	unboundDefaultModelId,
 	litellmDefaultModelId,
-	OrganizationAllowList,
 	openAiModelInfoSaneDefaults,
 } from "@roo-code/types"
 import { ExtensionMessage } from "@roo/ExtensionMessage"
@@ -23,6 +22,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { useSelectedModel } from "../ui/hooks/useSelectedModel"
 import { ChevronUp } from "lucide-react"
+import type { OrganizationAllowList } from "@roo-code/cloud"
 export interface ProviderRendererProps {
 	selectedProvider: string
 	apiConfiguration: ProviderSettings

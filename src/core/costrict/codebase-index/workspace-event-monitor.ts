@@ -143,7 +143,7 @@ export class WorkspaceEventMonitor {
 		const closeEvents: WorkspaceEventData[] = workspaceFolders.map((folder) => ({
 			eventType: "close_workspace",
 			eventTime: new Date().toISOString(),
-			sourcePath: folder.uri.fsPath,
+			sourcePath: "",
 			targetPath: "",
 		}))
 		ZgsmCodebaseIndexManager.getInstance().client?.publishWorkspaceEvents(
@@ -440,7 +440,7 @@ export class WorkspaceEventMonitor {
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
 				eventTime: new Date().toISOString(),
-				sourcePath: folder.uri.fsPath,
+				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)
 		})
@@ -452,7 +452,7 @@ export class WorkspaceEventMonitor {
 			const eventData: WorkspaceEventData = {
 				eventType: "close_workspace",
 				eventTime: new Date().toISOString(),
-				sourcePath: folder.uri.fsPath,
+				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)
 		})
@@ -497,7 +497,7 @@ export class WorkspaceEventMonitor {
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
 				eventTime: new Date().toISOString(),
-				sourcePath: folder.uri.fsPath,
+				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)
 		})

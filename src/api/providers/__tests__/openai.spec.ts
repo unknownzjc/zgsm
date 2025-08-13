@@ -115,6 +115,7 @@ describe("OpenAiHandler", () => {
 					"X-Title": "Costrict",
 					"User-Agent": `Costrict/${Package.version}`,
 				},
+				timeout: expect.any(Number),
 			})
 		})
 	})
