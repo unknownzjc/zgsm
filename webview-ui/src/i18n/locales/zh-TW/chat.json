@@ -115,6 +115,7 @@
 		}
 	},
 	"selectMode": "選擇互動模式",
+	"selectModel": "選擇模型",
 	"selectApiConfig": "選取 API 設定",
 	"enhancePrompt": "使用額外內容強化提示詞",
 	"modeSelector": {
