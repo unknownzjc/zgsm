@@ -40,9 +40,9 @@ export class VersionApi {
 			return data
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new Error(`获取版本列表时发生错误: ${error.message}`)
+				throw new Error(`${url} 获取版本列表时发生错误: ${error.message}`)
 			} else {
-				throw new Error("获取版本列表时发生未知错误")
+				throw new Error(`${url} 获取版本列表时发生未知错误`)
 			}
 		}
 	}

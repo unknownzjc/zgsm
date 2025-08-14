@@ -458,6 +458,17 @@ export class CodebaseIndexClient {
 		return this.makeRequest<number>(url, options, token)
 	}
 
+	async sycnToken(token?: string) {
+		// 获取 token
+		this.serverEndpointAndHostCheck()
+		const url = `${this.serverHost}/codebase-indexer/api/v1/token`
+
+		const options: RequestInit = {
+			method: "POST",
+		}
+
+		return this.makeRequest<number>(url, options, token)
+	}
 	/**
 	 * 探活接口
 	 * @param token 访问令牌

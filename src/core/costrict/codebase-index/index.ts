@@ -167,6 +167,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				base_url: baseUrl,
 			}
 			fs.writeFileSync(tokenFilePath, JSON.stringify(config, null, 2), "utf8")
+			this.sycnToken()
 			this.log(`访问令牌已写入文件: ${tokenFilePath}`, "info", "ZgsmCodebaseIndexManager")
 			return config
 		} catch (error) {
@@ -461,6 +462,22 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			return await this.client!.healthCheck(token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "探活检查时发生未知错误"
+			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			throw new Error(errorMessage)
+		}
+	}
+
+	// token传递接口
+	public async sycnToken(): Promise<ApiResponse<number>> {
+		try {
+			await this.ensureClientInited()
+			this.log("token更新", "info", "ZgsmCodebaseIndexManager")
+
+			// 读取访问令牌
+			const token = await this.readAccessToken()
+			return await this.client!.sycnToken(token)
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : "token更新时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
