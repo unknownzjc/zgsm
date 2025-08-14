@@ -135,7 +135,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 * 写入访问令牌到文件
 	 * @param accessToken 访问令牌
 	 */
-	public async writeAccessToken(accessToken: string): Promise<void> {
+	public async writeAccessToken(accessToken: string) {
 		try {
 			this.log("开始写入访问令牌到文件", "info", "ZgsmCodebaseIndexManager")
 
@@ -158,22 +158,17 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
 			const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 			this.serverEndpoint = baseUrl
-			fs.writeFileSync(
-				tokenFilePath,
-				JSON.stringify(
-					{
-						id: jwt.id,
-						name: jwt.displayName,
-						access_token: accessToken,
-						machine_id: getClientId(),
-						base_url: baseUrl,
-					},
-					null,
-					2,
-				),
-				"utf8",
-			)
+			this.baseUrl = `${baseUrl}/costrict`
+			const config = {
+				id: jwt.id,
+				name: jwt.displayName,
+				access_token: accessToken,
+				machine_id: getClientId(),
+				base_url: baseUrl,
+			}
+			fs.writeFileSync(tokenFilePath, JSON.stringify(config, null, 2), "utf8")
 			this.log(`访问令牌已写入文件: ${tokenFilePath}`, "info", "ZgsmCodebaseIndexManager")
+			return config
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "写入访问令牌时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")

@@ -157,7 +157,7 @@ export interface ICodebaseIndexManager {
 	 * 写入访问令牌到文件
 	 * @param accessToken 访问令牌
 	 */
-	writeAccessToken(accessToken: string): Promise<void>
+	writeAccessToken(accessToken: string): Promise<any>
 
 	/**
 	 * 重启客户端
