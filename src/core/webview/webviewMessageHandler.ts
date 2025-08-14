@@ -2798,14 +2798,14 @@ export const webviewMessageHandler = async (
 					await updateGlobalState("zgsmCodebaseIndexEnabled", false)
 
 					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
-					vscode.window.showErrorMessage(`代码库索引开关操作失败: ${result.message}`)
+					// vscode.window.showErrorMessage(`代码库索引开关操作失败: ${result.message}`)
 				}
 				// 更新 UI 状态
 				await provider.postStateToWebview()
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "代码库索引开关操作时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-				vscode.window.showErrorMessage(`代码库索引开关操作失败: ${errorMessage}`)
+				// vscode.window.showErrorMessage(`代码库索引开关操作失败: ${errorMessage}`)
 			}
 			break
 		}
