@@ -2751,6 +2751,7 @@ export const webviewMessageHandler = async (
 		}
 		case "zgsmCodebaseIndexEnabled": {
 			try {
+				if (getGlobalState("zgsmCodebaseIndexEnabled") === message.bool) return
 				const { apiConfiguration } = await provider.getState()
 
 				if (apiConfiguration?.apiProvider !== "zgsm") {
@@ -2786,7 +2787,6 @@ export const webviewMessageHandler = async (
 
 				if (result.success) {
 					// 保存状态到全局存储
-					// const currentConfig = getGlobalState("zgsmCodebaseIndexEnabled") || {}
 					await updateGlobalState("zgsmCodebaseIndexEnabled", true)
 
 					provider.log(
@@ -2798,14 +2798,12 @@ export const webviewMessageHandler = async (
 					await updateGlobalState("zgsmCodebaseIndexEnabled", false)
 
 					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
-					// vscode.window.showErrorMessage(`代码库索引开关操作失败: ${result.message}`)
 				}
 				// 更新 UI 状态
 				await provider.postStateToWebview()
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "代码库索引开关操作时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-				// vscode.window.showErrorMessage(`代码库索引开关操作失败: ${errorMessage}`)
 			}
 			break
 		}
@@ -2838,12 +2836,10 @@ export const webviewMessageHandler = async (
 					provider.log(`成功触发索引重新构建: ${rebuildType}`, "info", "ZgsmCodebaseIndexManager")
 				} else {
 					provider.log(`触发索引重新构建失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
-					// vscode.window.showErrorMessage(`索引重新构建失败: ${result.message}`)
 				}
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "触发索引重新构建时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-				// vscode.window.showErrorMessage(`索引重新构建失败: ${errorMessage}`)
 			}
 			break
 		}
