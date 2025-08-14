@@ -25,6 +25,7 @@ import getPort, { portNumbers } from "get-port"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
+import { exec } from "child_process"
 
 /**
  * codebase-index 客户端主类
@@ -326,9 +327,10 @@ export class CodebaseIndexClient {
 				const args = ["server", `--listen 0.0.0.0:${port}`].join(" ")
 
 				const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
-				await execPromise(command, processOptions)
+				const child = exec(command, processOptions)
+				child.unref()
 				// Wait a moment to check if the process is still running
-				await new Promise((resolve) => setTimeout(resolve, 500))
+				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				const isRunning = await this.isRunning()
 				if (isRunning) {
 					await this.startService(versionInfo)
