@@ -120,21 +120,18 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	}, [zgsmCodebaseIndexEnabled, showDisableConfirmDialog])
 
 	const [semanticIndex, setSemanticIndex] = useState<IndexStatus>({
-		fileCount: 460,
-		lastUpdated: "2025/07/30 10:00:00",
+		fileCount: 0,
+		lastUpdated: "-",
 		progress: 100.0,
-		status: "success",
+		status: "pending",
 	})
 
 	const [codeIndex, setCodeIndex] = useState<IndexStatus>({
-		fileCount: 460,
-		lastUpdated: "2025/07/30 10:00:00",
+		fileCount: 0,
+		lastUpdated: "-",
 		progress: 100.0,
-		status: "success",
+		status: "pending",
 	})
-
-	// 测试环境标识，在生产环境中应该为 false
-	const isDevelopment = process.env.NODE_ENV === "development"
 
 	// 轮询相关函数
 	const startPolling = (delay = 10_000) => {
@@ -311,92 +308,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			text: filePath,
 			values: {},
 		})
-	}
-
-	// 语义索引测试状态切换函数
-	const handleSetSemanticIndexSyncing = () => {
-		setSemanticIndex((prev) => ({
-			...prev,
-			status: "running",
-			progress: 75,
-			fileCount: prev.fileCount + 40,
-			errorMessage: undefined,
-			failedFiles: undefined,
-		}))
-	}
-
-	const handleSetSemanticIndexSuccess = () => {
-		setSemanticIndex((prev) => ({
-			...prev,
-			status: "success",
-			progress: 100,
-			fileCount: prev.fileCount + 20,
-			lastUpdated: new Date()
-				.toLocaleString("zh-CN", {
-					year: "numeric",
-					month: "2-digit",
-					day: "2-digit",
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-				})
-				.replace(/\//g, "/"),
-			errorMessage: undefined,
-			failedFiles: undefined,
-		}))
-	}
-
-	const handleSetSemanticIndexError = () => {
-		setSemanticIndex((prev) => ({
-			...prev,
-			status: "failed",
-			progress: 100,
-			errorMessage: "语义索引构建失败，请检查文件格式或网络连接",
-			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
-		}))
-	}
-
-	// 代码索引测试状态切换函数
-	const handleSetCodeIndexSyncing = () => {
-		setCodeIndex((prev) => ({
-			...prev,
-			status: "running",
-			progress: 75,
-			fileCount: prev.fileCount + 40,
-			errorMessage: undefined,
-			failedFiles: undefined,
-		}))
-	}
-
-	const handleSetCodeIndexSuccess = () => {
-		setCodeIndex((prev) => ({
-			...prev,
-			status: "success",
-			progress: 100,
-			fileCount: prev.fileCount + 20,
-			lastUpdated: new Date()
-				.toLocaleString("zh-CN", {
-					year: "numeric",
-					month: "2-digit",
-					day: "2-digit",
-					hour: "2-digit",
-					minute: "2-digit",
-					second: "2-digit",
-				})
-				.replace(/\//g, "/"),
-			errorMessage: undefined,
-			failedFiles: undefined,
-		}))
-	}
-
-	const handleSetCodeIndexError = () => {
-		setCodeIndex((prev) => ({
-			...prev,
-			status: "failed",
-			progress: 100,
-			errorMessage: "代码索引构建失败，请检查文件格式或网络连接",
-			failedFiles: ["/src/components/Test.tsx", "/utils/helper.js"],
-		}))
 	}
 
 	const renderIndexSection = (
@@ -697,73 +608,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					</div>
 				</div>
 			</Section>
-
-			{/* 测试按钮区域 - 仅在开发环境显示 */}
-			{isDevelopment && (
-				<>
-					<div className="mt-8 pt-6 border-t border-vscode-panel-border">
-						<div className="text-lg font-semibold mb-4 text-vscode-foreground">测试工具</div>
-
-						<div className="space-y-6">
-							{/* 语义索引测试按钮 */}
-							<div className="p-4 rounded-lg bg-vscode-textBlockQuote-background border border-vscode-textBlockQuote-border">
-								<h3 className="font-medium mb-3 text-vscode-foreground">语义索引状态测试</h3>
-								<div className="flex flex-wrap gap-2">
-									<Button
-										onClick={handleSetSemanticIndexSyncing}
-										variant="outline"
-										size="sm"
-										className="border-yellow-500 text-yellow-600 hover:bg-yellow-500 hover:text-white">
-										同步中
-									</Button>
-									<Button
-										onClick={handleSetSemanticIndexSuccess}
-										variant="outline"
-										size="sm"
-										className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white">
-										同步成功
-									</Button>
-									<Button
-										onClick={handleSetSemanticIndexError}
-										variant="outline"
-										size="sm"
-										className="border-red-500 text-red-600 hover:bg-red-500 hover:text-white">
-										同步失败
-									</Button>
-								</div>
-							</div>
-
-							{/* 代码索引测试按钮 */}
-							<div className="p-4 rounded-lg bg-vscode-textBlockQuote-background border border-vscode-textBlockQuote-border">
-								<h3 className="font-medium mb-3 text-vscode-foreground">代码索引状态测试</h3>
-								<div className="flex flex-wrap gap-2">
-									<Button
-										onClick={handleSetCodeIndexSyncing}
-										variant="outline"
-										size="sm"
-										className="border-yellow-500 text-yellow-600 hover:bg-yellow-500 hover:text-white">
-										同步中
-									</Button>
-									<Button
-										onClick={handleSetCodeIndexSuccess}
-										variant="outline"
-										size="sm"
-										className="border-green-500 text-green-600 hover:bg-green-500 hover:text-white">
-										同步成功
-									</Button>
-									<Button
-										onClick={handleSetCodeIndexError}
-										variant="outline"
-										size="sm"
-										className="border-red-500 text-red-600 hover:bg-red-500 hover:text-white">
-										同步失败
-									</Button>
-								</div>
-							</div>
-						</div>
-					</div>
-				</>
-			)}
 		</div>
 	)
 }

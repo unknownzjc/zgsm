@@ -846,50 +846,6 @@ describe("ZgsmCodebaseSettings", () => {
 		})
 	})
 
-	describe("开发模式测试", () => {
-		beforeEach(() => {
-			process.env.NODE_ENV = "development"
-		})
-
-		it("开发模式应该显示测试工具", () => {
-			renderComponent()
-
-			expect(screen.getByText("测试工具")).toBeInTheDocument()
-			expect(screen.getAllByText("语义索引状态测试")).toHaveLength(1)
-			expect(screen.getAllByText("代码索引状态测试")).toHaveLength(1)
-		})
-
-		it("测试按钮应该正确切换状态", () => {
-			renderComponent()
-
-			// 查找语义索引状态测试部分的按钮
-			const semanticTestSection = screen.getAllByText("语义索引状态测试")[0].closest("div")
-			if (semanticTestSection) {
-				const syncButtons = semanticTestSection.querySelectorAll("button")
-				if (syncButtons.length > 0) {
-					fireEvent.click(syncButtons[0])
-
-					expect(screen.getAllByText(/75\.0%/)).toHaveLength(1)
-					const syncingElements = screen.queryAllByText("同步中...")
-					expect(syncingElements.length).toBeGreaterThan(0)
-				}
-			}
-
-			// 查找成功状态按钮
-			const successTestSection = screen.getAllByText("语义索引状态测试")[0].closest("div")
-			if (successTestSection) {
-				const successButtons = successTestSection.querySelectorAll("button")
-				if (successButtons.length > 1) {
-					fireEvent.click(successButtons[1])
-
-					expect(screen.getAllByText(/100\.0%/)).toHaveLength(2)
-					const successElements = screen.queryAllByText("同步成功")
-					expect(successElements.length).toBeGreaterThan(0)
-				}
-			}
-		})
-	})
-
 	describe("Ignore文件功能测试", () => {
 		it("点击编辑按钮应该发送打开文件消息", () => {
 			renderComponent()
