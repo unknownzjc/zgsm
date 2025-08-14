@@ -110,6 +110,14 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 		Logger.info(
 			`Completion [${cp.id}]: Prepare for completion, trigger mode: ${triggerMode}, position: ${cp.pos.line}:${cp.pos.character}, delay time: ${delayTimeval}ms`,
 		)
+
+		const { apiConfiguration } = await this.provider.getState()
+
+		if (apiConfiguration.apiProvider !== "zgsm") {
+			CompletionStatusBar.disable()
+			return []
+		}
+
 		return new Promise(async (resolve, reject) => {
 			// Anti-shake
 			await this.mutex.runExclusive(async () => {

@@ -46,7 +46,7 @@ import { getVsCodeLmModels } from "../../api/providers/vscode-lm"
 import { openMention } from "../mentions"
 import { TelemetrySetting } from "../../shared/TelemetrySetting"
 import { getWorkspacePath } from "../../utils/path"
-import { ensureSettingsDirectoryExists } from "../../utils/globalContext"
+// import { ensureSettingsDirectoryExists } from "../../utils/globalContext"
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
 import { GetModelsOptions } from "../../shared/api"
@@ -2373,6 +2373,13 @@ export const webviewMessageHandler = async (
 		}
 		case "zgsmPollCodebaseIndexStatus": {
 			try {
+				const { apiConfiguration } = await provider.getState()
+
+				if (apiConfiguration?.apiProvider !== "zgsm") {
+					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					return
+				}
+				// "zgsmPollCodebaseIndexStatus"
 				// 获取当前工作区路径
 				const workspacePath = getWorkspacePath()
 				if (!workspacePath) {
@@ -2744,11 +2751,17 @@ export const webviewMessageHandler = async (
 		}
 		case "zgsmCodebaseIndexEnabled": {
 			try {
+				const { apiConfiguration } = await provider.getState()
+
+				if (apiConfiguration?.apiProvider !== "zgsm") {
+					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					return
+				}
 				// 从 message.bool 获取开关状态
 				const isEnabled = message.bool
 
 				if (isEnabled === undefined) {
-					provider.log("codebaseIndexEnabled 消息缺少 bool 参数", "error", "ZgsmCodebaseIndexManager")
+					provider.log("zgsmCodebaseIndexEnabled 消息缺少 bool 参数", "error", "ZgsmCodebaseIndexManager")
 					vscode.window.showErrorMessage("代码库索引开关状态无效")
 					break
 				}
@@ -2774,10 +2787,7 @@ export const webviewMessageHandler = async (
 				if (result.success) {
 					// 保存状态到全局存储
 					// const currentConfig = getGlobalState("zgsmCodebaseIndexEnabled") || {}
-					await updateGlobalState("zgsmCodebaseIndexEnabled", isEnabled)
-
-					// 更新 UI 状态
-					await provider.postStateToWebview()
+					await updateGlobalState("zgsmCodebaseIndexEnabled", true)
 
 					provider.log(
 						`代码库索引功能已${isEnabled ? "开启" : "关闭"}: ${workspacePath}`,
@@ -2785,9 +2795,13 @@ export const webviewMessageHandler = async (
 						"ZgsmCodebaseIndexManager",
 					)
 				} else {
+					await updateGlobalState("zgsmCodebaseIndexEnabled", false)
+
 					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
 					vscode.window.showErrorMessage(`代码库索引开关操作失败: ${result.message}`)
 				}
+				// 更新 UI 状态
+				await provider.postStateToWebview()
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "代码库索引开关操作时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -2797,6 +2811,12 @@ export const webviewMessageHandler = async (
 		}
 		case "zgsmRebuildCodebaseIndex": {
 			try {
+				const { apiConfiguration } = await provider.getState()
+
+				if (apiConfiguration?.apiProvider !== "zgsm") {
+					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					return
+				}
 				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
 
 				// 获取工作区路径

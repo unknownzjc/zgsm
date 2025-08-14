@@ -8,6 +8,7 @@ import { ILogger } from "../../../utils/logger"
 import { computeHash } from "../base/common"
 import { CoIgnoreController } from "./CoIgnoreController"
 import { getWorkspacePath } from "../../../utils/path"
+import type { ClineProvider } from "../../webview/ClineProvider"
 
 /**
  * 工作区事件监控配置
@@ -44,6 +45,7 @@ export class WorkspaceEventMonitor {
 	private flushTimer: NodeJS.Timeout | null = null
 	private lastFlushTime = 0
 	private logger?: ILogger
+	private clineProvider?: ClineProvider
 	private ignoreController: CoIgnoreController
 	// 用于解决命令行删除文件问题的文件系统监控器
 	private fileSystemWatcher: FSWatcher | null = null
@@ -126,7 +128,7 @@ export class WorkspaceEventMonitor {
 	 * 发送工作区关闭事件
 	 */
 	private async sendWorkspaceCloseEvents(): Promise<void> {
-		if (!this.config.enabled) return
+		if (!(await this.ensureServiceEnabled())) return
 
 		const workspaceFolders = vscode.workspace.workspaceFolders
 		if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -281,9 +283,9 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理文件系统检测到的文件删除事件
 	 */
-	private handleFileSystemFileDelete(filePath: string): void {
+	private async handleFileSystemFileDelete(filePath: string) {
 		if (!this.ignoreController.validateAccess(filePath)) return
-		if (!this.config.enabled) return
+		if (!(await this.ensureServiceEnabled())) return
 
 		const eventKey = `delete:${filePath}`
 		const eventData: WorkspaceEventData = {
@@ -298,31 +300,10 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 处理文档打开事件
-	 */
-	private handleDocumentOpen(document: vscode.TextDocument): void {
-		if (!this.config.enabled) return
-
-		const uri = document.uri
-		if (!this.ignoreController.validateAccess(uri.fsPath)) return
-		if (uri.scheme !== "file") return
-
-		const eventKey = `open:${uri.fsPath}`
-		const eventData: WorkspaceEventData = {
-			eventType: "add_file",
-			eventTime: new Date().toISOString(),
-			sourcePath: "",
-			targetPath: uri.fsPath,
-		}
-
-		this.addEvent(eventKey, eventData)
-	}
-
-	/**
 	 * 处理文档保存事件
 	 */
-	private handleDocumentSave(document: vscode.TextDocument): void {
-		if (!this.config.enabled) return
+	private async handleDocumentSave(document: vscode.TextDocument) {
+		if (!(await this.ensureServiceEnabled())) return
 
 		const uri = document.uri
 
@@ -379,8 +360,8 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理文件删除事件
 	 */
-	private handleFileDelete(event: vscode.FileDeleteEvent): void {
-		if (!this.config.enabled) return
+	private async handleFileDelete(event: vscode.FileDeleteEvent) {
+		if (!(await this.ensureServiceEnabled())) return
 
 		// 调试日志：记录删除事件触发
 		this.log.info(`[WorkspaceEventMonitor] 文件删除事件触发，删除文件数量: ${event.files.length}`)
@@ -408,8 +389,8 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理文件重命名/移动事件
 	 */
-	private handleFileRename(event: vscode.FileRenameEvent): void {
-		if (!this.config.enabled) return
+	private async handleFileRename(event: vscode.FileRenameEvent) {
+		if (!(await this.ensureServiceEnabled())) return
 
 		event.files.forEach(({ oldUri, newUri }) => {
 			if (!this.ignoreController.validateAccess(newUri.fsPath)) return
@@ -430,8 +411,8 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理工作区变化事件
 	 */
-	private handleWorkspaceChange(event: vscode.WorkspaceFoldersChangeEvent): void {
-		if (!this.config.enabled) return
+	private async handleWorkspaceChange(event: vscode.WorkspaceFoldersChangeEvent) {
+		if (!(await this.ensureServiceEnabled())) return
 
 		// 处理新增的工作区
 		event.added.forEach((folder) => {
@@ -461,8 +442,8 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理即将创建文件事件
 	 */
-	private handleWillCreateFiles(event: vscode.FileWillCreateEvent): void {
-		if (!this.config.enabled) return
+	private async handleWillCreateFiles(event: vscode.FileWillCreateEvent) {
+		if (!(await this.ensureServiceEnabled())) return
 
 		event.files.forEach((uri) => {
 			if (!this.ignoreController.validateAccess(uri.fsPath)) return
@@ -483,8 +464,8 @@ export class WorkspaceEventMonitor {
 	/**
 	 * 处理工作区初始化打开事件
 	 */
-	private handleInitialWorkspaceOpen(): void {
-		if (!this.config.enabled) return
+	private async handleInitialWorkspaceOpen() {
+		if (!(await this.ensureServiceEnabled())) return
 
 		const workspaceFolders = vscode.workspace.workspaceFolders
 		if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -680,7 +661,9 @@ export class WorkspaceEventMonitor {
 	public setLogger(logger: ILogger): void {
 		this.logger = logger
 	}
-
+	public setProvider(clineProvider: ClineProvider): void {
+		this.clineProvider = clineProvider
+	}
 	/**
 	 * 获取当前状态
 	 */
@@ -694,6 +677,20 @@ export class WorkspaceEventMonitor {
 			eventBufferSize: this.eventBuffer.size,
 			config: { ...this.config },
 		}
+	}
+
+	private async ensureServiceEnabled() {
+		if (!this.clineProvider) {
+			return false
+		}
+
+		const { apiConfiguration } = await this.clineProvider.getState()
+
+		if (apiConfiguration.apiProvider !== "zgsm") {
+			return false
+		}
+
+		return this.config.enabled
 	}
 }
 

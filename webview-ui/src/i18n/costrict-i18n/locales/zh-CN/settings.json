@@ -121,11 +121,8 @@
 		"description": "配置用于快速操作的支持提示词，如增强提示词、解释代码和修复问题。这些提示词帮助 Costrict 为常见开发任务提供更好的支持。"
 	},
 	"providerChangeWarning": {
-		"title": "提供商切换警告",
-		"description": "切换提供商将影响您当前的对话和设置：",
-		"impact1": "当前对话上下文将会丢失",
-		"impact2": "提供商特定的设置将会重置",
-		"impact3": "您可能需要重新配置API密钥和模型选择",
+		"title": "确定从 Costrict 切换到其他提供商？",
+		"description": "代码补全、代码审查、Codebase等高级功能将不可用",
 		"cancelButton": "取消",
 		"confirmButton": "继续"
 	}

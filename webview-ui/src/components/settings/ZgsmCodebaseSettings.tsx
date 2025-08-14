@@ -97,12 +97,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 	// 判断是否处于【待启用】状态 - 仅当API提供商不是zgsm时
 	const isPendingEnable = apiConfiguration?.apiProvider !== "zgsm"
-
-	// 判断功能是否已禁用
-	const isDisabled = !zgsmCodebaseIndexEnabled
-
-	// 判断是否应该禁用所有操作（待启用状态或功能已禁用）
-	const shouldDisableAll = isPendingEnable || isDisabled
+	const [shouldDisableAll, setShouldDisableAll] = useState(isPendingEnable || !zgsmCodebaseIndexEnabled)
 
 	// 监听全局状态变化，更新本地状态
 	useEffect(() => {
@@ -113,28 +108,26 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 	// 添加状态变化监听器
 	useEffect(() => {
-		console.log("🔍 [DEBUG] State changed:", {
-			zgsmCodebaseIndexEnabled,
-			showDisableConfirmDialog,
-		})
-	}, [zgsmCodebaseIndexEnabled, showDisableConfirmDialog])
+		setShouldDisableAll(isPendingEnable || !zgsmCodebaseIndexEnabled)
+	}, [zgsmCodebaseIndexEnabled, showDisableConfirmDialog, isPendingEnable])
 
 	const [semanticIndex, setSemanticIndex] = useState<IndexStatus>({
 		fileCount: 0,
 		lastUpdated: "-",
 		progress: 100.0,
-		status: "pending",
+		status: "success",
 	})
 
 	const [codeIndex, setCodeIndex] = useState<IndexStatus>({
 		fileCount: 0,
 		lastUpdated: "-",
 		progress: 100.0,
-		status: "pending",
+		status: "success",
 	})
 
 	// 轮询相关函数
 	const startPolling = (delay = 10_000) => {
+		if (shouldDisableAll) return
 		console.log("codebase-index startPolling")
 
 		if (isPolling) return
@@ -316,9 +309,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		indexStatus: IndexStatus,
 		onRebuild: () => void,
 		disabled: boolean = false,
+		isPendingEnableSection: boolean = false,
 	) => {
-		const isPendingEnableSection = shouldDisableAll || disabled
-
 		return (
 			<div
 				className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
@@ -478,11 +470,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							</TooltipTrigger>
 							{isPendingEnableSection && (
 								<TooltipContent>
-									<p>
-										{isPendingEnable
-											? "只有在 zgsm 提供商才能使用这个功能"
-											: "Codebase 索引构建已禁用"}
-									</p>
+									<p>{isPendingEnable ? "仅 Costrict 提供商可用" : "Codebase 索引构建已禁用"}</p>
 								</TooltipContent>
 							)}
 						</Tooltip>
@@ -501,19 +489,16 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				}}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>确认禁用 Codebase 索引构建</AlertDialogTitle>
+						<AlertDialogTitle>确定要禁用 Codebase 索引构建功能吗？</AlertDialogTitle>
 						<AlertDialogDescription>
-							确定要禁用 Codebase 索引构建功能吗？
-							<br />
-							<br />
 							禁用后将导致以下影响：
 							<ul className="list-disc list-inside mt-2 space-y-1">
-								<li>代码补全功能效果降低</li>
+								<li>代码补全效果降低</li>
+								<li>代码生成效果降低</li>
 								<li>代码审查功能无法正常使用</li>
-								<li>模型无法对代码上下文进行有效分析</li>
+								<li>模型无法对整个项目进行有效分析</li>
 							</ul>
 							<br />
-							您确定要继续吗？
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -545,7 +530,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							</TooltipTrigger>
 							{isPendingEnable && (
 								<TooltipContent>
-									<p>只有在 zgsm 提供商才能使用这个功能</p>
+									<p>仅 Costrict 提供商可用</p>
 								</TooltipContent>
 							)}
 						</Tooltip>
@@ -561,6 +546,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 						semanticIndex,
 						handleRebuildSemanticIndex,
 						!zgsmCodebaseIndexEnabled,
+						shouldDisableAll,
 					)}
 
 					{renderIndexSection(
@@ -569,10 +555,10 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 						codeIndex,
 						handleRebuildCodeIndex,
 						!zgsmCodebaseIndexEnabled,
+						shouldDisableAll,
 					)}
 
-					<div
-						className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background ${!zgsmCodebaseIndexEnabled ? "pointer-events-none" : ""}`}>
+					<div className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background`}>
 						<div className="flex items-center gap-4 font-bold">
 							<FileText className="w-4 h-4" />
 							<div>Ignore文件设置</div>
@@ -580,31 +566,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 						<div className="text-vscode-descriptionForeground text-sm mb-3">
 							无需同步上传的索引文件可添加到.coignore文件中
 						</div>
-						<TooltipProvider>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<div>
-										<Button
-											onClick={handleEditIgnoreFile}
-											variant="outline"
-											size="sm"
-											className="w-fit"
-											disabled={shouldDisableAll}>
-											编辑
-										</Button>
-									</div>
-								</TooltipTrigger>
-								{shouldDisableAll && (
-									<TooltipContent>
-										<p>
-											{isPendingEnable
-												? "只有在 zgsm 提供商才能使用这个功能"
-												: "Codebase 索引构建已禁用"}
-										</p>
-									</TooltipContent>
-								)}
-							</Tooltip>
-						</TooltipProvider>
+						<Button onClick={handleEditIgnoreFile} variant="outline" size="sm" className="w-fit">
+							编辑
+						</Button>
 					</div>
 				</div>
 			</Section>

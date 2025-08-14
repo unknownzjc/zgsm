@@ -30,6 +30,16 @@ describe("WorkspaceEventMonitor", () => {
 			}),
 		}
 		;(ZgsmCodebaseIndexManager as any).getInstance = vi.fn().mockReturnValue(mockCodebaseIndexManager)
+
+		// 模拟 clineProvider 和 API 配置
+		const mockClineProvider = {
+			getState: vi.fn().mockResolvedValue({
+				apiConfiguration: {
+					apiProvider: "zgsm",
+				},
+			}),
+		}
+		monitor.setProvider(mockClineProvider as any)
 	})
 
 	afterEach(() => {
@@ -71,7 +81,7 @@ describe("WorkspaceEventMonitor", () => {
 	})
 
 	describe("事件处理", () => {
-		it("应该处理文档打开事件", () => {
+		it("应该处理文档保存事件", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -81,11 +91,17 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			monitor["handleDocumentOpen"](mockDocument)
+			// 设置缓存，确保内容有变化
+			monitor["documentContentCache"].set("/test/file.txt", {
+				contentHash: "different-hash",
+				version: 0,
+			})
+
+			await monitor["handleDocumentSave"](mockDocument)
 			expect(monitor.getStatus().eventBufferSize).toBeGreaterThan(0)
 		})
 
-		it("应该过滤非文件协议的事件", () => {
+		it("应该过滤非文件协议的事件", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -95,11 +111,17 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			monitor["handleDocumentOpen"](mockDocument)
+			// 设置缓存，确保内容有变化
+			monitor["documentContentCache"].set("/test/file.txt", {
+				contentHash: "different-hash",
+				version: 0,
+			})
+
+			await monitor["handleDocumentSave"](mockDocument)
 			expect(monitor.getStatus().eventBufferSize).toBe(0)
 		})
 
-		it("应该处理文档保存事件", () => {
+		it("应该处理文档保存事件（内容变化时）", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -115,11 +137,11 @@ describe("WorkspaceEventMonitor", () => {
 				version: 0,
 			})
 
-			monitor["handleDocumentSave"](mockDocument)
+			await monitor["handleDocumentSave"](mockDocument)
 			expect(monitor.getStatus().eventBufferSize).toBeGreaterThan(0)
 		})
 
-		it("应该处理文件删除事件", () => {
+		it("应该处理文件删除事件", async () => {
 			const mockEvent = {
 				files: [
 					{ fsPath: "/test/file1.txt", scheme: "file" },
@@ -127,11 +149,11 @@ describe("WorkspaceEventMonitor", () => {
 				],
 			} as any
 
-			monitor["handleFileDelete"](mockEvent)
+			await monitor["handleFileDelete"](mockEvent)
 			expect(monitor.getStatus().eventBufferSize).toBe(2)
 		})
 
-		it("应该处理文件重命名事件", () => {
+		it("应该处理文件重命名事件", async () => {
 			const mockEvent = {
 				files: [
 					{
@@ -141,30 +163,30 @@ describe("WorkspaceEventMonitor", () => {
 				],
 			} as any
 
-			monitor["handleFileRename"](mockEvent)
+			await monitor["handleFileRename"](mockEvent)
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 
-		it("应该处理工作区变化事件", () => {
+		it("应该处理工作区变化事件", async () => {
 			const mockEvent = {
 				added: [{ uri: { fsPath: "/workspace/new", scheme: "file" } }],
 				removed: [{ uri: { fsPath: "/workspace/old", scheme: "file" } }],
 			} as any
 
-			monitor["handleWorkspaceChange"](mockEvent)
+			await monitor["handleWorkspaceChange"](mockEvent)
 			expect(monitor.getStatus().eventBufferSize).toBe(2)
 		})
 
-		it("应该处理文件创建事件", () => {
+		it("应该处理文件创建事件", async () => {
 			const mockEvent = {
 				files: [{ fsPath: "/test/new.txt", scheme: "file" }],
 			} as any
 
-			monitor["handleWillCreateFiles"](mockEvent)
+			await monitor["handleWillCreateFiles"](mockEvent)
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 
-		it("应该遵守enabled配置", () => {
+		it("应该遵守enabled配置", async () => {
 			monitor.updateConfig({ enabled: false })
 
 			const mockDocument = {
@@ -176,13 +198,19 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			monitor["handleDocumentOpen"](mockDocument)
+			// 设置缓存，确保内容有变化
+			monitor["documentContentCache"].set("/test/file.txt", {
+				contentHash: "different-hash",
+				version: 0,
+			})
+
+			await monitor["handleDocumentSave"](mockDocument)
 			expect(monitor.getStatus().eventBufferSize).toBe(0)
 		})
 	})
 
 	describe("事件去重", () => {
-		it("应该去重相同的事件", () => {
+		it("应该去重相同的事件", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -192,12 +220,18 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 多次触发相同事件
-			monitor["handleDocumentOpen"](mockDocument)
-			monitor["handleDocumentOpen"](mockDocument)
-			monitor["handleDocumentOpen"](mockDocument)
+			// 设置缓存，确保内容有变化
+			monitor["documentContentCache"].set("/test/file.txt", {
+				contentHash: "different-hash",
+				version: 0,
+			})
 
-			// 应该只保留最新的事件
+			// 多次触发相同事件
+			await monitor["handleDocumentSave"](mockDocument)
+			await monitor["handleDocumentSave"](mockDocument)
+			await monitor["handleDocumentSave"](mockDocument)
+
+			// 应该只保留最新的事件（使用相同的key会覆盖之前的事件）
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 	})

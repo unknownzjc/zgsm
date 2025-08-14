@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useEvent } from "react-use"
 import { Checkbox } from "vscrui"
-import { VSCodeButton, VSCodeCheckbox, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeButton, VSCodeCheckbox, VSCodeLink, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 
 import {
 	type ProviderSettings,
@@ -139,6 +139,19 @@ export const ZgsmAI = ({
 			</VSCodeTextField>
 			{!fromWelcomeView && (
 				<>
+					<VSCodeLink
+						className={`forced-color-adjust-none ${apiConfiguration.zgsmAccessToken ? "hidden" : ""}`}
+						href="#"
+						onClick={(e) => {
+							e.preventDefault()
+
+							window.postMessage({
+								type: "action",
+								action: "accountButtonClicked",
+							})
+						}}>
+						登录后可使用完整功能
+					</VSCodeLink>
 					<ModelPicker
 						apiConfiguration={apiConfiguration}
 						setApiConfigurationField={setApiConfigurationField}

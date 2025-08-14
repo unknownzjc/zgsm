@@ -1,3 +1,4 @@
+import type { ClineProvider } from "./../../webview/ClineProvider"
 import * as fs from "fs"
 import * as path from "path"
 import { CodebaseIndexClient } from "./client"
@@ -28,6 +29,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public static instance: ZgsmCodebaseIndexManager
 	public client: CodebaseIndexClient | null = null
 	private logger: ILogger | null = null
+	private clineProvider: ClineProvider | null = null
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
 	private serverEndpoint = ""
@@ -56,6 +58,9 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	public setLogger(logger: ILogger): void {
 		this.logger = logger
+	}
+	public setProvider(clineProvider: ClineProvider): void {
+		this.clineProvider = clineProvider
 	}
 
 	/**
@@ -107,6 +112,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				throw new Error("客户端升级检测失败")
 			}
 			await this.client!.stopExistingClient()
+			if (state === "needZgsm") {
+				this.log("仅 Costrict 提供商可用", "info", "ZgsmCodebaseIndexManager")
+
+				return
+			}
 			const versionInfo = await this.getLocalVersion()
 			await this.client!.startClient(versionInfo!)
 			this.isInitialized = true
@@ -194,7 +204,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	public async checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate"> {
+	public async checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm"> {
 		try {
 			this.log("开始检查并升级 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
@@ -235,6 +245,9 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				}
 			}
 		} catch (error) {
+			if (error.__NEED_ZGSM__) {
+				return "needZgsm"
+			}
 			const errorMessage =
 				error instanceof Error ? error.message : "检查并升级 CodebaseKeeper 客户端时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -245,6 +258,18 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private async ensureClientInited() {
 		if (!this.client) {
 			throw new Error("客户端未初始化")
+		}
+
+		if (!this.clineProvider) {
+			throw new Error("clineProvider 未初始化")
+		}
+
+		const { apiConfiguration } = await this.clineProvider.getState()
+
+		if (apiConfiguration.apiProvider !== "zgsm") {
+			const err = new Error("仅 Costrict 提供的 CodebaseKeeper 客户端支持此功能")
+			Object.assign(err, { __NEED_ZGSM__: true })
+			throw err
 		}
 	}
 

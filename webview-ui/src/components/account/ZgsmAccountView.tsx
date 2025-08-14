@@ -147,12 +147,17 @@ export const ZgsmAccountView = ({ apiConfiguration, onDone }: AccountViewProps) 
 						</div>
 					)}
 					<div className="flex flex-col gap-2 mt-4">
-						<VSCodeButton appearance="secondary" onClick={handleVisitCloudWebsite} className="w-full">
+						<VSCodeButton appearance="primary" onClick={handleVisitCloudWebsite} className="w-full">
 							{t("account:visitCloudWebsite")}
 						</VSCodeButton>
-						<VSCodeButton appearance="secondary" onClick={handleLogoutClick} className="w-full">
-							{t("account:logOut")}
-						</VSCodeButton>
+						<div className="flex gap-2 mt-4">
+							<VSCodeButton appearance="secondary" onClick={handleLogoutClick} className="w-[50%]">
+								{t("account:logOut")}
+							</VSCodeButton>
+							<VSCodeButton appearance="secondary" onClick={handleConnectClick} className="w-[50%]">
+								{t("settings:providers.getZgsmApiKeyAgain")}
+							</VSCodeButton>
+						</div>
 					</div>
 				</>
 			) : (

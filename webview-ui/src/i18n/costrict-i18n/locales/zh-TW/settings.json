@@ -121,12 +121,9 @@
 		"description": "設定用於快速操作的支援提示詞，如增強提示詞、解釋程式碼和修復問題。這些提示詞幫助 Costrict 為常見開發工作提供更好的支援。"
 	},
 	"providerChangeWarning": {
-		"title": "供應商切換警告",
-		"description": "切換供應商將會影響以下功能：",
-		"impact1": "程式碼補全功能效果降低",
-		"impact2": "程式碼審查功能無法正常使用",
-		"impact3": "模型無法對程式碼上下文進行有效分析",
+		"title": "確定從 Costrict 切換到其他提供商？",
+		"description": "代碼補全、代碼審查、Codebase等高級功能將不可用",
 		"cancelButton": "取消",
-		"confirmButton": "確認切換"
+		"confirmButton": "繼續"
 	}
 }

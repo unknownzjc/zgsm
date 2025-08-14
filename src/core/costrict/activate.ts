@@ -40,12 +40,19 @@ import { initGitCheckoutDetector } from "./codebase-index/git-checkout-detector"
  * Initialization entry
  */
 async function initialize(provider: ClineProvider, logger: ILogger) {
+	//
 	ZgsmAuthStorage.setProvider(provider)
 	ZgsmAuthApi.setProvider(provider)
 	ZgsmAuthService.setProvider(provider)
 	ZgsmAuthCommands.setProvider(provider)
+
+	//
+	zgsmCodebaseIndexManager.setProvider(provider)
 	zgsmCodebaseIndexManager.setLogger(logger)
+	workspaceEventMonitor.setProvider(provider)
 	workspaceEventMonitor.setLogger(logger)
+
+	//
 	printLogo()
 	initLangSetting()
 	loadLocalLanguageExtensions()

@@ -1986,7 +1986,7 @@ export class ClineProvider
 			diffEnabled: stateValues.diffEnabled ?? true,
 			enableCheckpoints: stateValues.enableCheckpoints ?? true,
 			useZgsmCustomConfig: stateValues.useZgsmCustomConfig ?? false,
-			zgsmCodebaseIndexEnabled: stateValues.zgsmCodebaseIndexEnabled ?? false,
+			zgsmCodebaseIndexEnabled: stateValues.zgsmCodebaseIndexEnabled ?? true,
 			soundVolume: stateValues.soundVolume,
 			browserViewportSize: stateValues.browserViewportSize ?? "900x600",
 			screenshotQuality: stateValues.screenshotQuality ?? 75,

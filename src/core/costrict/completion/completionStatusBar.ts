@@ -96,6 +96,16 @@ export class CompletionStatusBar {
 	}
 
 	/**
+	 * api provider not zgsm
+	 */
+	public static disable() {
+		if (!this.instance) this.create({ subscriptions: [] } as any)
+		this.instance.tooltip = "仅 Costrict 提供商可用"
+		this.instance.text = t("common:completion.status.complete.text")
+		this.instance.show()
+	}
+
+	/**
 	 * Completion is done
 	 */
 	public static complete() {

@@ -32,11 +32,6 @@ export const ProviderChangeWarningDialog: React.FC<ProviderChangeWarningDialogPr
 					<AlertDialogDescription>
 						<div className="space-y-2">
 							<p>{t("settings:providerChangeWarning.description")}</p>
-							<ul className="list-disc list-inside space-y-1 text-sm">
-								<li>{t("settings:providerChangeWarning.impact1")}</li>
-								<li>{t("settings:providerChangeWarning.impact2")}</li>
-								<li>{t("settings:providerChangeWarning.impact3")}</li>
-							</ul>
 						</div>
 					</AlertDialogDescription>
 				</AlertDialogHeader>

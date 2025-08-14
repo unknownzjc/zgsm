@@ -167,7 +167,7 @@ export interface ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate">
+	checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm">
 
 	/**
 	 * 设置日志提供者
