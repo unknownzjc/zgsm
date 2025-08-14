@@ -625,7 +625,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					{activeTab === "autoApprove" && (
 						<AutoApproveSettings
 							alwaysAllowReadOnly={alwaysAllowReadOnly}
-							allowedMaxRequests={allowedMaxRequests ?? undefined}
 							alwaysAllowReadOnlyOutsideWorkspace={alwaysAllowReadOnlyOutsideWorkspace}
 							alwaysAllowWrite={alwaysAllowWrite}
 							alwaysAllowWriteOutsideWorkspace={alwaysAllowWriteOutsideWorkspace}
@@ -641,6 +640,8 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 							alwaysAllowUpdateTodoList={alwaysAllowUpdateTodoList}
 							followupAutoApproveTimeoutMs={followupAutoApproveTimeoutMs}
 							allowedCommands={allowedCommands}
+							allowedMaxRequests={allowedMaxRequests ?? undefined}
+							allowedMaxCost={allowedMaxCost ?? undefined}
 							deniedCommands={deniedCommands}
 							setCachedStateField={setCachedStateField}
 						/>

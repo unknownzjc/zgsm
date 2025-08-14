@@ -1,5 +1,30 @@
 # Costrict Change Log
 
+## [1.5.12]
+
+- Update default modelID
+- Fix CodeReview path causing service exception
+- Add new commands for context
+- Fix known issues
+
+## [1.5.11]
+
+- Update docs
+- Update error message
+
+## [1.5.10]
+
+- Remove deprecated api
+- Fix known issues
+
+## [1.5.9]
+
+- Add Telemetry
+- Add AutoCommit
+- Optimized shell integration
+- Update models config (Grok and o4)
+- Fix known issues
+
 ## [1.5.8]
 
 - Optimization context window
