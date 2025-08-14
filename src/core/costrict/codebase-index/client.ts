@@ -465,6 +465,11 @@ export class CodebaseIndexClient {
 
 		const options: RequestInit = {
 			method: "POST",
+			body: JSON.stringify({
+				clientId: this.clientId, // 客户ID
+				accessToken: token, // 访问令牌
+				serverEndpoint: this.serverEndpoint, // 云端服务端点
+			}),
 		}
 
 		return this.makeRequest<number>(url, options, token)

@@ -167,7 +167,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				base_url: baseUrl,
 			}
 			fs.writeFileSync(tokenFilePath, JSON.stringify(config, null, 2), "utf8")
-			this.sycnToken()
 			this.log(`访问令牌已写入文件: ${tokenFilePath}`, "info", "ZgsmCodebaseIndexManager")
 			return config
 		} catch (error) {
