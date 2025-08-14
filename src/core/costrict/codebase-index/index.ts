@@ -220,6 +220,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			const localVersionInfo = await this.getLocalVersion()
 			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath(latestVersionInfo).targetPath)) {
 				// 本地没有安装，直接安装最新版本
+				await this.client!.stopExistingClient()
 				this.log("本地未安装客户端，开始下载最新版本", "info", "ZgsmCodebaseIndexManager")
 				await this.downloadAndInstallClient(latestVersionInfo)
 				this.log("CodebaseKeeper 客户端检查和升级完成", "info", "ZgsmCodebaseIndexManager")
@@ -235,6 +236,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				const hasUpdate = await this.client!.shouldUpdate(localVersionInfo)
 
 				if (hasUpdate) {
+					await this.client!.stopExistingClient()
 					this.log("检测到新版本，开始升级", "info", "ZgsmCodebaseIndexManager")
 					await this.downloadAndInstallClient(latestVersionInfo)
 					this.log("CodebaseKeeper 客户端检查和升级完成", "info", "ZgsmCodebaseIndexManager")
