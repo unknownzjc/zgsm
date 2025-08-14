@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
 
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
@@ -43,7 +43,7 @@ interface IndexStatus {
 }
 
 // 后端返回的索引状态信息类型
-interface IndexStatusInfo {
+export interface IndexStatusInfo {
 	status: "success" | "failed" | "running" | "pending"
 	process: number
 	totalFiles: number
@@ -94,7 +94,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	const [isProcessing, setIsProcessing] = useState(false)
 
 	// 轮询相关状态
-	const [pollingIntervalId, setPollingIntervalId] = useState<NodeJS.Timeout | null>(null)
+	const pollingIntervalId = useRef<NodeJS.Timeout | null>(null)
 	const [isPolling, setIsPolling] = useState(false)
 
 	// 判断是否处于【待启用】状态 - 仅当API提供商不是zgsm时
@@ -138,14 +138,13 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		const intervalId = setInterval(() => {
 			fetchCodebaseIndexStatus()
 		}, delay) // 每3秒轮询一次
-
-		setPollingIntervalId(intervalId)
+		pollingIntervalId.current = intervalId
 	}
 
 	const stopPolling = () => {
-		if (pollingIntervalId) {
-			clearInterval(pollingIntervalId)
-			setPollingIntervalId(null)
+		if (pollingIntervalId.current) {
+			clearInterval(pollingIntervalId.current)
+			pollingIntervalId.current = null
 		}
 		setIsPolling(false)
 	}

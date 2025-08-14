@@ -6,14 +6,12 @@ import { getCommand } from "../../../utils/commands"
 import { toRelativePath } from "../../../utils/path"
 import { CostrictCommandId } from "@roo-code/types"
 import { t } from "../../../i18n"
-import { IssueStatus, TaskStatus } from "../../../shared/codeReview"
+import { IssueStatus, TaskStatus, ReviewTarget, ReviewTargetType } from "../../../shared/codeReview"
 import { getVisibleProviderOrLog } from "../../../activate/registerCommands"
 
 import { CodeReviewService } from "./codeReviewService"
 import { CommentService } from "../../../integrations/comment"
 import type { ReviewComment } from "./reviewComment"
-import { ReviewTarget, ReviewTargetType } from "./types"
-import { CodeBaseError, type TelemetryErrorType } from "../telemetry"
 import { zgsmCodebaseIndexManager } from "../codebase-index"
 const startReview = async (
 	reviewInstance: CodeReviewService,
@@ -26,53 +24,50 @@ const startReview = async (
 		const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
 
 		reviewInstance.setProvider(visibleProvider)
-		if (!isReviewRepo) {
-			try {
-				const success = await vscode.window.withProgress(
-					{
-						location: vscode.ProgressLocation.Notification,
-						title: t("common:review.tip.file_check"),
-					},
-					async (progress) => {
-						const { success } = await codebaseSyncService.checkIgnoreFiles({ paths: filePaths })
-						progress.report({ increment: 100 })
-						return success
-					},
-				)
-				if (!success) {
-					vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
-					return
-				}
-			} catch (error) {
-				vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
-				return
-			}
-		}
+		// if (!isReviewRepo) {
+		// 	try {
+		// 		const success = await vscode.window.withProgress(
+		// 			{
+		// 				location: vscode.ProgressLocation.Notification,
+		// 				title: t("common:review.tip.file_check"),
+		// 			},
+		// 			async (progress) => {
+		// 				const workspace = visibleProvider.cwd
+		// 				const { success } = await codebaseSyncService.checkIgnoreFiles({
+		// 					workspacePath: workspace,
+		// 					workspaceName: path.basename(workspace),
+		// 					filePaths,
+		// 				})
+		// 				progress.report({ increment: 100 })
+		// 				return success
+		// 			},
+		// 		)
+		// 		if (!success) {
+		// 			vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
+		// 			return
+		// 		}
+		// 	} catch (error) {
+		// 		vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
+		// 		return
+		// 	}
+		// }
+		const res = await codebaseSyncService.getIndexStatus(visibleProvider.cwd)
+		const { zgsmCodebaseIndexEnabled } = await visibleProvider.getState()
+		const { codegraph } = res.data
+		visibleProvider.postMessageToWebview({
+			type: "reviewPagePayload",
+			payload: {
+				targets,
+				isCodebaseReady: zgsmCodebaseIndexEnabled && codegraph.status === "success",
+			},
+		})
+		reviewInstance.resetStatus()
 		visibleProvider.postMessageToWebview({
 			type: "action",
 			action: "codeReviewButtonClicked",
 		})
-
-		reviewInstance.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
-			issues: [],
-			progress: null,
-			message: t("common:review.tip.codebase_sync"),
-		})
-		try {
-			const { success, code } = await codebaseSyncService.syncCodebase(isReviewRepo ? [] : filePaths) // todo
-			if (success) {
-				await reviewInstance.startReviewTask(targets)
-			} else {
-				if (code === "401") {
-					await reviewInstance.handleAuthError()
-					codebaseSyncService.recordError(CodeBaseError.AuthError as TelemetryErrorType)
-					return
-				}
-				reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.codebase_sync_failed")))
-				codebaseSyncService.recordError(CodeBaseError.SyncFailed as TelemetryErrorType)
-			}
-		} catch (error) {
-			reviewInstance.pushErrorToWebview(new Error(t("common:review.tip.service_unavailable")))
+		if (zgsmCodebaseIndexEnabled && codegraph.status === "success") {
+			await reviewInstance.startReviewTask(targets)
 		}
 	}
 }
@@ -104,7 +99,7 @@ export function initCodeReview(
 			const fileUri = editor.document.uri
 			const range = editor.selection
 			const cwd = visibleProvider.cwd.toPosix()
-			reviewInstance.startReviewTask([
+			startReview(reviewInstance, [
 				{
 					type: ReviewTargetType.CODE,
 					file_path: toRelativePath(fileUri.fsPath.toPosix(), cwd),

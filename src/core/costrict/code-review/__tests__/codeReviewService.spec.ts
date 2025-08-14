@@ -11,13 +11,18 @@
  * - Polling mechanism
  */
 
-import * as vscode from "vscode"
 import { CodeReviewService } from "../codeReviewService"
 import { ClineProvider } from "../../../webview/ClineProvider"
 import { CommentService } from "../../../../integrations/comment"
 import { createReviewTaskAPI, getReviewResultsAPI, updateIssueStatusAPI, cancelReviewTaskAPI } from "../api"
-import { ReviewTarget, ReviewTargetType } from "../types"
-import { ReviewIssue, IssueStatus, TaskStatus, SeverityLevel } from "../../../../shared/codeReview"
+import {
+	ReviewIssue,
+	IssueStatus,
+	TaskStatus,
+	SeverityLevel,
+	ReviewTarget,
+	ReviewTargetType,
+} from "../../../../shared/codeReview"
 
 // Mock vscode
 vi.mock("vscode", () => ({

@@ -80,7 +80,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private log(message: string, type: "info" | "error" = "info", id: string = ""): void {
 		// 如果没有提供日志提供者，使用 console.log
-		if (this.logger?.info) {
+		if (this.logger?.[type]) {
 			this.logger[type](`[${id}] ${message}`)
 		} else {
 			const prefix = [new Date().toLocaleString(), type, id]
@@ -501,11 +501,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public async checkIgnoreFiles(request: IgnoreFilesRequest): Promise<ApiResponse<boolean>> {
 		try {
 			await this.ensureClientInited()
-			this.log(`检测忽略文件: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`检测忽略文件: ${request.workspacePath}`, "info", "ZgsmCodebaseIndexManager")
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
-			return await this.client!.checkIgnoreFiles(request, token)
+			return await this.client!.checkIgnoreFiles({ ...request, ClientId: this.clientId } as any, token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "检测忽略文件时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
