@@ -74,7 +74,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 			break
 	}
 
-	const lastUpdated = new Date(statusInfo.processTs).toLocaleString()
+	const lastUpdated = statusInfo.processTs ? new Date(statusInfo.processTs * 1000).toLocaleString() : "-"
 
 	return {
 		fileCount: statusInfo.totalFiles,

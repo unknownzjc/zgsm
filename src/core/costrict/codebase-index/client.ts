@@ -26,6 +26,7 @@ import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
 import { exec } from "child_process"
+import { getClientId } from "../../../utils/getClientId"
 
 /**
  * codebase-index 客户端主类
@@ -44,7 +45,7 @@ export class CodebaseIndexClient {
 	private serverEndpoint: string = ""
 
 	private serverName: string = "codebase-indexer"
-	private clientId: string = "145884jkhjsh"
+	private clientId: string = getClientId()
 
 	/**
 	 * 构造函数
