@@ -324,7 +324,7 @@ export class CodebaseIndexClient {
 				}
 				// 启动 costrict-keeper 管理端
 				const port = await getPort({ port: portNumbers(8080, 65535) })
-				const args = ["server", `--listen 0.0.0.0:${port}`].join(" ")
+				const args = ["server", `--listen localhost:${port}`].join(" ")
 
 				const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
 				const child = exec(command, processOptions)
