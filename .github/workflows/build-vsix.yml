@@ -1,0 +1,30 @@
+name: Build VSIX
+
+on:
+  pull_request:
+    types: [labeled]
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Build VSIX
+        run: pnpm vsix
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: costrict-vsix
+          path: bin/zgsm-*.vsix
+      - name: Comment PR with artifact link
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+            issue-number: ${{ github.event.pull_request.number }}
+            body: |
+              Build successful! 🚀
+              You can download the VSIX extension [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
