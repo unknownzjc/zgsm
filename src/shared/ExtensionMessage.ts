@@ -127,6 +127,7 @@ export interface ExtensionMessage {
 		| "issueStatusUpdated"
 		| "commands"
 		| "insertTextIntoTextarea"
+		| "reviewPagePayload"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	action?:

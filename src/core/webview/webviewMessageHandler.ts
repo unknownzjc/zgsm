@@ -58,7 +58,7 @@ const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
-import { CodeReviewService } from "../costrict/code-review"
+import { CodeReviewService, startReview } from "../costrict/code-review"
 import { ZgsmCodebaseIndexManager, IndexSwitchRequest } from "../costrict/codebase-index"
 import { ErrorCodeManager } from "../costrict/error-code"
 
@@ -2760,7 +2760,7 @@ export const webviewMessageHandler = async (
 				}
 				// 从 message.bool 获取开关状态
 				const isEnabled = message.bool
-
+				const startTime = Date.now()
 				if (isEnabled === undefined) {
 					provider.log("zgsmCodebaseIndexEnabled 消息缺少 bool 参数", "error", "ZgsmCodebaseIndexManager")
 					vscode.window.showErrorMessage("代码库索引开关状态无效")
@@ -2842,6 +2842,24 @@ export const webviewMessageHandler = async (
 				const errorMessage = error instanceof Error ? error.message : "触发索引重新构建时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			}
+			break
+		}
+		case "startCodereview": {
+			try {
+				const { targets } = message.values ?? {}
+				if (targets && targets.length) {
+					const reviewInstance = CodeReviewService.getInstance()
+					startReview(reviewInstance, targets)
+				}
+			} catch (err) {}
+			break
+		}
+		case "settingsButtonclicked": {
+			provider.postMessageToWebview({
+				type: "action",
+				action: "settingsButtonClicked",
+				values: message.values ?? {},
+			})
 			break
 		}
 	}

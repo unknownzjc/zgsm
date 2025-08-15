@@ -51,8 +51,9 @@ export interface IndexBuildRequest {
  * 检测忽略文件请求
  */
 export interface IgnoreFilesRequest {
-	workspace?: string
-	paths: string[]
+	workspacePath: string
+	workspaceName: string
+	filePaths: string[]
 }
 
 /**

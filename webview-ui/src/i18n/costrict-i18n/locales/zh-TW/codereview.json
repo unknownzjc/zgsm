@@ -5,6 +5,14 @@
 		"tips1": "1. 選擇函數、代碼塊、多文件",
 		"tips2": "2. 點擊鼠標右鍵，找到 Costrict > Code Review 一鍵觸發"
 	},
+	"codebase": {
+		"syncTips": "當前codebase索引同步功能被關閉，無法運行代碼審查，是否開啟codebase索引並繼續代碼審查？",
+		"syncConfirm": "確定開啟並繼續",
+		"syncCancel": "取消",
+		"running": "代碼索引構建中，Code Review即將開始 {{progress}}%",
+		"failed": "當前codebase索引構建失敗，無法進行代碼審查，請前往<settingsLink>設置 > 上下文 > codebase</settingsLink>模塊查看失敗原因後重試。",
+		"success": "代碼索引構建成功，開始進行 Code Review"
+	},
 	"codeReviewContent": {
 		"severity": {
 			"high": "高",

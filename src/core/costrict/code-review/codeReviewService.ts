@@ -16,12 +16,12 @@ import path from "node:path"
 import type { AxiosRequestConfig } from "axios"
 import { v7 as uuidv7 } from "uuid"
 
-import { ReviewTarget, ReviewTask, TaskData } from "./types"
+import { ReviewTask, TaskData } from "./types"
 import { createReviewTaskAPI, getReviewResultsAPI, updateIssueStatusAPI, cancelReviewTaskAPI } from "./api"
 import { ReviewComment } from "./reviewComment"
 import { ZgsmAuthService } from "../auth"
 
-import { ReviewIssue, IssueStatus, TaskStatus } from "../../../shared/codeReview"
+import { ReviewIssue, IssueStatus, TaskStatus, ReviewTarget } from "../../../shared/codeReview"
 import { ExtensionMessage } from "../../../shared/ExtensionMessage"
 import { Package } from "../../../shared/package"
 
@@ -161,6 +161,11 @@ export class CodeReviewService {
 				targets,
 			}
 			this.logger.info("Starting code review task")
+			// Send task started message with unified event
+			this.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
+				issues: [],
+				progress: 0,
+			})
 			const taskResponse = await createReviewTaskAPI(requestParams, {
 				...requestOptions,
 				signal: this.taskAbortController.signal,
@@ -175,11 +180,7 @@ export class CodeReviewService {
 				progress: 0,
 				total: targets.length,
 			}
-			// Send task started message with unified event
-			this.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
-				issues: [],
-				progress: 0,
-			})
+
 			this.logger.info(`Code Review task created,taskId: ${taskResponse.data.review_task_id}`)
 			// Start polling for results
 			this.startPolling(this.currentTask.taskId, clientId)
@@ -196,7 +197,12 @@ export class CodeReviewService {
 			this.recordReviewError(CodeReviewErrorType.StartReviewError as TelemetryErrorType)
 		}
 	}
-
+	public resetStatus() {
+		this.sendReviewTaskUpdateMessage(TaskStatus.INITIAL, {
+			issues: [],
+			progress: 0,
+		})
+	}
 	/**
 	 * Abort current running task
 	 */

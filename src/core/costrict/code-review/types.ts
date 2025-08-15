@@ -1,4 +1,4 @@
-import { ReviewIssue, IssueStatus } from "../../../shared/codeReview"
+import { ReviewIssue, IssueStatus, ReviewTarget } from "../../../shared/codeReview"
 /**
  * Type definitions for code review service
  *
@@ -7,53 +7,6 @@ import { ReviewIssue, IssueStatus } from "../../../shared/codeReview"
  * - Interface definitions: request/response data structures
  * - Error types: API error response structure
  */
-
-/**
- * Review target type enumeration
- *
- * @description Defines the type of code review target
- * @example
- * ```typescript
- * const target = { type: ReviewTargetType.FILE, file_path: "src/main.ts" };
- * ```
- */
-export enum ReviewTargetType {
-	/** File - review entire file */
-	FILE = "file",
-	/** Folder - review entire folder */
-	FOLDER = "folder",
-	/** Code snippet - review specified line range of code */
-	CODE = "code",
-}
-
-/**
- * Review target interface
- *
- * @description Defines the target object for code review
- * @example
- * ```typescript
- * // Review entire file
- * const fileTarget: ReviewTarget = {
- *   type: ReviewTargetType.FILE,
- *   file_path: "src/components/Button.tsx"
- * };
- *
- * // Review code snippet
- * const codeTarget: ReviewTarget = {
- *   type: ReviewTargetType.CODE,
- *   file_path: "src/utils/helper.ts",
- *   line_range: [10, 25]
- * };
- * ```
- */
-export interface ReviewTarget {
-	/** Review target type */
-	type: ReviewTargetType
-	/** File path (relative to workspace root) */
-	file_path: string
-	/** Line range - only valid when type is CODE, format: [start_line, end_line] */
-	line_range?: [number, number]
-}
 
 /**
  * Create review task request interface
