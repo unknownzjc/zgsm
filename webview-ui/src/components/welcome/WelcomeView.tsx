@@ -175,7 +175,7 @@ const WelcomeView = () => {
 					</div>
 					{apiConfiguration?.apiProvider === "zgsm" ? (
 						<VSCodeButton appearance="secondary" onClick={handleVisitCloudWebsite} className="w-full">
-							{t("account:visitCloudWebsite")}
+							{t("account:signIn")}
 						</VSCodeButton>
 					) : (
 						<VSCodeButton onClick={handleSubmit} appearance="primary">

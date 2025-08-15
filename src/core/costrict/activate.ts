@@ -187,6 +187,9 @@ export async function activate(
  * Deactivation function for ZGSM
  */
 export function deactivate() {
+	// 停止定时检测
+	ZgsmCodebaseIndexManager.getInstance().stopHealthCheck()
+
 	ZgsmCodebaseIndexManager.getInstance().stopExistingClient()
 	// Clean up IPC connections
 	disconnectIPC()

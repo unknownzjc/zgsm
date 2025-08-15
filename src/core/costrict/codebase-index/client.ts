@@ -368,6 +368,10 @@ export class CodebaseIndexClient {
 				throw new Error("Failed to find codebase-indexer service in well-known.json")
 			}
 
+			if (codebaseIndexerServiceConfig.status !== "running") {
+				throw new Error("codebase-indexer service norun!")
+			}
+
 			await this.setServerHost(
 				`${codebaseIndexerServiceConfig.protocol}://localhost:${codebaseIndexerServiceConfig.port}`,
 			)
@@ -552,8 +556,12 @@ export class CodebaseIndexClient {
 	}
 
 	serverEndpointAndHostCheck() {
-		if (!this.serverEndpoint || !this.serverHost) {
-			throw new Error("Server endpoint and host are required")
+		if (!this.serverEndpoint) {
+			throw new Error("Server endpoint is required!")
+		}
+
+		if (!this.serverHost) {
+			throw new Error("codebase-indexer service norun!")
 		}
 	}
 }

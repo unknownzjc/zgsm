@@ -69,7 +69,7 @@ export class ZgsmAuthCommands {
 				`登录流程已启动，请在浏览器中完成登录。\nState: ${loginState.state}\nMachineId: ${loginState.machineId}`,
 			)
 		} catch (error) {
-			vscode.window.showErrorMessage(`登录失败: ${error}`)
+			vscode.window.showErrorMessage(`${error}`)
 		}
 	}
 

@@ -34,7 +34,7 @@ interface ZgsmCodebaseSettingsProps {
 }
 
 interface IndexStatus {
-	fileCount: number
+	fileCount: number | string
 	lastUpdated: string
 	progress: number
 	status: "success" | "failed" | "running" | "pending"
@@ -62,8 +62,10 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 
 	switch (statusInfo.status) {
 		case "running":
-		case "pending":
 			progress = statusInfo.process
+			break
+		case "pending":
+			progress = 0
 			break
 		case "success":
 			progress = 100
@@ -112,17 +114,17 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	}, [zgsmCodebaseIndexEnabled, showDisableConfirmDialog, isPendingEnable])
 
 	const [semanticIndex, setSemanticIndex] = useState<IndexStatus>({
-		fileCount: 0,
+		fileCount: "-",
 		lastUpdated: "-",
-		progress: 100.0,
-		status: "success",
+		progress: 0,
+		status: "pending",
 	})
 
 	const [codeIndex, setCodeIndex] = useState<IndexStatus>({
-		fileCount: 0,
+		fileCount: "-",
 		lastUpdated: "-",
-		progress: 100.0,
-		status: "success",
+		progress: 0,
+		status: "pending",
 	})
 
 	// 轮询相关函数
@@ -358,6 +360,12 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 									<div className="flex items-center gap-2">
 										<div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
 										<span>同步中...</span>
+									</div>
+								)}
+								{indexStatus.status === "pending" && (
+									<div className="flex items-center gap-2">
+										<div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse"></div>
+										<span>待同步</span>
 									</div>
 								)}
 								{indexStatus.status === "success" && (

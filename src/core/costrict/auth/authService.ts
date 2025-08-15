@@ -12,6 +12,8 @@ import { getClientId } from "../../../utils/getClientId"
 import { sendZgsmLogout } from "./ipc/client"
 import { CompletionStatusBar } from "../completion"
 
+let _loginState = ""
+
 export class ZgsmAuthService {
 	private static instance: ZgsmAuthService
 	private static hasStatusBarLoginTip = false
@@ -75,25 +77,20 @@ export class ZgsmAuthService {
 		this.stopWaitLoginPolling()
 		this.stopRefreshToken()
 		this.stopStartLoginTokenPoll()
-		try {
-			// 生成新的登录状态参数
-			this.loginStateTmp = this.generateLoginState()
+		// 生成新的登录状态参数
+		this.loginStateTmp = this.generateLoginState()
+		_loginState = this.loginStateTmp!.state
+		// 构建登录URL
+		const loginUrl = await this.buildLoginUrl(this.loginStateTmp)
 
-			// 构建登录URL
-			const loginUrl = await this.buildLoginUrl(this.loginStateTmp)
+		// 在默认浏览器中打开登录页面
+		await vscode.env.openExternal(vscode.Uri.parse(loginUrl))
 
-			// 在默认浏览器中打开登录页面
-			await vscode.env.openExternal(vscode.Uri.parse(loginUrl))
+		// 显示通知
+		const result = await this.getStartLoginTokenPoll(this.loginStateTmp!.state)
+		this.startWaitLoginPolling(Object.assign(this.loginStateTmp, result.data))
 
-			// 显示通知
-			const result = await this.getStartLoginTokenPoll(this.loginStateTmp!.state)
-			this.startWaitLoginPolling(Object.assign(this.loginStateTmp, result.data))
-
-			return this.loginStateTmp
-		} catch (error) {
-			vscode.window.showErrorMessage(`启动登录失败: ${error}`)
-			throw error
-		}
+		return this.loginStateTmp
 	}
 
 	getStartLoginTokenPoll(state: string): Promise<LoginTokenResponse> {
@@ -109,6 +106,10 @@ export class ZgsmAuthService {
 			}
 
 			const run = async () => {
+				if (_loginState !== state) {
+					throw new Error(`登录标记改变：${_loginState} <-- ${state}`)
+				}
+
 				attempt++
 				if (attempt > maxAttempt) {
 					this.stopStartLoginTokenPoll()
@@ -142,6 +143,10 @@ export class ZgsmAuthService {
 		const maxAttempt = 60
 		let attempt = 0
 		const pollLoginState = async () => {
+			if (_loginState !== loginState.state) {
+				throw new Error(`登录标记改变：${_loginState} <-- ${loginState.state}`)
+			}
+
 			try {
 				const { data, success } = await retryWrapper(
 					"pollLoginState",
@@ -232,7 +237,6 @@ export class ZgsmAuthService {
 				} catch (error) {
 					console.error("自动刷新token失败:", error)
 					vscode.window.showErrorMessage("Token刷新失败，请重新登录")
-					// this.logout()
 				}
 			},
 			ZgsmAuthConfig.getInstance().getTokenRefreshInterval(refreshToken),

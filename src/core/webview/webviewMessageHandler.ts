@@ -2799,11 +2799,12 @@ export const webviewMessageHandler = async (
 
 					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
 				}
-				// 更新 UI 状态
-				await provider.postStateToWebview()
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "代码库索引开关操作时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			} finally {
+				// 更新 UI 状态
+				await provider.postStateToWebview()
 			}
 			break
 		}

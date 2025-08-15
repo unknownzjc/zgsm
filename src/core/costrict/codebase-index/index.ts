@@ -34,6 +34,15 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private isInitialized: boolean = false
 	private serverEndpoint = ""
 	private baseUrl = "https://zgsm.sangfor.com/costrict"
+
+	// 定时检测相关属性
+	private healthCheckTimer: NodeJS.Timeout | null = null
+	private healthCheckFailureCount: number = 0
+	private isHealthCheckRunning: boolean = false
+
+	// 常量定义
+	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
+	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
 	/**
 	 * 私有构造函数，确保单例模式
 	 */
@@ -121,6 +130,9 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			await this.client!.startClient(versionInfo!)
 			this.isInitialized = true
 			this.log("CodebaseKeeper 客户端初始化成功", "info", "ZgsmCodebaseIndexManager")
+
+			// 启动定时检测
+			this.startHealthCheck()
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "初始化 CodebaseKeeper 客户端时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -565,6 +577,95 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		this.log("todo: 开始同步代码库")
 		return {
 			success: true,
+		}
+	}
+
+	/**
+	 * 启动定时检测
+	 */
+	private startHealthCheck(): void {
+		if (this.isHealthCheckRunning) {
+			this.log("定时检测已在运行中", "info", "ZgsmCodebaseIndexManager")
+			return
+		}
+
+		this.log("启动定时检测", "info", "ZgsmCodebaseIndexManager")
+		this.isHealthCheckRunning = true
+		this.healthCheckTimer = setInterval(async () => {
+			await this.performHealthCheck()
+		}, this.HEALTH_CHECK_INTERVAL)
+	}
+
+	/**
+	 * 停止定时检测
+	 */
+	public stopHealthCheck(): void {
+		if (!this.isHealthCheckRunning) {
+			return
+		}
+
+		this.log("停止定时检测", "info", "ZgsmCodebaseIndexManager")
+
+		if (this.healthCheckTimer) {
+			clearInterval(this.healthCheckTimer)
+			this.healthCheckTimer = null
+		}
+
+		this.isHealthCheckRunning = false
+		this.healthCheckFailureCount = 0
+	}
+
+	/**
+	 * 执行单次健康检查
+	 */
+	private async performHealthCheck(): Promise<void> {
+		try {
+			this.log("开始执行健康检查", "info", "ZgsmCodebaseIndexManager")
+
+			const response = await this.healthCheck()
+
+			if (response.success) {
+				this.log("健康检查成功", "info", "ZgsmCodebaseIndexManager")
+				this.healthCheckFailureCount = 0 // 重置失败计数器
+			} else {
+				this.log(`健康检查失败: ${response.message}`, "error", "ZgsmCodebaseIndexManager")
+				await this.handleHealthCheckFailure()
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : "健康检查时发生未知错误"
+			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			await this.handleHealthCheckFailure()
+		}
+	}
+
+	/**
+	 * 处理健康检查失败
+	 */
+	private async handleHealthCheckFailure(): Promise<void> {
+		this.healthCheckFailureCount++
+
+		if (this.healthCheckFailureCount > this.MAX_FAILURE_COUNT) {
+			this.log(
+				`连续失败 ${this.healthCheckFailureCount} 次，超过阈值，准备重启客户端`,
+				"error",
+				"ZgsmCodebaseIndexManager",
+			)
+
+			try {
+				await this.restartClient()
+				this.log("客户端重启成功，重置失败计数器", "info", "ZgsmCodebaseIndexManager")
+				this.healthCheckFailureCount = 0
+			} catch (restartError) {
+				const restartErrorMessage =
+					restartError instanceof Error ? restartError.message : "重启客户端时发生未知错误"
+				this.log(restartErrorMessage, "error", "ZgsmCodebaseIndexManager")
+			}
+		} else {
+			this.log(
+				`健康检查失败次数: ${this.healthCheckFailureCount}/${this.MAX_FAILURE_COUNT}`,
+				"info",
+				"ZgsmCodebaseIndexManager",
+			)
 		}
 	}
 }
