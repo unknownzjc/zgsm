@@ -65,7 +65,7 @@ export class ZgsmAuthStorage {
 		// 重新初始化 codebase-index 客户端
 		zgsmCodebaseIndexManager.writeAccessToken(tokens.access_token).then(async () => {
 			await zgsmCodebaseIndexManager.initialize()
-			zgsmCodebaseIndexManager.sycnToken()
+			zgsmCodebaseIndexManager.syncToken()
 			workspaceEventMonitor.initialize()
 		})
 	}

@@ -312,13 +312,13 @@ export class CodebaseIndexClient {
 		}
 	}
 
-	async startClient(versionInfo: VersionInfo, shouldStartCostrictKeeper: boolean ,maxRetries = 3): Promise<void> {
+	async startClient(versionInfo: VersionInfo, shouldStartCostrictKeeper: boolean, maxRetries = 3): Promise<void> {
 		let attempts = 0
 		const { targetPath } = this.getTargetPath()
 		while (attempts < maxRetries) {
 			attempts++
 			try {
-				if (shouldStartCostrictKeeper && !(await this.isRunning(this.processName))) {
+				if (shouldStartCostrictKeeper || !(await this.isRunning(this.processName))) {
 					const processOptions = {
 						detached: true,
 						stdio: "ignore" as const,
@@ -391,10 +391,7 @@ export class CodebaseIndexClient {
 	 * @param fileName 文件名
 	 * @returns 返回包含目标路径、目录和缓存目录的对象
 	 */
-	getTargetPath(
-		versionInfo?: VersionInfo,
-		fileName: string = this.processName,
-	): { targetPath: string; cacheDir: string; homeDir: string } {
+	getTargetPath(fileName: string = this.processName): { targetPath: string; cacheDir: string; homeDir: string } {
 		const platform = this.platformDetector.platform
 		const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
 
@@ -423,7 +420,7 @@ export class CodebaseIndexClient {
 		keepalive?: boolean,
 	): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
-		
+
 		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/events`
 
 		const options: RequestInit = {
@@ -443,7 +440,7 @@ export class CodebaseIndexClient {
 	 */
 	async triggerIndexBuild(request: IndexBuildRequest, token?: string): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
-		
+
 		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/index`
 
 		const options: RequestInit = {
@@ -454,7 +451,7 @@ export class CodebaseIndexClient {
 		return this.makeRequest<number>(url, options, token)
 	}
 
-	async sycnToken(token?: string) {
+	async syncToken(token?: string) {
 		// 获取 token
 		this.serverEndpointAndHostCheck()
 		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/token`
@@ -561,21 +558,21 @@ export class CodebaseIndexClient {
 			// 判断 wellKnownPath 文件是否存在
 			if (!fs.existsSync(wellKnownPath)) {
 				return {
-					services: []
+					services: [],
 				}
 			}
 
 			return JSON.parse(fs.readFileSync(wellKnownPath, "utf-8"))
 		} catch (error) {
-			this.logger.error(`[getWellKnownConfig] ${error.message}`);
+			this.logger.error(`[getWellKnownConfig] ${error.message}`)
 			return {
-				services: []
+				services: [],
 			}
 		}
 	}
 
 	getCodebaseIndexerServerHost(defaultValue: string) {
-	    const service = this.getServiceConfig(this.serverName)
+		const service = this.getServiceConfig(this.serverName)
 
 		return service?.port ? `http:localhost:${service.port}` : defaultValue
 	}
@@ -587,7 +584,7 @@ export class CodebaseIndexClient {
 	}
 
 	getCostrictServerPort(defaultValue: string | number) {
-	    const service = this.getServiceConfig("costrict")
+		const service = this.getServiceConfig("costrict")
 
 		return service?.port ? service.port : defaultValue
 	}

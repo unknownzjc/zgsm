@@ -113,7 +113,7 @@ export interface RequestHeaders {
 export interface VersionInfo {
 	versionId: VersionId
 	appUrl: string
-	infoUrl: string,
+	infoUrl: string
 	status?: "downloading" | "downloaded" | "failed"
 }
 
@@ -169,7 +169,7 @@ export interface ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm">
+	checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm">
 
 	/**
 	 * 设置日志提供者

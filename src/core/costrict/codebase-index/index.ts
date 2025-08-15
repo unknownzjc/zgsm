@@ -209,7 +209,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	public async checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm"> {
+	public async checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm"> {
 		try {
 			// 检查本地是否已安装客户端
 			const localVersionInfo = await this.getLocalVersion()
@@ -226,14 +226,13 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				"ZgsmCodebaseIndexManager",
 			)
 
-
-			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath(latestVersionInfo).targetPath)) {
+			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath().targetPath)) {
 				// 本地没有安装，直接安装最新版本
 				await this.client!.stopExistingClient()
 				this.log("本地未安装客户端，开始下载最新版本", "info", "ZgsmCodebaseIndexManager")
 				await this.downloadAndInstallClient(latestVersionInfo)
 				this.log("CodebaseKeeper 客户端检查和升级完成", "info", "ZgsmCodebaseIndexManager")
-				return "fristInstall"
+				return "firstInstall"
 			} else {
 				// 本地已安装，检查是否需要升级
 				this.log(
@@ -343,7 +342,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		try {
 			await this.saveLocalVersion({
 				...versionInfo,
-				status: 'downloading',
+				status: "downloading",
 			})
 			const versionString = `${versionInfo?.versionId?.major}.${versionInfo?.versionId?.minor}.${versionInfo?.versionId?.micro}`
 			this.log(`开始下载客户端版本: ${versionString}`, "info", "ZgsmCodebaseIndexManager")
@@ -498,14 +497,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	// token传递接口
-	public async sycnToken(): Promise<ApiResponse<number>> {
+	public async syncToken(): Promise<ApiResponse<number>> {
 		try {
 			await this.ensureClientInited()
 			this.log("token更新", "info", "ZgsmCodebaseIndexManager")
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
-			return await this.client!.sycnToken(token)
+			return await this.client!.syncToken(token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "token更新时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")

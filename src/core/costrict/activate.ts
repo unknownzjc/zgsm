@@ -106,7 +106,7 @@ export async function activate(
 				}
 				zgsmCodebaseIndexManager.writeAccessToken(tokens.access_token).then(async () => {
 					await zgsmCodebaseIndexManager.initialize()
-					zgsmCodebaseIndexManager.sycnToken()
+					zgsmCodebaseIndexManager.syncToken()
 					workspaceEventMonitor.initialize()
 				})
 				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
