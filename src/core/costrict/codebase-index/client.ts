@@ -521,14 +521,10 @@ export class CodebaseIndexClient {
 	 * @param token 访问令牌
 	 * @returns Promise<ApiResponse<IndexStatusResponse>> 返回响应数据
 	 */
-	async getIndexStatus(
-		clientId: string,
-		workspace: string,
-		token?: string,
-	): Promise<ApiResponse<IndexStatusResponse>> {
+	async getIndexStatus(workspace: string, token?: string): Promise<ApiResponse<IndexStatusResponse>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/codebase-indexer/api/v1/index/status?clientId=${encodeURIComponent(clientId)}&workspace=${encodeURIComponent(workspace)}`
+		const url = `${this.serverHost}/codebase-indexer/api/v1/index/status?workspace=${encodeURIComponent(workspace)}`
 
 		const options: RequestInit = {
 			method: "GET",

@@ -17,7 +17,6 @@ const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ onIssueClick, onTaskCan
 		data: { issues, progress, error = "", message = "" },
 	} = reviewTask
 	const { targets, isCodebaseReady } = reviewPagePayload
-	console.log("==================", isCodebaseReady, status)
 	const onCancel = () => {
 		setReviewPagePayload({
 			targets,

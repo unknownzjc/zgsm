@@ -237,16 +237,23 @@ const App = () => {
 		}
 	}, [tab])
 
-	const tabs = [
-		{
-			label: "AGENT",
-			value: "chat",
-		},
-		{
-			label: "CODE REVIEW",
-			value: "codeReview",
-		},
-	]
+	const tabs = useMemo(() => {
+		const baseTabs = [
+			{
+				label: "AGENT",
+				value: "chat",
+			},
+		]
+
+		if (apiConfiguration?.apiProvider === "zgsm") {
+			baseTabs.push({
+				label: "CODE REVIEW",
+				value: "codeReview",
+			})
+		}
+
+		return baseTabs
+	}, [apiConfiguration?.apiProvider])
 
 	const resetTabs = useCallback(() => {
 		setTab("chat")

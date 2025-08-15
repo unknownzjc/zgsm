@@ -505,7 +505,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
-			return await this.client!.checkIgnoreFiles({ ...request, ClientId: this.clientId } as any, token)
+			return await this.client!.checkIgnoreFiles(request, token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "检测忽略文件时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -524,7 +524,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
-			return await this.client!.getIndexStatus(this.clientId, workspace, token)
+			return await this.client!.getIndexStatus(workspace, token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "查询索引状态时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")

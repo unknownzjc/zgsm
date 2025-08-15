@@ -24,33 +24,33 @@ const startReview = async (
 		const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
 
 		reviewInstance.setProvider(visibleProvider)
-		// if (!isReviewRepo) {
-		// 	try {
-		// 		const success = await vscode.window.withProgress(
-		// 			{
-		// 				location: vscode.ProgressLocation.Notification,
-		// 				title: t("common:review.tip.file_check"),
-		// 			},
-		// 			async (progress) => {
-		// 				const workspace = visibleProvider.cwd
-		// 				const { success } = await codebaseSyncService.checkIgnoreFiles({
-		// 					workspacePath: workspace,
-		// 					workspaceName: path.basename(workspace),
-		// 					filePaths,
-		// 				})
-		// 				progress.report({ increment: 100 })
-		// 				return success
-		// 			},
-		// 		)
-		// 		if (!success) {
-		// 			vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
-		// 			return
-		// 		}
-		// 	} catch (error) {
-		// 		vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
-		// 		return
-		// 	}
-		// }
+		if (!isReviewRepo) {
+			try {
+				const success = await vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: t("common:review.tip.file_check"),
+					},
+					async (progress) => {
+						const workspace = visibleProvider.cwd
+						const { success } = await codebaseSyncService.checkIgnoreFiles({
+							workspacePath: workspace,
+							workspaceName: path.basename(workspace),
+							filePaths,
+						})
+						progress.report({ increment: 100 })
+						return success
+					},
+				)
+				if (!success) {
+					vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
+					return
+				}
+			} catch (error) {
+				vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
+				return
+			}
+		}
 		const res = await codebaseSyncService.getIndexStatus(visibleProvider.cwd)
 		const { zgsmCodebaseIndexEnabled } = await visibleProvider.getState()
 		const { codegraph } = res.data
