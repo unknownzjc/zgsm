@@ -2751,7 +2751,8 @@ export const webviewMessageHandler = async (
 		}
 		case "zgsmCodebaseIndexEnabled": {
 			try {
-				if (getGlobalState("zgsmCodebaseIndexEnabled") === message.bool) return
+				const oldEnabled = getGlobalState("zgsmCodebaseIndexEnabled")
+				if (oldEnabled === message.bool) return
 				const { apiConfiguration } = await provider.getState()
 
 				if (apiConfiguration?.apiProvider !== "zgsm") {
@@ -2787,7 +2788,7 @@ export const webviewMessageHandler = async (
 
 				if (result.success) {
 					// 保存状态到全局存储
-					await updateGlobalState("zgsmCodebaseIndexEnabled", true)
+					await updateGlobalState("zgsmCodebaseIndexEnabled", isEnabled)
 
 					provider.log(
 						`代码库索引功能已${isEnabled ? "开启" : "关闭"}: ${workspacePath}`,
@@ -2795,7 +2796,7 @@ export const webviewMessageHandler = async (
 						"ZgsmCodebaseIndexManager",
 					)
 				} else {
-					await updateGlobalState("zgsmCodebaseIndexEnabled", false)
+					await updateGlobalState("zgsmCodebaseIndexEnabled", oldEnabled)
 
 					provider.log(`代码库索引开关操作失败: ${result.message}`, "error", "ZgsmCodebaseIndexManager")
 				}
