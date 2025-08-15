@@ -22,7 +22,11 @@ const startReview = async (
 	const codebaseSyncService = zgsmCodebaseIndexManager
 	if (visibleProvider) {
 		const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
-
+		const { zgsmCodebaseIndexEnabled, apiConfiguration } = await visibleProvider.getState()
+		if (apiConfiguration.apiProvider !== "zgsm") {
+			vscode.window.showInformationMessage(t("common:review.tip.api_provider_not_support"))
+			return
+		}
 		reviewInstance.setProvider(visibleProvider)
 		if (!isReviewRepo) {
 			try {
@@ -52,7 +56,6 @@ const startReview = async (
 			}
 		}
 		const res = await codebaseSyncService.getIndexStatus(visibleProvider.cwd)
-		const { zgsmCodebaseIndexEnabled } = await visibleProvider.getState()
 		const { codegraph } = res.data
 		visibleProvider.postMessageToWebview({
 			type: "reviewPagePayload",

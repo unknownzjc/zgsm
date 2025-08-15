@@ -164,7 +164,8 @@
 			"codebase_sync_ignore_file": "该类型文件无需做 CodeReview，本次任务不执行。",
 			"file_check": "文件检查中",
 			"login_expired": "登录已过期，请重新登录。",
-			"service_unavailable": "服务不可用，请稍后重试。"
+			"service_unavailable": "服务不可用，请稍后重试。",
+			"api_provider_not_support": "当前 API 提供商不支持 Code Review功能，请切换到 Costrict API 提供商。"
 		},
 		"statusbar": {
 			"login_expired": "获取登录信息失败，请重新登录以使用 Code Review 功能"
