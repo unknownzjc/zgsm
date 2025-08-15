@@ -486,7 +486,7 @@ export class CodebaseIndexClient {
 	async healthCheck(token?: string): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/codebase-indexer/api/v1/healthz`
+		const url = `${this.serverHost}/health`
 
 		const options: RequestInit = {
 			method: "GET",
