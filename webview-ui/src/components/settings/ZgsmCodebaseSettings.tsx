@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
 
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
@@ -89,7 +89,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 }
 
 export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsProps) => {
-	const { zgsmCodebaseIndexEnabled, setZgsmCodebaseIndexEnabled } = useExtensionState()
+	const { zgsmCodebaseIndexEnabled } = useExtensionState()
 	const [showDisableConfirmDialog, setShowDisableConfirmDialog] = useState(false)
 	const [isProcessing, setIsProcessing] = useState(false)
 
@@ -104,9 +104,11 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	// 监听全局状态变化，更新本地状态
 	useEffect(() => {
 		if (zgsmCodebaseIndexEnabled !== undefined) {
-			setZgsmCodebaseIndexEnabled(zgsmCodebaseIndexEnabled)
+			console.log("zgsmCodebaseIndexEnabled changed", zgsmCodebaseIndexEnabled);
+			
+			// setZgsmCodebaseIndexEnabled(zgsmCodebaseIndexEnabled)
 		}
-	}, [setZgsmCodebaseIndexEnabled, zgsmCodebaseIndexEnabled])
+	}, [zgsmCodebaseIndexEnabled])
 
 	// 添加状态变化监听器
 	useEffect(() => {
@@ -198,7 +200,12 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		}
 	}, [])
 
-	const handleCodebaseIndexToggle = (checked: boolean) => {
+	const handleCodebaseIndexToggle = useCallback((e: any) => {
+		// 在测试中e.preventDefault可能不存在
+		if (e && e.preventDefault) {
+			e.preventDefault()
+		}
+		const checked = !zgsmCodebaseIndexEnabled
 		console.log("🔍 handleCodebaseIndexToggle called:", {
 			checked,
 			current: zgsmCodebaseIndexEnabled,
@@ -211,32 +218,26 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			return
 		}
 
-		// 如果状态没有变化，直接返回
-		if (checked === zgsmCodebaseIndexEnabled) {
-			console.log("🔄 State unchanged, skipping")
-			return
-		}
-
 		// 如果是从开启状态切换到关闭状态，需要确认
-		if (!checked && zgsmCodebaseIndexEnabled) {
+		if (!checked) {
 			console.log("⚠️  Showing disable confirmation dialog")
 			setShowDisableConfirmDialog(true)
 			return
 		}
 
 		console.log("✅ Updating state:", checked)
-		// 只有当状态确实需要改变时才更新
-		setZgsmCodebaseIndexEnabled(checked)
+		// // 只有当状态确实需要改变时才更新
+		// setZgsmCodebaseIndexEnabled(checked)
 		// 发送消息到扩展
 		vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: checked })
-	}
+	}, [zgsmCodebaseIndexEnabled, isProcessing])
 
 	const handleConfirmDisable = async () => {
 		// 设置处理状态锁，防止重复处理
 		setIsProcessing(true)
 
-		// 先更新状态
-		setZgsmCodebaseIndexEnabled(false)
+		// // 先更新状态
+		// setZgsmCodebaseIndexEnabled(false)
 		// 发送消息到扩展
 		await vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: false })
 
@@ -523,13 +524,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 								<div className="flex items-center gap-2">
 									<VSCodeCheckbox
 										checked={zgsmCodebaseIndexEnabled}
-										onChange={(e: any) => {
-											// 在测试中e.preventDefault可能不存在
-											if (e && e.preventDefault) {
-												e.preventDefault()
-											}
-											handleCodebaseIndexToggle(!zgsmCodebaseIndexEnabled)
-										}}
+										onChange={handleCodebaseIndexToggle}
 										disabled={isPendingEnable}
 									/>
 									<div>Codebase索引构建</div>

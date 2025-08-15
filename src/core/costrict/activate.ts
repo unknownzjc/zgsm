@@ -7,7 +7,6 @@
 
 import * as vscode from "vscode"
 import type { ClineProvider } from "../webview/ClineProvider"
-import prettyBytes from "pretty-bytes"
 
 // Import from migrated modules
 import { AICompletionProvider, CompletionStatusBar, shortKeyCut } from "./completion"
@@ -190,7 +189,7 @@ export function deactivate() {
 	// 停止定时检测
 	ZgsmCodebaseIndexManager.getInstance().stopHealthCheck()
 
-	ZgsmCodebaseIndexManager.getInstance().stopExistingClient()
+	// ZgsmCodebaseIndexManager.getInstance().stopExistingClient()
 	// Clean up IPC connections
 	disconnectIPC()
 	stopIPCServer()

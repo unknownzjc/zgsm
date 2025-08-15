@@ -103,7 +103,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		// 检查本地是否已安装客户端
 		const localVersionInfo = await this.getLocalVersion()
 		try {
-			this.log("开始初始化 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
+			this.log("初始化 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
 
 			// 创建客户端配置
 			const config: CodebaseIndexClientConfig = {
@@ -120,14 +120,12 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			if (state === "failed") {
 				throw new Error("客户端升级检测失败")
 			}
-			await this.client!.stopExistingClient()
 			if (state === "needZgsm") {
 				this.log("仅 Costrict 提供商可用", "info", "ZgsmCodebaseIndexManager")
-
 				return
 			}
 			const versionInfo = await this.getLocalVersion()
-			await this.client!.startClient(versionInfo!)
+			await this.client!.startClient(versionInfo!, state !== "noUpdate")
 			this.isInitialized = true
 			this.log("CodebaseKeeper 客户端初始化成功", "info", "ZgsmCodebaseIndexManager")
 
@@ -213,6 +211,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	public async checkAndUpgradeClient(): Promise<"fristInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm"> {
 		try {
+			// 检查本地是否已安装客户端
+			const localVersionInfo = await this.getLocalVersion()
+			if (localVersionInfo?.status === "downloading") {
+				return "noUpdate"
+			}
 			this.log("开始检查并升级 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
 			// 获取最新版本信息
@@ -223,8 +226,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				"ZgsmCodebaseIndexManager",
 			)
 
-			// 检查本地是否已安装客户端
-			const localVersionInfo = await this.getLocalVersion()
+
 			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath(latestVersionInfo).targetPath)) {
 				// 本地没有安装，直接安装最新版本
 				await this.client!.stopExistingClient()
@@ -339,6 +341,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private async downloadAndInstallClient(versionInfo: VersionInfo): Promise<void> {
 		try {
+			await this.saveLocalVersion({
+				...versionInfo,
+				status: 'downloading',
+			})
 			const versionString = `${versionInfo?.versionId?.major}.${versionInfo?.versionId?.minor}.${versionInfo?.versionId?.micro}`
 			this.log(`开始下载客户端版本: ${versionString}`, "info", "ZgsmCodebaseIndexManager")
 
@@ -354,13 +360,26 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				this.log(`客户端下载并安装成功: ${result.filePath}`, "info", "ZgsmCodebaseIndexManager")
 
 				// 保存本地版本信息
-				await this.saveLocalVersion(versionInfo)
+				await this.saveLocalVersion({
+					...versionInfo,
+					status: "downloaded",
+				})
 			} else {
+				// 保存本地版本信息
+				await this.saveLocalVersion({
+					...versionInfo,
+					status: "failed",
+				})
 				throw new Error(result.error || "下载并安装客户端失败")
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "下载并安装客户端时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			// 保存本地版本信息
+			await this.saveLocalVersion({
+				...versionInfo,
+				status: "failed",
+			})
 			throw new Error(errorMessage)
 		}
 	}

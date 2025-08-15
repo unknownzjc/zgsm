@@ -113,7 +113,8 @@ export interface RequestHeaders {
 export interface VersionInfo {
 	versionId: VersionId
 	appUrl: string
-	infoUrl: string
+	infoUrl: string,
+	status?: "downloading" | "downloaded" | "failed"
 }
 
 /**

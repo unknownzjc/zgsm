@@ -242,7 +242,7 @@ export class CodebaseIndexClient {
 					onProgress({ downloaded, total, progress })
 				}
 			}
-			const { targetPath } = this.getTargetPath(versionInfo)
+			const { targetPath } = this.getTargetPath()
 			// 4. 保存文件
 			const filePath = await this.fileDownloader.downloadClient(
 				targetPath,
@@ -312,31 +312,30 @@ export class CodebaseIndexClient {
 		}
 	}
 
-	async startClient(versionInfo: VersionInfo, maxRetries = 3): Promise<void> {
+	async startClient(versionInfo: VersionInfo, shouldStartCostrictKeeper: boolean ,maxRetries = 3): Promise<void> {
 		let attempts = 0
-		const { targetPath } = this.getTargetPath(versionInfo)
+		const { targetPath } = this.getTargetPath()
 		while (attempts < maxRetries) {
 			attempts++
 			try {
-				const processOptions = {
-					detached: true,
-					stdio: "ignore" as const,
-					encoding: "utf8" as const,
+				if (shouldStartCostrictKeeper && !(await this.isRunning(this.processName))) {
+					const processOptions = {
+						detached: true,
+						stdio: "ignore" as const,
+						encoding: "utf8" as const,
+					}
+					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
+					// 启动 costrict-keeper 管理端
+					const port = this.getCostrictServerPort(defaultPort)
+					const args = ["server", `--listen localhost:${port}`].join(" ")
+					const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
+					const child = exec(command, processOptions)
+					child.unref()
+					// Wait a moment to check if the process is still running
+					await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				}
-				// 启动 costrict-keeper 管理端
-				const port = await getPort({ port: portNumbers(8080, 65535) })
-				const args = ["server", `--listen localhost:${port}`].join(" ")
-
-				const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
-				const child = exec(command, processOptions)
-				child.unref()
-				// Wait a moment to check if the process is still running
-				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
-				const isRunning = await this.isRunning()
-				if (isRunning) {
-					await this.startService(versionInfo)
-					break
-				}
+				await this.initSubService(versionInfo)
+				break
 			} catch (err: any) {
 				if (attempts >= maxRetries) {
 					throw new Error(
@@ -351,17 +350,10 @@ export class CodebaseIndexClient {
 	 * 1.开始获取服务信息：5分钟内 5秒一次，超过5分钟后 30秒一次，直到获取到服务信息开始下一步
 	 * 2.获取到 codebase-sync 服务地址信息（name， protocol，port）
 	 */
-	async startService(versionInfo: VersionInfo, retryTime = 0) {
-		const { homeDir } = this.getTargetPath(versionInfo)
-		const wellKnownPath = path.join(homeDir, ".costrict", "share", ".well-known.json")
+	async initSubService(versionInfo: VersionInfo, retryTime = 0) {
 		try {
-			// 判断 wellKnownPath 文件是否存在
-			if (!fs.existsSync(wellKnownPath)) {
-				throw new Error("wellKnown 文件不存在")
-			}
-
 			// 读取 wellKnownPath
-			const { services } = JSON.parse(fs.readFileSync(wellKnownPath, "utf-8"))
+			const { services } = this.getWellKnownConfig()
 			const codebaseIndexerServiceConfig = services.find((service: any) => service.name === this.serverName)
 
 			if (!codebaseIndexerServiceConfig) {
@@ -380,7 +372,7 @@ export class CodebaseIndexClient {
 			// 文件不存在，等待 5 s后再次尝试
 			const interval = retryTime < 5 * 60 * 1000 ? 5000 : 30_000
 			await new Promise((resolve) => setTimeout(resolve, interval))
-			await this.startService({ ...versionInfo }, retryTime + interval)
+			await this.initSubService({ ...versionInfo }, retryTime + interval)
 		}
 	}
 
@@ -400,7 +392,7 @@ export class CodebaseIndexClient {
 	 * @returns 返回包含目标路径、目录和缓存目录的对象
 	 */
 	getTargetPath(
-		versionInfo: VersionInfo,
+		versionInfo?: VersionInfo,
 		fileName: string = this.processName,
 	): { targetPath: string; cacheDir: string; homeDir: string } {
 		const platform = this.platformDetector.platform
@@ -431,8 +423,8 @@ export class CodebaseIndexClient {
 		keepalive?: boolean,
 	): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
-
-		const url = `${this.serverHost}/codebase-indexer/api/v1/events`
+		
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/events`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -451,8 +443,8 @@ export class CodebaseIndexClient {
 	 */
 	async triggerIndexBuild(request: IndexBuildRequest, token?: string): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
-
-		const url = `${this.serverHost}/codebase-indexer/api/v1/index`
+		
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/index`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -465,7 +457,7 @@ export class CodebaseIndexClient {
 	async sycnToken(token?: string) {
 		// 获取 token
 		this.serverEndpointAndHostCheck()
-		const url = `${this.serverHost}/codebase-indexer/api/v1/token`
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/token`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -486,7 +478,7 @@ export class CodebaseIndexClient {
 	async healthCheck(token?: string): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/health`
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/health`
 
 		const options: RequestInit = {
 			method: "GET",
@@ -504,7 +496,7 @@ export class CodebaseIndexClient {
 	async checkIgnoreFiles(request: IgnoreFilesRequest, token?: string): Promise<ApiResponse<boolean>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/codebase-indexer/api/v1/files/ignore`
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/files/ignore`
 
 		const options: RequestInit = {
 			method: "POST",
@@ -524,7 +516,7 @@ export class CodebaseIndexClient {
 	async getIndexStatus(workspace: string, token?: string): Promise<ApiResponse<IndexStatusResponse>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/codebase-indexer/api/v1/index/status?workspace=${encodeURIComponent(workspace)}`
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/index/status?workspace=${encodeURIComponent(workspace)}`
 
 		const options: RequestInit = {
 			method: "GET",
@@ -542,7 +534,7 @@ export class CodebaseIndexClient {
 	async toggleIndexSwitch(request: IndexSwitchRequest, token?: string): Promise<ApiResponse<boolean>> {
 		this.serverEndpointAndHostCheck()
 
-		const url = `${this.serverHost}/codebase-indexer/api/v1/switch?workspace=${encodeURIComponent(request.workspace)}&switch=${request.switch}`
+		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/switch?workspace=${encodeURIComponent(request.workspace)}&switch=${request.switch}`
 
 		const options: RequestInit = {
 			method: "GET",
@@ -559,6 +551,45 @@ export class CodebaseIndexClient {
 		if (!this.serverHost) {
 			throw new Error("codebase-indexer service norun!")
 		}
+	}
+
+	getWellKnownConfig() {
+		try {
+			const { homeDir } = this.getTargetPath()
+			const wellKnownPath = path.join(homeDir, ".costrict", "share", ".well-known.json")
+
+			// 判断 wellKnownPath 文件是否存在
+			if (!fs.existsSync(wellKnownPath)) {
+				return {
+					services: []
+				}
+			}
+
+			return JSON.parse(fs.readFileSync(wellKnownPath, "utf-8"))
+		} catch (error) {
+			this.logger.error(`[getWellKnownConfig] ${error.message}`);
+			return {
+				services: []
+			}
+		}
+	}
+
+	getCodebaseIndexerServerHost(defaultValue: string) {
+	    const service = this.getServiceConfig(this.serverName)
+
+		return service?.port ? `http:localhost:${service.port}` : defaultValue
+	}
+
+	getServiceConfig(serverName: string) {
+		const { services } = this.getWellKnownConfig()
+		const service = services.find((item: any) => item.name === serverName)
+		return service
+	}
+
+	getCostrictServerPort(defaultValue: string | number) {
+	    const service = this.getServiceConfig("costrict")
+
+		return service?.port ? service.port : defaultValue
 	}
 }
 

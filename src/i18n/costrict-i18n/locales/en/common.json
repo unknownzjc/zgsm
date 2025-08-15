@@ -173,5 +173,8 @@
 		"comment": {
 			"detail_label": "Code Review Details"
 		}
+	},
+	"errors": {
+		"no_assistant_responses": "Unexpected API Response: The language model did not provide any assistant messages. This may indicate an issue with the API or the model's output."
 	}
 }

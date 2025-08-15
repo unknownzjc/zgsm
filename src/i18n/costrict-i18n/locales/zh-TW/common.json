@@ -169,5 +169,8 @@
 		"comment": {
 			"detail_label": "Code Review 詳情"
 		}
+	},
+	"errors": {
+		"no_assistant_responses": "API返回異常：模型沒有回覆任何訊息。這可能是API或模型出了問題。"
 	}
 }

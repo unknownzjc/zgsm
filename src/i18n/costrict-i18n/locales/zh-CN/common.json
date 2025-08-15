@@ -173,5 +173,8 @@
 		"comment": {
 			"detail_label": "Code Review 详情"
 		}
+	},
+	"errors": {
+		"no_assistant_responses": "API返回异常：模型没有回复任何消息。这可能是API或模型出了问题。"
 	}
 }
