@@ -121,21 +121,20 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 	}, [])
 	return (
 		<div className="flex items-center mt-5 px-5">
-			{!zgsmCodebaseIndexEnabled ||
-				(indexStatus.status === "pending" && (
-					<div className="flex flex-col gap-[26px]">
-						<div className="flex items-center">
-							<ExclamationTriangleIcon color="#FFD500" width={20} height={20} />
-							<span className="ml-2">{t("codereview:codebase.syncTips")}</span>
-						</div>
-						<div className="flex gap-1">
-							<Button onClick={onContinue}>{t("codereview:codebase.syncConfirm")}</Button>
-							<Button variant="secondary" onClick={onCancel}>
-								{t("codereview:codebase.syncCancel")}
-							</Button>
-						</div>
+			{(!zgsmCodebaseIndexEnabled || indexStatus.status === "pending") && (
+				<div className="flex flex-col gap-[26px]">
+					<div className="flex items-center">
+						<ExclamationTriangleIcon color="#FFD500" width={20} height={20} />
+						<span className="ml-2">{t("codereview:codebase.syncTips")}</span>
 					</div>
-				))}
+					<div className="flex gap-1">
+						<Button onClick={onContinue}>{t("codereview:codebase.syncConfirm")}</Button>
+						<Button variant="secondary" onClick={onCancel}>
+							{t("codereview:codebase.syncCancel")}
+						</Button>
+					</div>
+				</div>
+			)}
 			{zgsmCodebaseIndexEnabled && indexStatus.status === "running" && (
 				<div className="flex items-center mb-4">
 					<div
