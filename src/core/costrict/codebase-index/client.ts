@@ -336,7 +336,7 @@ nwIDAQAB
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
 					// 启动 costrict-keeper 管理端
 					const port = this.getCostrictServerPort(defaultPort)
-					const args = ["server", `--listen localhost:${port}`]
+					const args = ["server", "--listen", `localhost:${port}`]
 					const child = spawn(targetPath, args, processOptions)
 
 					child.unref()
@@ -581,7 +581,7 @@ nwIDAQAB
 	getCodebaseIndexerServerHost(defaultValue: ICostrictServiceInfo) {
 		const service = getServiceConfig(this.serverName)
 
-		return `${service.protocol || defaultValue.protocol}://localhost:${service.port || defaultValue.port}`
+		return `${service?.protocol || defaultValue?.protocol || "http"}://localhost:${service?.port || defaultValue?.port}`
 	}
 
 	getServiceConfig(serverName: string) {
