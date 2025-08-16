@@ -1,3 +1,4 @@
+import os from "os"
 import fs from "fs"
 import { PlatformDetector } from "./platform"
 import { VersionApi } from "./versionApi"
@@ -38,7 +39,7 @@ export class CodebaseIndexClient {
 	private versionApi: VersionApi
 	private packageInfoApi: PackageInfoApi
 	private fileDownloader: FileDownloader
-	private processName = "costrict"
+
 	private logger: ILogger
 
 	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
@@ -49,8 +50,14 @@ export class CodebaseIndexClient {
 	} = {} as any
 	private serverEndpoint: string = ""
 
-	private serverName: string = "codebase-indexer"
 	private clientId: string = getClientId()
+
+	get processName() {
+		return "costrict" + (this.platformDetector.platform === "windows" ? ".exe" : "")
+	}
+	get serverName() {
+		return "codebase-indexer" + (this.platformDetector.platform === "windows" ? ".exe" : "")
+	}
 
 	/**
 	 * 构造函数
@@ -65,7 +72,18 @@ export class CodebaseIndexClient {
 			baseUrl: config.baseUrl,
 			downloadTimeout: config.downloadTimeout || 30_000,
 			versionInfo: config.versionInfo,
-			publicKey: config.publicKey || process.env.ZGSM_PUBLIC_KEY!,
+			publicKey:
+				config.publicKey ||
+				process.env.ZGSM_PUBLIC_KEY! ||
+				`-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAp/yvHEtGy09fNgZO2a/e
+oyjEvBqVEjNf9RRf8r5QLeXI/InJGS323faqrVAtEjbOhq1R0KuAYISyFRzPvJYa
+aBdlaDpXOY0UJxz6C/hLSAl2ohn/SvCycYVucrjnPUAwCqDNaLLjyqyTdsSXNh3d
+QHgyBM16LD8oqFHj+/dxlMNxv+FIcc6WeN9F7BmTmvbHt5jBqBxBhXtlR8lx7F/H
+AIMDOcw+6STgS2RFFnTRrBl8ZgJPBUavczm0TY4a9gUErfTnb8zBHtH6K4OPsvEF
+Nimo+oDprwaVnIIPm1UvZtc/Qe/6OD0emoVovSzRYhbaqVPWgKqPNiitW9JZvuV3
+nwIDAQAB
+-----END PUBLIC KEY-----`,
 		}
 
 		if (!this.config.publicKey) {
@@ -286,8 +304,7 @@ export class CodebaseIndexClient {
 		}
 		try {
 			if (this.platformDetector.platform === "windows") {
-				const exeName = this.processName.endsWith(".exe") ? this.processName : `${this.processName}.exe`
-				await execPromise(`taskkill /F /IM "${exeName}" /T`)
+				await execPromise(`taskkill /F /IM "${this.processName}" /T`)
 			} else {
 				await execPromise(`pkill -x "${this.processName}"`).catch(() => {})
 			}
@@ -297,8 +314,10 @@ export class CodebaseIndexClient {
 	}
 
 	async isRunning(processName = this.processName): Promise<boolean> {
-		const pids = await processIsRunning(processName)
-		this.logger.info(`${this.processName} running: \n${pids.join()}`)
+		const pids = await processIsRunning(processName, this.logger)
+		if (pids.length > 0) {
+			this.logger.info(`${this.processName} PID: \n${pids.join()}`)
+		}
 		return pids.length > 0
 	}
 
@@ -324,8 +343,10 @@ export class CodebaseIndexClient {
 					// Wait a moment to check if the process is still running
 					await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				}
-				await this.initSubService(versionInfo)
-				break
+				if (await this.isRunning(this.processName)) {
+					await this.initSubService(versionInfo)
+					break
+				}
 			} catch (err: any) {
 				if (attempts >= maxRetries) {
 					throw new Error(
@@ -344,7 +365,9 @@ export class CodebaseIndexClient {
 		try {
 			// 读取 wellKnownPath
 			const { services } = getWellKnownConfig()
-			const codebaseIndexerServiceConfig = services.find((service: any) => service.name === this.serverName)
+			const codebaseIndexerServiceConfig = services.find(
+				(service: any) => service.name === this.serverName.split(".")[0],
+			)
 
 			if (!codebaseIndexerServiceConfig) {
 				throw new Error("Failed to find codebase-indexer service in well-known.json")
@@ -380,18 +403,13 @@ export class CodebaseIndexClient {
 	 * @returns 返回包含目标路径、目录和缓存目录的对象
 	 */
 	getTargetPath(fileName: string = this.processName): { targetPath: string; cacheDir: string; homeDir: string } {
-		const platform = this.platformDetector.platform
-		const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
-
+		const homeDir = os.homedir()
 		if (!homeDir) {
 			throw new Error("Failed to determine home directory path")
 		}
 
-		// const arch = this.platformDetector.arch
-		// const version = this.formatVersionId(versionInfo.versionId)
 		const cacheDir = path.join(homeDir, ".costrict", "bin")
-		// const targetDir = path.join(cacheDir, version, platform, arch)
-		const targetPath = path.join(cacheDir, `${fileName}${platform === "windows" ? ".exe" : ""}`)
+		const targetPath = path.join(cacheDir, `${fileName}`)
 
 		return { targetPath, cacheDir, homeDir }
 	}
@@ -567,7 +585,7 @@ export class CodebaseIndexClient {
 
 	getServiceConfig(serverName: string) {
 		const { services } = getWellKnownConfig()
-		const service = services.find((item: any) => item.name === serverName)
+		const service = services.find((item: any) => item.name === serverName.split(".")[0])
 		return service
 	}
 

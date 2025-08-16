@@ -5,6 +5,7 @@ import path from "path"
 import { jwtDecode } from "jwt-decode"
 import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 import { getClientId } from "../../../utils/getClientId"
+import { ILogger } from "../../../utils/logger"
 
 export function execPromise(command: string, opt: any = {}): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -90,11 +91,11 @@ export const writeAccessToken = async (accessToken: string) => {
 
 export const getServiceConfig = (serverName: string) => {
 	const { services } = getWellKnownConfig()
-	const service = services.find((item: any) => item.name === serverName)
+	const service = services.find((item: any) => item.name === serverName.split(".")[0])
 	return service
 }
 
-export function processIsRunning(processName: string): Promise<number[]> {
+export function processIsRunning(processName: string, logger: ILogger): Promise<number[]> {
 	return new Promise((resolve, reject) => {
 		const platform = os.platform()
 
@@ -102,47 +103,84 @@ export function processIsRunning(processName: string): Promise<number[]> {
 		let args: string[]
 
 		if (platform === "linux" || platform === "darwin") {
-			// Linux / macOS
 			cmd = "pgrep"
 			args = ["-x", processName]
 		} else if (platform === "win32") {
-			// Windows
 			cmd = "tasklist"
-			args = ["/FO", "CSV", "/NH"]
+			args = ["/FI", `IMAGENAME eq ${processName}`, "/FO", "CSV", "/NH"]
 		} else {
 			return reject(new Error(`Unsupported platform: ${platform}`))
 		}
 
 		const ps = spawn(cmd, args)
-		let stdout = ""
-		let stderr = ""
 
-		ps.stdout.on("data", (data) => (stdout += data.toString()))
-		ps.stderr.on("data", (data) => (stderr += data.toString()))
-
-		ps.on("close", (code) => {
-			if (platform === "linux" || platform === "darwin") {
-				if (code === 0) {
-					resolve(stdout.trim().split("\n").map(Number))
-				} else {
-					resolve([]) // 没找到
-				}
-			} else if (platform === "win32") {
-				const lines = stdout.trim().split("\n")
-				const pids: number[] = []
-				for (const line of lines) {
-					if (!line.trim()) continue
-					const parts = line.split('","').map((p) => p.replace(/^"|"$/g, ""))
-					const name = parts[0]?.toLowerCase()
-					const pid = parseInt(parts[1], 10)
-					if (name === processName.toLowerCase()) {
-						pids.push(pid)
-					}
-				}
-				resolve(pids)
+		const chunks: Buffer[] = []
+		ps.stdout.on("data", (data) => chunks.push(data))
+		ps.stderr.on("data", (data) => {
+			const errorMsg = data.toString().trim()
+			if (errorMsg) {
+				logger.error(`stderr[${cmd}]:` + errorMsg)
 			}
 		})
 
-		ps.on("error", (err) => reject(err))
+		ps.on("close", (code) => {
+			try {
+				const output = Buffer.concat(chunks)
+				const stdout = output.toString("utf8").trim()
+
+				if (platform === "win32") {
+					// Windows 平台处理
+					if (!stdout || stdout.includes("No tasks are running") || stdout.includes("信息:")) {
+						return resolve([])
+					}
+
+					const lines = stdout.split("\n")
+					const pids: number[] = []
+
+					for (const line of lines) {
+						if (!line.trim()) continue
+
+						try {
+							// 更健壮的 CSV 解析
+							const parts = line.split('","').map((p) => p.replace(/^"|"$/g, ""))
+							if (parts.length >= 2) {
+								const pid = parseInt(parts[1], 10)
+								if (!isNaN(pid) && pid > 0) {
+									pids.push(pid)
+								}
+							}
+						} catch (parseError) {
+							logger.warn(`解析行失败: "${line}"` + parseError)
+							continue
+						}
+					}
+
+					return resolve(pids)
+				} else {
+					// Linux/macOS 平台处理
+					if (code === 0) {
+						const pids = stdout
+							.split("\n")
+							.map((line) => line.trim())
+							.filter((line) => line.length > 0)
+							.map(Number)
+							.filter((pid) => !isNaN(pid) && pid > 0)
+
+						return resolve(pids)
+					} else {
+						// pgrep 返回非零码通常表示未找到进程
+						return resolve([])
+					}
+				}
+			} catch (error) {
+				logger.error("处理进程列表时出错:" + error.message)
+				return resolve([]) // 出错时返回空数组而不是抛出异常
+			}
+		})
+
+		ps.on("error", (err) => {
+			logger.error(`执行命令失败 [${cmd} ${args.join(" ")}]:` + err.message)
+			reject(err)
+		})
 	})
 }
