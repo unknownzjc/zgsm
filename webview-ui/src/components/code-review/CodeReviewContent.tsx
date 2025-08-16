@@ -121,7 +121,10 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 	}, [issues, filterState])
 
 	// show notification dot if there are active filter conditions
-	const showNotificationDot = filterState.selectedSeverities.length > 0 || filterState.selectedIssueTypes.length > 0
+	const showNotificationDot =
+		filterState.selectedSeverities.length > 0 ||
+		filterState.selectedIssueTypes.length > 0 ||
+		filterState.selectedConfidence !== null
 
 	// group filtered issues by file_path
 	const groupedIssues = useMemo(() => {
@@ -188,7 +191,7 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 	)
 
 	// handle confidence selection
-	const handleConfidenceSelect = useCallback(
+	const toggleConfidenceSelect = useCallback(
 		(value: ConfidenceLevel) => {
 			setFilterState((prev) => ({
 				...prev,
@@ -314,7 +317,7 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 																	? "var(--vscode-list-activeSelectionForeground)"
 																	: "var(--vscode-foreground)",
 															}}
-															onClick={() => handleConfidenceSelect(value)}></div>
+															onClick={() => toggleConfidenceSelect(value)}></div>
 														<span>{label}</span>
 													</div>
 												)

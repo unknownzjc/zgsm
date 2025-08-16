@@ -112,6 +112,7 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 
 	// 组件卸载时清理定时器
 	useEffect(() => {
+		fetchCodebaseIndexStatus()
 		return () => {
 			if (pollingIntervalId.current) {
 				clearInterval(pollingIntervalId.current)
