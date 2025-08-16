@@ -44,7 +44,7 @@ export class CompletionClient {
 		return {
 			baseUrl: apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
 			completionUrl,
-			apiKey: apiConfiguration.zgsmRefreshToken || tokens?.access_token || NOT_PROVIDERED,
+			apiKey: apiConfiguration.zgsmAccessToken || tokens?.access_token || NOT_PROVIDERED,
 		}
 	}
 
@@ -153,6 +153,7 @@ export class CompletionClient {
 			baseURL: fullUrl,
 			apiKey: config.apiKey,
 		})
+
 		if (!this.openai) {
 			// Logger.error("Completion: Configuration error: configuration:", configuration, "openai: ", this.openai);
 			return false
