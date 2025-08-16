@@ -95,7 +95,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 	// 轮询相关状态
 	const pollingIntervalId = useRef<NodeJS.Timeout | null>(null)
-	const [isPolling, setIsPolling] = useState(false)
 
 	// 判断是否处于【待启用】状态 - 仅当API提供商不是zgsm时
 	const isPendingEnable = apiConfiguration?.apiProvider !== "zgsm"
@@ -104,8 +103,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	// 监听全局状态变化，更新本地状态
 	useEffect(() => {
 		if (zgsmCodebaseIndexEnabled !== undefined) {
-			console.log("zgsmCodebaseIndexEnabled changed", zgsmCodebaseIndexEnabled);
-			
+			console.log("zgsmCodebaseIndexEnabled changed", zgsmCodebaseIndexEnabled)
+
 			// setZgsmCodebaseIndexEnabled(zgsmCodebaseIndexEnabled)
 		}
 	}, [zgsmCodebaseIndexEnabled])
@@ -130,25 +129,26 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 	})
 
 	// 轮询相关函数
-	const startPolling = (delay = 10_000) => {
-		if (shouldDisableAll) return
-		console.log("codebase-index startPolling")
+	const startPolling = useCallback(
+		(delay = 10_000) => {
+			if (shouldDisableAll) return
+			console.log("codebase-index startPolling")
 
-		if (isPolling) return
+			stopPolling()
 
-		setIsPolling(true)
-		const intervalId = setInterval(() => {
-			fetchCodebaseIndexStatus()
-		}, delay) // 每3秒轮询一次
-		pollingIntervalId.current = intervalId
-	}
+			const intervalId = setInterval(() => {
+				fetchCodebaseIndexStatus()
+			}, delay) // 每3秒轮询一次
+			pollingIntervalId.current = intervalId
+		},
+		[shouldDisableAll],
+	)
 
 	const stopPolling = () => {
 		if (pollingIntervalId.current) {
 			clearInterval(pollingIntervalId.current)
 			pollingIntervalId.current = null
 		}
-		setIsPolling(false)
 	}
 
 	const fetchCodebaseIndexStatus = () => {
@@ -178,7 +178,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		const handleMessage = (event: MessageEvent) => {
 			const message = event.data
 
-			if (message.type === "codebaseIndexStatusResponse" && message?.payload && message.payload?.status) {
+			if (message.type === "codebaseIndexStatusResponse" && message.payload?.status) {
 				const { embedding, codegraph } = message.payload.status
 				setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
 				setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
@@ -188,8 +188,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					(embedding.status === "success" || embedding.status === "failed") &&
 					(codegraph.status === "success" || codegraph.status === "failed")
 				) {
-					// 所有索引都已完成，可以停止轮询
-					// stopPolling() // 注释掉以保持轮询，以便后续状态更新
+					startPolling() // 降低轮询频率
 				}
 			}
 		}
@@ -198,39 +197,42 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		return () => {
 			window.removeEventListener("message", handleMessage)
 		}
-	}, [])
+	}, [startPolling])
 
-	const handleCodebaseIndexToggle = useCallback((e: any) => {
-		// 在测试中e.preventDefault可能不存在
-		if (e && e.preventDefault) {
-			e.preventDefault()
-		}
-		const checked = !zgsmCodebaseIndexEnabled
-		console.log("🔍 handleCodebaseIndexToggle called:", {
-			checked,
-			current: zgsmCodebaseIndexEnabled,
-			isProcessing,
-		})
+	const handleCodebaseIndexToggle = useCallback(
+		(e: any) => {
+			// 在测试中e.preventDefault可能不存在
+			if (e && e.preventDefault) {
+				e.preventDefault()
+			}
+			const checked = !zgsmCodebaseIndexEnabled
+			console.log("🔍 handleCodebaseIndexToggle called:", {
+				checked,
+				current: zgsmCodebaseIndexEnabled,
+				isProcessing,
+			})
 
-		// 如果正在处理中，防止重复触发
-		if (isProcessing) {
-			console.log("🚫 Blocked by processing lock")
-			return
-		}
+			// 如果正在处理中，防止重复触发
+			if (isProcessing) {
+				console.log("🚫 Blocked by processing lock")
+				return
+			}
 
-		// 如果是从开启状态切换到关闭状态，需要确认
-		if (!checked) {
-			console.log("⚠️  Showing disable confirmation dialog")
-			setShowDisableConfirmDialog(true)
-			return
-		}
+			// 如果是从开启状态切换到关闭状态，需要确认
+			if (!checked) {
+				console.log("⚠️  Showing disable confirmation dialog")
+				setShowDisableConfirmDialog(true)
+				return
+			}
 
-		console.log("✅ Updating state:", checked)
-		// // 只有当状态确实需要改变时才更新
-		// setZgsmCodebaseIndexEnabled(checked)
-		// 发送消息到扩展
-		vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: checked })
-	}, [zgsmCodebaseIndexEnabled, isProcessing])
+			console.log("✅ Updating state:", checked)
+			// // 只有当状态确实需要改变时才更新
+			// setZgsmCodebaseIndexEnabled(checked)
+			// 发送消息到扩展
+			vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: checked })
+		},
+		[zgsmCodebaseIndexEnabled, isProcessing],
+	)
 
 	const handleConfirmDisable = async () => {
 		// 设置处理状态锁，防止重复处理
