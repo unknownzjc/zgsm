@@ -25,7 +25,7 @@ export type WorkspaceEventType =
  */
 export interface WorkspaceEventData {
 	eventType: WorkspaceEventType
-	eventTime: string
+	eventTime: number | string
 	sourcePath: string
 	targetPath?: string
 }

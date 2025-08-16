@@ -6,11 +6,12 @@ import WelcomePage from "./WelcomePage"
 import CodebaseSync from "./CodebaseSync"
 
 interface CodeReviewPageProps {
+	isHidden?: boolean
 	onIssueClick: (issueId: string) => void
 	onTaskCancel: () => void
 }
 
-const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ onIssueClick, onTaskCancel }) => {
+const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ isHidden, onIssueClick, onTaskCancel }) => {
 	const { reviewTask, reviewPagePayload, setReviewPagePayload, setReviewTask } = useExtensionState()
 	const {
 		status,
@@ -34,7 +35,8 @@ const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ onIssueClick, onTaskCan
 	}
 	if (!isCodebaseReady) {
 		return (
-			<div className="fixed top-[28px] left-0 right-0 bottom-0 flex flex-col overflow-hidden">
+			<div
+				className={`fixed top-[28px] left-0 right-0 bottom-0 flex flex-col overflow-hidden ${isHidden ? "hidden" : ""}`}>
 				<CodebaseSync onCancel={onCancel} targets={targets} />
 			</div>
 		)
@@ -44,7 +46,8 @@ const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ onIssueClick, onTaskCan
 	}
 
 	return (
-		<div className="fixed top-[28px] left-0 right-0 bottom-0 flex flex-col overflow-hidden">
+		<div
+			className={`fixed top-[28px] left-0 right-0 bottom-0 flex flex-col overflow-hidden ${isHidden ? "hidden" : ""}`}>
 			<CodeReviewPanel
 				issues={issues} // To be sourced from context
 				taskStatus={status}

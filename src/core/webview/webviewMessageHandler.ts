@@ -2842,6 +2842,8 @@ export const webviewMessageHandler = async (
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : "触发索引重新构建时发生未知错误"
 				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			} finally {
+				await provider.postStateToWebview()
 			}
 			break
 		}

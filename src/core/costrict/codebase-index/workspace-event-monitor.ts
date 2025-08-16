@@ -144,7 +144,7 @@ export class WorkspaceEventMonitor {
 		// 创建关闭事件
 		const closeEvents: WorkspaceEventData[] = workspaceFolders.map((folder) => ({
 			eventType: "close_workspace",
-			eventTime: new Date().toISOString(),
+			eventTime: `${Date.now()}`,
 			sourcePath: "",
 			targetPath: "",
 		}))
@@ -290,7 +290,7 @@ export class WorkspaceEventMonitor {
 		const eventKey = `delete:${filePath}`
 		const eventData: WorkspaceEventData = {
 			eventType: "delete_file",
-			eventTime: new Date().toISOString(),
+			eventTime: `${Date.now()}`,
 			sourcePath: filePath,
 			targetPath: "",
 		}
@@ -346,7 +346,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `modify:${filePath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "modify_file",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: filePath,
 				targetPath: filePath,
 			}
@@ -377,7 +377,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `delete:${uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "delete_file",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: uri.fsPath,
 				targetPath: "",
 			}
@@ -399,7 +399,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `rename:${oldUri.fsPath}:${newUri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "rename_file",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: oldUri.fsPath,
 				targetPath: newUri.fsPath,
 			}
@@ -420,7 +420,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `workspace:open:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)
@@ -432,7 +432,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `workspace:close:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "close_workspace",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)
@@ -452,7 +452,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `create:${uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "add_file",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: "",
 				targetPath: uri.fsPath,
 			}
@@ -477,7 +477,7 @@ export class WorkspaceEventMonitor {
 			const eventKey = `workspace:initial:${folder.uri.fsPath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "open_workspace",
-				eventTime: new Date().toISOString(),
+				eventTime: `${Date.now()}`,
 				sourcePath: "",
 			}
 			this.addEvent(eventKey, eventData)

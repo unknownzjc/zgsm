@@ -33,6 +33,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
 	private serverEndpoint = ""
+	private preBuildInfo = {
+		type: "",
+		time: 0,
+	}
 	private baseUrl = "https://zgsm.sangfor.com/costrict"
 
 	// 定时检测相关属性
@@ -424,6 +428,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 * @param request 索引构建请求
 	 */
 	public async triggerIndexBuild(request: IndexBuildRequest): Promise<ApiResponse<number>> {
+		if (this.preBuildInfo.type === request.type && Date.now() - this.preBuildInfo.time < 300)
+			throw new Error("跳过重复触发索引构建：" + request.type)
+		this.preBuildInfo.type = request.type
+		this.preBuildInfo.time = Date.now()
 		try {
 			await this.ensureClientInited()
 			this.log(`触发索引构建: ${request.workspace} - ${request.type}`, "info", "ZgsmCodebaseIndexManager")

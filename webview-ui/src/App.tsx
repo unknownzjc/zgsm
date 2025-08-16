@@ -301,56 +301,56 @@ const App = () => {
 			{tab === "zgsm-account" && (
 				<ZgsmAccountView apiConfiguration={apiConfiguration} onDone={() => switchTab("chat")} />
 			)}
-			{isChatTab && (
-				<>
-					<div className="header flex items-center justify-between">
-						<TabList
-							value={tab}
-							onValueChange={(val) => switchTab(val as Tab)}
-							className="header-left h-[28px]">
-							{tabs.map(({ label, value }) => {
-								const isSelected = tab === value
-								const activeTabClass = isSelected ? "border-b border-gray-200" : ""
+			<div className={`${isChatTab ? "" : "hidden"}`}>
+				<div className={`header flex items-center justify-between ${isChatTab ? "" : "hidden"}`}>
+					<TabList
+						value={tab}
+						onValueChange={(val) => switchTab(val as Tab)}
+						className="header-left h-[28px]">
+						{tabs.map(({ label, value }) => {
+							const isSelected = tab === value
+							const activeTabClass = isSelected ? "border-b border-gray-200" : ""
 
-								return (
-									<TabTrigger
-										key={value}
-										value={value}
-										isSelected={isSelected}
-										className={cn(activeTabClass, "mr-[16px]", "cursor-pointer")}
-										focusNeedRing={false}>
-										{label}
-									</TabTrigger>
-								)
-							})}
-						</TabList>
+							return (
+								<TabTrigger
+									key={value}
+									value={value}
+									isSelected={isSelected}
+									className={cn(activeTabClass, "mr-[16px]", "cursor-pointer")}
+									focusNeedRing={false}>
+									{label}
+								</TabTrigger>
+							)
+						})}
+					</TabList>
 
-						{tab === "chat" && (
-							<div className="header-right flex absolute right-[12px]">
-								<i
-									className="codicon codicon-add mr-[4px] cursor-pointer p-[2px]"
-									onClick={() => resetTabs()}></i>
-								<i
-									className="codicon codicon-history cursor-pointer p-[2px]"
-									onClick={() => switchTab("history")}></i>
-							</div>
-						)}
-					</div>
-					<TabContent>
-						{tab === "chat" && (
-							<ChatView
-								ref={chatViewRef}
-								isHidden={tab !== "chat"}
-								showAnnouncement={showAnnouncement}
-								hideAnnouncement={() => setShowAnnouncement(false)}
-							/>
-						)}
-						{tab === "codeReview" && (
-							<CodeReviewPage onIssueClick={onIssueClick} onTaskCancel={onTaskCancel} />
-						)}
-					</TabContent>
-				</>
-			)}
+					{tab === "chat" && (
+						<div className="header-right flex absolute right-[12px]">
+							<i
+								className="codicon codicon-add mr-[4px] cursor-pointer p-[2px]"
+								onClick={() => resetTabs()}></i>
+							<i
+								className="codicon codicon-history cursor-pointer p-[2px]"
+								onClick={() => switchTab("history")}></i>
+						</div>
+					)}
+				</div>
+				<TabContent>
+					<ChatView
+						ref={chatViewRef}
+						isHidden={tab !== "chat"}
+						showAnnouncement={showAnnouncement}
+						hideAnnouncement={() => setShowAnnouncement(false)}
+					/>
+					{tab === "codeReview" && (
+						<CodeReviewPage
+							isHidden={tab !== "codeReview"}
+							onIssueClick={onIssueClick}
+							onTaskCancel={onTaskCancel}
+						/>
+					)}
+				</TabContent>
+			</div>
 			<MemoizedHumanRelayDialog
 				isOpen={humanRelayDialogState.isOpen}
 				requestId={humanRelayDialogState.requestId}

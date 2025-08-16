@@ -22,12 +22,12 @@ import {
 	ICostrictServiceInfo,
 } from "./types"
 import path from "path"
-import { execPromise, getServiceConfig, getWellKnownConfig, processIsRunning, readAccessToken } from "./utils"
+import { execPromise, getServiceConfig, getWellKnownConfig, processIsRunning } from "./utils"
 import getPort, { portNumbers } from "get-port"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
-import { exec } from "child_process"
+import { spawn } from "child_process"
 import { getClientId } from "../../../utils/getClientId"
 
 /**
@@ -336,10 +336,11 @@ nwIDAQAB
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
 					// 启动 costrict-keeper 管理端
 					const port = this.getCostrictServerPort(defaultPort)
-					const args = ["server", `--listen localhost:${port}`].join(" ")
-					const command = this.platform === "windows" ? `"${targetPath}" ${args}` : `${targetPath} ${args}`
-					const child = exec(command, processOptions)
+					const args = ["server", `--listen localhost:${port}`]
+					const child = spawn(targetPath, args, processOptions)
+
 					child.unref()
+
 					// Wait a moment to check if the process is still running
 					await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 				}
