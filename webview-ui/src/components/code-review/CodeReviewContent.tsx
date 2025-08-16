@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react"
-import { ReviewIssue, TaskStatus, SeverityLevel } from "../../../../src/shared/codeReview"
+import { ReviewIssue, TaskStatus, SeverityLevel } from "@roo/codeReview"
 import TaskSummary from "./TaskSummary"
 import FileIssueList from "./FileIssueList"
 import {
@@ -17,12 +17,42 @@ import { useAppTranslation } from "@/i18n/TranslationContext"
 interface FilterState {
 	selectedSeverities: SeverityLevel[]
 	selectedIssueTypes: string[]
+	selectedConfidence: ConfidenceLevel
 }
 
 interface CodeReviewContentProps {
 	issues: ReviewIssue[]
 	taskStatus: TaskStatus
 	onIssueClick: (issueId: string) => void
+}
+
+type ConfidenceLevel = "low" | "middle" | "high"
+
+// 置信度配置对象
+const CONFIDENCE_CONFIG = {
+	low: {
+		color: "#7F9C89",
+		radius: "rounded-l-[20px]",
+	},
+	middle: {
+		color: "#6AB883",
+		radius: "",
+	},
+	high: {
+		color: "#4AF783",
+		radius: "rounded-r-[20px]",
+	},
+} as const
+
+const CONFIDENCE_INACTIVE_COLOR = "rgba(255, 255, 255, 0.1)"
+
+// 置信度样式计算工具函数
+const getConfidenceStyles = (value: ConfidenceLevel, isSelected: boolean) => {
+	const config = CONFIDENCE_CONFIG[value]
+	return {
+		backgroundColor: isSelected ? config.color : CONFIDENCE_INACTIVE_COLOR,
+		radiusClass: config.radius,
+	}
 }
 
 const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatus, onIssueClick }) => {
@@ -32,6 +62,7 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 	const [filterState, setFilterState] = useState<FilterState>({
 		selectedSeverities: [],
 		selectedIssueTypes: [],
+		selectedConfidence: "middle",
 	})
 
 	// toggle severity filter
@@ -56,6 +87,22 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 
 	// apply filters to issues
 	const filteredIssues = useMemo(() => {
+		const matchConfidence = (confidence: number) => {
+			let confidenceLevel: ConfidenceLevel
+			if (confidence >= 0 && confidence <= 4) {
+				confidenceLevel = "low"
+			} else if (confidence >= 5 && confidence <= 7) {
+				confidenceLevel = "middle"
+			} else if (confidence >= 8 && confidence <= 10) {
+				confidenceLevel = "high"
+			} else {
+				// 处理超出范围的情况，默认为 middle
+				confidenceLevel = "middle"
+			}
+
+			return confidenceLevel === filterState.selectedConfidence
+		}
+
 		return issues.filter((issue) => {
 			// severity filter
 			const severityMatch =
@@ -66,12 +113,18 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 				filterState.selectedIssueTypes.length === 0 ||
 				issue.issue_types.some((type) => filterState.selectedIssueTypes.includes(type))
 
-			return severityMatch && typeMatch
+			// confidence filter
+			const confidenceMatch = matchConfidence(issue.confidence)
+
+			return severityMatch && typeMatch && confidenceMatch
 		})
 	}, [issues, filterState])
 
 	// show notification dot if there are active filter conditions
-	const showNotificationDot = filterState.selectedSeverities.length > 0 || filterState.selectedIssueTypes.length > 0
+	const showNotificationDot =
+		filterState.selectedSeverities.length > 0 ||
+		filterState.selectedIssueTypes.length > 0 ||
+		filterState.selectedConfidence !== null
 
 	// group filtered issues by file_path
 	const groupedIssues = useMemo(() => {
@@ -102,6 +155,23 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 		[t],
 	)
 
+	const confidence = useMemo<{ label: string; value: ConfidenceLevel }[]>(() => {
+		return [
+			{
+				label: t("codereview:codeReviewContent.confidence.low"),
+				value: "low",
+			},
+			{
+				label: t("codereview:codeReviewContent.confidence.middle"),
+				value: "middle",
+			},
+			{
+				label: t("codereview:codeReviewContent.confidence.high"),
+				value: "high",
+			},
+		]
+	}, [t])
+
 	// get unique issue types from all issues (not filtered ones for filter options)
 	const uniqueIssueTypes = useMemo(() => {
 		const allIssueTypes = issues.flatMap((issue) => issue.issue_types)
@@ -118,6 +188,17 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 	const isIssueTypeSelected = useCallback(
 		(issueType: string) => filterState.selectedIssueTypes.includes(issueType),
 		[filterState.selectedIssueTypes],
+	)
+
+	// handle confidence selection
+	const toggleConfidenceSelect = useCallback(
+		(value: ConfidenceLevel) => {
+			setFilterState((prev) => ({
+				...prev,
+				selectedConfidence: value,
+			}))
+		},
+		[setFilterState],
 	)
 
 	return (
@@ -183,7 +264,7 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 											})}
 										</div>
 									</div>
-									<div>
+									<div className="mb-4">
 										<div className="flex items-center mb-2">
 											{t("codereview:codeReviewContent.issueLable")}
 										</div>
@@ -204,6 +285,40 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 														}}
 														onClick={() => toggleIssueType(type)}>
 														{type}
+													</div>
+												)
+											})}
+										</div>
+									</div>
+									<div>
+										<div className="flex items-center mb-2">
+											{t("codereview:codeReviewContent.confidenceLabel")}
+										</div>
+										<div className="text-sm text-neutral-500 mb-2">
+											{t("codereview:codeReviewContent.confidenceTooltip")}
+										</div>
+										<div className="flex items-center w-full">
+											{confidence.map(({ label, value }) => {
+												const isSelected = filterState.selectedConfidence === value
+												const { backgroundColor, radiusClass } = getConfidenceStyles(
+													value,
+													isSelected,
+												)
+
+												return (
+													<div
+														className="flex flex-col items-center gap-1 flex-1"
+														key={value}>
+														<div
+															className={`w-full h-2 text-center py-1 cursor-pointer select-none ${radiusClass}`}
+															style={{
+																backgroundColor,
+																color: isSelected
+																	? "var(--vscode-list-activeSelectionForeground)"
+																	: "var(--vscode-foreground)",
+															}}
+															onClick={() => toggleConfidenceSelect(value)}></div>
+														<span>{label}</span>
 													</div>
 												)
 											})}

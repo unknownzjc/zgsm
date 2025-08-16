@@ -1,5 +1,5 @@
 import React from "react"
-import { ReviewIssue, IssueStatus } from "../../../../src/shared/codeReview"
+import { ReviewIssue, IssueStatus } from "@roo/codeReview"
 import { severityColor } from "./contants"
 
 interface IssueItemProps {

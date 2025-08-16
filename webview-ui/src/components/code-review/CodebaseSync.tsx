@@ -69,6 +69,11 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 				type: "codegraph",
 			},
 		})
+		setIndexStatus({
+			...indexStatus,
+			status: "running",
+			process: 0,
+		})
 		startPolling()
 	}
 	const navigateToSettings = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -89,9 +94,8 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 			if (message.type === "codebaseIndexStatusResponse" && message?.payload && message.payload?.status) {
 				const { codegraph } = message.payload.status
 				setIndexStatus(codegraph)
-
 				// 如果状态为 success 或 error，可以考虑停止轮询
-				if (codegraph.status === "success" || codegraph.status === "failed") {
+				if (codegraph.status === "success" || codegraph.process === 100 || codegraph.status === "failed") {
 					// 所有索引都已完成，可以停止轮询
 					stopPolling()
 					vscode.postMessage({
@@ -112,6 +116,7 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 
 	// 组件卸载时清理定时器
 	useEffect(() => {
+		fetchCodebaseIndexStatus()
 		return () => {
 			if (pollingIntervalId.current) {
 				clearInterval(pollingIntervalId.current)

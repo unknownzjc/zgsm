@@ -1,6 +1,6 @@
 import React from "react"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
-import { TaskStatus } from "../../../../src/shared/codeReview"
+import { TaskStatus } from "@roo/codeReview"
 import CodeReviewPanel from "./CodeReviewPanel"
 import WelcomePage from "./WelcomePage"
 import CodebaseSync from "./CodebaseSync"

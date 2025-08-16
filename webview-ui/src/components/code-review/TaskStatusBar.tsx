@@ -1,5 +1,5 @@
 import React from "react"
-import { ReviewIssue, TaskStatus } from "../../../../src/shared/codeReview"
+import { ReviewIssue, TaskStatus } from "@roo/codeReview"
 import { CheckIcon, InfoCircledIcon } from "@radix-ui/react-icons"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 
