@@ -61,7 +61,8 @@ const startReview = async (
 			type: "reviewPagePayload",
 			payload: {
 				targets,
-				isCodebaseReady: zgsmCodebaseIndexEnabled && codegraph.status === "success",
+				isCodebaseReady:
+					zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100),
 			},
 		})
 		reviewInstance.resetStatus()
@@ -69,7 +70,7 @@ const startReview = async (
 			type: "action",
 			action: "codeReviewButtonClicked",
 		})
-		if (zgsmCodebaseIndexEnabled && codegraph.status === "success") {
+		if (zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100)) {
 			await reviewInstance.startReviewTask(targets)
 		}
 	}
