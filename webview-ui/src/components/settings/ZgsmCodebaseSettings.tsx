@@ -174,11 +174,17 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 			if (message.type === "codebaseIndexStatusResponse" && message.payload?.status) {
 				const { embedding, codegraph } = message.payload.status
-				setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
-				setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
+				if (embedding) {
+					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
+				}
+				if (codegraph) {
+					setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
+				}
 
 				// 如果状态为 success 或 error，可以考虑停止轮询
 				if (
+					embedding &&
+					codegraph &&
 					(embedding.status === "success" || embedding.status === "failed") &&
 					(codegraph.status === "success" || codegraph.status === "failed")
 				) {

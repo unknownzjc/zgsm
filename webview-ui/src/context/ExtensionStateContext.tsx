@@ -292,7 +292,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		targets: [],
 		isCodebaseReady: true,
 	})
-	const [includeTaskHistoryInEnhance, setIncludeTaskHistoryInEnhance] = useState(false)
+	const [includeTaskHistoryInEnhance, setIncludeTaskHistoryInEnhance] = useState(true)
 
 	const setListApiConfigMeta = useCallback(
 		(value: ProviderSettingsEntry[]) => setState((prevState) => ({ ...prevState, listApiConfigMeta: value })),
