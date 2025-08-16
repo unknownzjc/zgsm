@@ -19,7 +19,7 @@ import { TelemetryService } from "@roo-code/telemetry"
 import { ZgsmAuthApi, ZgsmAuthService, ZgsmAuthConfig } from "../auth"
 import { getClientId } from "../../../utils/getClientId"
 import { ILogger } from "../../../utils/logger"
-import { jwtDecode } from "jwt-decode"
+import { getWorkspacePath } from "../../../utils/path"
 
 /**
  * CodebaseIndex 管理器实现类（单例模式）
@@ -44,9 +44,15 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private healthCheckFailureCount: number = 0
 	private isHealthCheckRunning: boolean = false
 
+	// 定时索引构建相关属性
+	private indexBuildPollTimer: NodeJS.Timeout | null = null
+	private isIndexBuildPollRunning: boolean = false
+
 	// 常量定义
 	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
 	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
+	// private readonly INDEX_BUILD_POLL_INTERVAL: number = 600000 // 10分钟
+	private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
 	/**
 	 * 私有构造函数，确保单例模式
 	 */
@@ -132,6 +138,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				this.log("仅 Costrict 提供商可用", "info", "ZgsmCodebaseIndexManager")
 				return
 			}
+
+			// 停止所有定时任务
+			this.stopHealthCheck()
+			this.stopIndexBuildPoll()
+
 			const versionInfo = await this.getLocalVersion()
 			await this.client!.startClient(versionInfo!, state !== "noUpdate")
 			this.isInitialized = true
@@ -139,6 +150,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 启动定时检测
 			this.startHealthCheck()
+			this.triggerIndexBuildPoll()
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "初始化 CodebaseKeeper 客户端时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -443,6 +455,59 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			const errorMessage = error instanceof Error ? error.message : "触发索引构建时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
+		}
+	}
+
+	/**
+	 * 定时索引构建: 每十分钟触发一次
+	 */
+	triggerIndexBuildPoll(): void {
+		if (this.isIndexBuildPollRunning) {
+			this.log("定时索引构建已运行", "info", "ZgsmCodebaseIndexManager")
+			return
+		}
+
+		this.log("启动定时索引构建", "info", "ZgsmCodebaseIndexManager")
+		this.isIndexBuildPollRunning = true
+		this.indexBuildPollTimer = setInterval(async () => {
+			await this.performIndexBuildPoll()
+		}, this.INDEX_BUILD_POLL_INTERVAL)
+	}
+
+	/**
+	 * 停止定时索引构建
+	 */
+	public stopIndexBuildPoll(): void {
+		if (!this.isIndexBuildPollRunning) {
+			return
+		}
+
+		this.log("停止定时索引构建", "info", "ZgsmCodebaseIndexManager")
+
+		if (this.indexBuildPollTimer) {
+			clearInterval(this.indexBuildPollTimer)
+			this.indexBuildPollTimer = null
+		}
+
+		this.isIndexBuildPollRunning = false
+	}
+
+	private async performIndexBuildPoll(): Promise<void> {
+		try {
+			const workspacePath = getWorkspacePath() || ""
+			if (workspacePath) {
+				await this.triggerIndexBuild({
+					workspace: workspacePath,
+					path: workspacePath,
+					type: "all",
+				})
+				this.log("定时索引构建成功", "info", "ZgsmCodebaseIndexManager")
+			} else {
+				this.log("工作区路径为空，跳过定时索引构建", "info", "ZgsmCodebaseIndexManager")
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : "定时索引构建发生未知错误"
+			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 		}
 	}
 

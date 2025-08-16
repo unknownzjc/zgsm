@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
+import { format } from "date-fns"
 
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 import { vscode } from "@/utils/vscode"
@@ -76,7 +77,9 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 			break
 	}
 
-	const lastUpdated = statusInfo.processTs ? new Date(statusInfo.processTs * 1000).toLocaleString() : "-"
+	const lastUpdated = statusInfo.processTs
+		? format(new Date(statusInfo.processTs * 1000), "yyyy-MM-dd HH:mm:ss")
+		: "-"
 
 	return {
 		fileCount: statusInfo.totalFiles,
