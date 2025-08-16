@@ -22,7 +22,7 @@ import {
 	ICostrictServiceInfo,
 } from "./types"
 import path from "path"
-import { execPromise, getServiceConfig, getWellKnownConfig, processIsRunning } from "./utils"
+import { execPromise, getServiceConfig, getWellKnownConfig, processIsRunning, spawnDetached } from "./utils"
 import getPort, { portNumbers } from "get-port"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
@@ -328,22 +328,13 @@ nwIDAQAB
 			attempts++
 			try {
 				if (shouldStartCostrictKeeper || !(await this.isRunning(this.processName))) {
-					const processOptions = {
-						detached: true,
-						stdio: "ignore" as const,
-						encoding: "utf8" as const,
-					}
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
 					// 启动 costrict-keeper 管理端
 					const port = this.getCostrictServerPort(defaultPort)
 					const args = ["server", "--listen", `localhost:${port}`]
-					const child = spawn(targetPath, args, processOptions)
-
-					child.unref()
-
-					// Wait a moment to check if the process is still running
-					await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
+					await spawnDetached(targetPath, args)
 				}
+
 				if (await this.isRunning(this.processName)) {
 					await this.initSubService(versionInfo)
 					break

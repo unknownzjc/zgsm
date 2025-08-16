@@ -1,6 +1,6 @@
 import fs from "fs"
 import os from "os"
-import { exec, spawn } from "child_process"
+import { exec, spawn, SpawnOptions } from "child_process"
 import path from "path"
 import { jwtDecode } from "jwt-decode"
 import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
@@ -182,5 +182,50 @@ export function processIsRunning(processName: string, logger: ILogger): Promise<
 			logger.error(`执行命令失败 [${cmd} ${args.join(" ")}]:` + err.message)
 			reject(err)
 		})
+	})
+}
+
+export function spawnDetached(
+	command: string,
+	args: string[] = [],
+	options: SpawnOptions = {},
+): Promise<import("child_process").ChildProcess> {
+	return new Promise((resolve, reject) => {
+		const isWindows = os.platform() === "win32"
+
+		if (isWindows) {
+			const child = exec(command + " " + args.join(" ") + " > NUL 2>&1", (err) => {
+				if (err) {
+					reject(err)
+				} else {
+					resolve(child)
+				}
+			})
+
+			// 给进程一点时间启动
+			setTimeout(() => {
+				resolve(child)
+			}, 1000)
+
+			child.unref()
+		} else {
+			// Linux / macOS 直接 spawn
+			const child = spawn(command, args, {
+				detached: true,
+				stdio: "ignore",
+				...options,
+			})
+
+			child.on("error", (error) => {
+				reject(error)
+			})
+
+			// 给进程一点时间启动
+			setTimeout(() => {
+				resolve(child)
+			}, 1000)
+
+			child.unref()
+		}
 	})
 }
