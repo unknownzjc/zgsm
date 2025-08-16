@@ -18,9 +18,10 @@ import {
 	IndexSwitchRequest,
 	ApiResponse,
 	RequestHeaders,
+	ICostrictServiceInfo,
 } from "./types"
 import path from "path"
-import { execPromise } from "./utils"
+import { execPromise, getServiceConfig, getWellKnownConfig, processIsRunning, readAccessToken } from "./utils"
 import getPort, { portNumbers } from "get-port"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
@@ -41,7 +42,11 @@ export class CodebaseIndexClient {
 	private logger: ILogger
 
 	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
-	private serverHost: string = ""
+	private serverHost: {
+		potolocol: "http" | "https"
+		port: number
+		[key: string]: any
+	} = {} as any
 	private serverEndpoint: string = ""
 
 	private serverName: string = "codebase-indexer"
@@ -81,8 +86,8 @@ export class CodebaseIndexClient {
 	 * 设置服务器端点
 	 * @param endpoint 服务器端点地址
 	 */
-	public setServerHost(host: string): void {
-		this.serverHost = host
+	public setServerHost(hostInfo: ICostrictServiceInfo): void {
+		this.serverHost = hostInfo
 	}
 	/**
 	 * 设置服务器端点
@@ -292,24 +297,9 @@ export class CodebaseIndexClient {
 	}
 
 	async isRunning(processName = this.processName): Promise<boolean> {
-		try {
-			let output: string
-			switch (this.platform) {
-				case "windows": {
-					const exeName = processName.endsWith(".exe") ? processName : `${processName}.exe`
-					output = await execPromise(`tasklist /fi "imagename eq ${exeName}"`)
-					return output.toLowerCase().includes(exeName.toLowerCase())
-				}
-				case "darwin":
-				case "linux":
-					output = await execPromise(`pgrep -f ${processName}`)
-					return output.trim().length > 0
-				default:
-					throw new Error("Unsupported platform")
-			}
-		} catch (e) {
-			return false
-		}
+		const pids = await processIsRunning(processName)
+		this.logger.info(`${this.processName} running: \n${pids.join()}`)
+		return pids.length > 0
 	}
 
 	async startClient(versionInfo: VersionInfo, shouldStartCostrictKeeper: boolean, maxRetries = 3): Promise<void> {
@@ -353,7 +343,7 @@ export class CodebaseIndexClient {
 	async initSubService(versionInfo: VersionInfo, retryTime = 0) {
 		try {
 			// 读取 wellKnownPath
-			const { services } = this.getWellKnownConfig()
+			const { services } = getWellKnownConfig()
 			const codebaseIndexerServiceConfig = services.find((service: any) => service.name === this.serverName)
 
 			if (!codebaseIndexerServiceConfig) {
@@ -364,9 +354,7 @@ export class CodebaseIndexClient {
 				throw new Error("codebase-indexer service norun!")
 			}
 
-			await this.setServerHost(
-				`${codebaseIndexerServiceConfig.protocol}://localhost:${codebaseIndexerServiceConfig.port}`,
-			)
+			await this.setServerHost(codebaseIndexerServiceConfig)
 		} catch (error) {
 			this.logger.error(`[CodebaseIndexService] ${error}`)
 			// 文件不存在，等待 5 s后再次尝试
@@ -571,20 +559,20 @@ export class CodebaseIndexClient {
 		}
 	}
 
-	getCodebaseIndexerServerHost(defaultValue: string) {
-		const service = this.getServiceConfig(this.serverName)
+	getCodebaseIndexerServerHost(defaultValue: ICostrictServiceInfo) {
+		const service = getServiceConfig(this.serverName)
 
-		return service?.port ? `http:localhost:${service.port}` : defaultValue
+		return `http:localhost:${service.port}`
 	}
 
 	getServiceConfig(serverName: string) {
-		const { services } = this.getWellKnownConfig()
+		const { services } = getWellKnownConfig()
 		const service = services.find((item: any) => item.name === serverName)
 		return service
 	}
 
 	getCostrictServerPort(defaultValue: string | number) {
-		const service = this.getServiceConfig("costrict")
+		const service = getServiceConfig("costrict")
 
 		return service?.port ? service.port : defaultValue
 	}

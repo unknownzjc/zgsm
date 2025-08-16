@@ -156,12 +156,6 @@ export interface ICodebaseIndexManager {
 	initialize(): Promise<void>
 
 	/**
-	 * 写入访问令牌到文件
-	 * @param accessToken 访问令牌
-	 */
-	writeAccessToken(accessToken: string): Promise<any>
-
-	/**
 	 * 重启客户端
 	 */
 	restartClient(): Promise<void>
@@ -283,4 +277,9 @@ export interface DownloadResult {
 	 * 包信息
 	 */
 	packageInfo?: PackageInfoResponse
+}
+export interface ICostrictServiceInfo {
+	potolocol: "http" | "https"
+	port: number
+	[key: string]: any
 }

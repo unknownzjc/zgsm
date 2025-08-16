@@ -100,6 +100,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			return
 		}
 
+		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+		const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+		this.serverEndpoint = baseUrl
+		this.baseUrl = `${baseUrl}/costrict`
 		// 检查本地是否已安装客户端
 		const localVersionInfo = await this.getLocalVersion()
 		try {
@@ -114,7 +118,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 创建客户端实例
 			this.client = new CodebaseIndexClient(config)
-			this.client.setServerEndpoint(this.serverEndpoint)
+			this.client.setServerEndpoint(baseUrl)
 			// 检查并升级客户端
 			const state = await this.checkAndUpgradeClient()
 			if (state === "failed") {
@@ -140,50 +144,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public async stopExistingClient() {
 		await this.ensureClientInited()
 		return await this.client!.stopExistingClient()
-	}
-	/**
-	 * 写入访问令牌到文件
-	 * @param accessToken 访问令牌
-	 */
-	public async writeAccessToken(accessToken: string) {
-		try {
-			this.log("开始写入访问令牌到文件", "info", "ZgsmCodebaseIndexManager")
-
-			const platform = this.platformDetector.platform
-			const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
-
-			if (!homeDir) {
-				throw new Error("无法确定用户主目录路径")
-			}
-
-			const tokenDir = path.join(homeDir, ".costrict", "share")
-			const tokenFilePath = path.join(tokenDir, "auth.json")
-
-			// 确保目录存在
-			if (!fs.existsSync(tokenDir)) {
-				fs.mkdirSync(tokenDir, { recursive: true })
-			}
-			// 写入令牌文件
-			const jwt = jwtDecode(accessToken) as any
-			const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
-			const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
-			this.serverEndpoint = baseUrl
-			this.baseUrl = `${baseUrl}/costrict`
-			const config = {
-				id: jwt.id,
-				name: jwt.displayName,
-				access_token: accessToken,
-				machine_id: getClientId(),
-				base_url: baseUrl,
-			}
-			fs.writeFileSync(tokenFilePath, JSON.stringify(config, null, 2), "utf8")
-			this.log(`访问令牌已写入文件: ${tokenFilePath}`, "info", "ZgsmCodebaseIndexManager")
-			return config
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "写入访问令牌时发生未知错误"
-			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-			throw new Error(errorMessage)
-		}
 	}
 
 	/**
