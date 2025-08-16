@@ -580,7 +580,7 @@ nwIDAQAB
 	getCodebaseIndexerServerHost(defaultValue: ICostrictServiceInfo) {
 		const service = getServiceConfig(this.serverName)
 
-		return `http:localhost:${service.port}`
+		return `${service.protocol || defaultValue.protocol}://localhost:${service.port || defaultValue.port}`
 	}
 
 	getServiceConfig(serverName: string) {
