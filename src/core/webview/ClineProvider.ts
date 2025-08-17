@@ -2005,7 +2005,7 @@ export class ClineProvider
 		// 		`[getState] failed to get organization settings version: ${error instanceof Error ? error.message : String(error)}`,
 		// 	)
 		// }
-
+		providerSettings.openAiHeaders = providerSettings.openAiHeaders ?? {}
 		// Return the same structure as before
 		return {
 			apiConfiguration: providerSettings,

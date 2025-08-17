@@ -36,13 +36,13 @@ export const HoppingLogo = (props: LogoProps) => {
 
 	useEffect(() => {
 		const element = ref.current
-		const isHopping = element !== null && element.classList.contains("animate-hop")
+		const isHopping = element !== null && element?.classList?.contains("animate-hop")
 
 		if (hovered && element && !isHopping) {
-			element.classList.add("animate-hop")
+			element?.classList?.add("animate-hop")
 		} else if (element && isHopping) {
 			const onAnimationEnd = () => {
-				element.classList.remove("animate-hop")
+				element?.classList?.remove("animate-hop")
 				element.removeEventListener("animationiteration", onAnimationEnd)
 			}
 

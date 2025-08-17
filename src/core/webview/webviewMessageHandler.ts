@@ -730,7 +730,7 @@ export const webviewMessageHandler = async (
 				const openAiModels = await getOpenAiModels(
 					message?.values?.baseUrl,
 					message?.values?.apiKey,
-					message?.values?.openAiHeaders,
+					message?.values?.openAiHeaders || {},
 				)
 
 				provider.postMessageToWebview({ type: "openAiModels", openAiModels })
@@ -742,7 +742,7 @@ export const webviewMessageHandler = async (
 				const openAiModels = await getZgsmModels(
 					message?.values?.baseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
 					message?.values?.apiKey,
-					message?.values?.openAiHeaders,
+					message?.values?.openAiHeaders || {},
 				)
 
 				// 获取完整响应数据并发送到 WebView

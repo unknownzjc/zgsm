@@ -300,13 +300,17 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	)
 
 	const setApiConfiguration = useCallback((value: ProviderSettings) => {
-		setState((prevState) => ({
-			...prevState,
-			apiConfiguration: {
-				...prevState.apiConfiguration,
-				...value,
-			},
-		}))
+		setState((prevState) => {
+			const newState = {
+				...prevState,
+				apiConfiguration: {
+					...prevState.apiConfiguration,
+					...value,
+				},
+			}
+			newState.apiConfiguration.openAiHeaders = newState.apiConfiguration.openAiHeaders ?? {}
+			return newState
+		})
 	}, [])
 
 	const handleMessage = useCallback(

@@ -30,10 +30,10 @@ Object.entries(localeFiles).forEach(([path, module]) => {
 	}
 })
 
-console.log("Dynamically loaded translations:", Object.keys(translations))
+// console.log("Dynamically loaded translations:", Object.keys(translations))
 // Merge Costrict translations
 const mergedTranslations = mergeLanguageResources(translations, zgsmTranslations)
-console.log(`Merged webview-ui translations:`, mergedTranslations)
+// console.log(`Merged webview-ui translations:`, mergedTranslations)
 
 // Initialize i18next for React
 // This will be initialized with the VSCode language in TranslationProvider
