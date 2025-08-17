@@ -91,7 +91,7 @@ export function initGitCheckoutDetector(context: vscode.ExtensionContext, logger
 	watcher.onDidChange(() => detector.onHeadChanged())
 
 	// 收到事件后弹通知
-	detector.on("checkout", async ({ oldBranch, newBranch }) => {
+	detector?.on("checkout", async ({ oldBranch, newBranch }) => {
 		oldBranch = oldBranch?.replace("refs/heads/", "")
 		// newBranch
 		try {

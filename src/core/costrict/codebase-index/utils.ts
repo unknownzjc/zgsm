@@ -216,7 +216,7 @@ export function spawnDetached(
 				...options,
 			})
 
-			child.on("error", (error) => {
+			child?.on("error", (error) => {
 				reject(error)
 			})
 

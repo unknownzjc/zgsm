@@ -22,12 +22,12 @@ export interface WorkspaceEventMonitorConfig {
 }
 
 /**
- * 默认配置
+ * codebase-indexer 事件处理默认配置
  */
 const DEFAULT_CONFIG: WorkspaceEventMonitorConfig = {
 	enabled: true,
 	debounceMs: 1000,
-	batchSize: 30,
+	batchSize: 100,
 	maxRetries: 2,
 	retryDelayMs: 2000,
 }
@@ -269,8 +269,8 @@ export class WorkspaceEventMonitor {
 			})
 
 			// 监听文件删除事件
-			this.fileSystemWatcher.on("unlink", (filePath: string) => {
-				this.log.info(`[WorkspaceEventMonitor] 文件系统监控器检测到文件删除: ${filePath}`)
+			this.fileSystemWatcher?.on("unlink", (filePath: string) => {
+				// this.log.info(`[WorkspaceEventMonitor] 文件系统监控器检测到文件删除: ${filePath}`)
 				this.handleFileSystemFileDelete(filePath)
 			})
 
@@ -296,7 +296,7 @@ export class WorkspaceEventMonitor {
 		}
 
 		this.addEvent(eventKey, eventData)
-		this.log.info(`[WorkspaceEventMonitor] 文件系统删除事件已添加到缓冲区: ${filePath}`)
+		// this.log.info(`[WorkspaceEventMonitor] 文件系统删除事件已添加到缓冲区: ${filePath}`)
 	}
 
 	/**
@@ -365,14 +365,14 @@ export class WorkspaceEventMonitor {
 
 		// 调试日志：记录删除事件触发
 		this.log.info(`[WorkspaceEventMonitor] 文件删除事件触发，删除文件数量: ${event.files.length}`)
-		this.log.info(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
+		// this.log.info(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
 
 		event.files.forEach((uri) => {
 			if (!this.ignoreController.validateAccess(uri.fsPath)) return
 			if (uri.scheme !== "file") return
 
 			this.log.info(`[WorkspaceEventMonitor] 删除文件: ${uri.fsPath}`)
-			this.log.info(`[WorkspaceEventMonitor] 删除文件 scheme: ${uri.scheme}`)
+			// this.log.info(`[WorkspaceEventMonitor] 删除文件 scheme: ${uri.scheme}`)
 
 			const eventKey = `delete:${uri.fsPath}`
 			const eventData: WorkspaceEventData = {
@@ -619,7 +619,7 @@ export class WorkspaceEventMonitor {
 						this.config.retryDelayMs * Math.pow(2, retryCount),
 						10000, // 最大延迟10秒
 					)
-					this.log.error(`[WorkspaceEventMonitor] ${evts} 发送事件失败 (${delayMs}ms 后重试):`, errorMessage)
+					// this.log.error(`[WorkspaceEventMonitor] ${evts} 发送事件失败 (${delayMs}ms 后重试):`, errorMessage)
 					this.log.info(`[WorkspaceEventMonitor] ${evts} ${retryCount + 1}/${this.config.maxRetries}重试失败`)
 					await this.delay(delayMs)
 					retryCount++

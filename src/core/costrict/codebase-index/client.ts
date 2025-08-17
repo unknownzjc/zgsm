@@ -372,7 +372,7 @@ nwIDAQAB
 		} catch (error) {
 			this.logger.error(`[CodebaseIndexService] ${error}`)
 			// 文件不存在，等待 5 s后再次尝试
-			const interval = retryTime < 5 * 60 * 1000 ? 5000 : 30_000
+			const interval = retryTime < 300_000 ? 5000 : 30_000
 			await new Promise((resolve) => setTimeout(resolve, interval))
 			await this.initSubService({ ...versionInfo }, retryTime + interval)
 		}
