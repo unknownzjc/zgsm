@@ -92,11 +92,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		if (this.logger?.[type]) {
 			this.logger[type](`[${id}] ${message}`)
 		} else {
-			const prefix = [new Date().toLocaleString(), type, id]
-				.filter((s) => s)
-				.map((s) => `[${s}]`)
-				.join(" ")
-			console.log(`${prefix}${message}`)
+			const logMessage = `[${new Date().toLocaleString()}] [${type}]${id ? ` [${id}] ` : ""} ${message}`
+			console.log(logMessage)
 		}
 	}
 
@@ -252,7 +249,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		const { apiConfiguration } = await this.clineProvider.getState()
 
 		if (apiConfiguration.apiProvider !== "zgsm") {
-			const err = new Error("仅 Costrict 提供的 CodebaseKeeper 客户端支持此功能")
+			const err = new Error("仅 Costrict 提供商支持此服务")
 			Object.assign(err, { __NEED_ZGSM__: true })
 			throw err
 		}
