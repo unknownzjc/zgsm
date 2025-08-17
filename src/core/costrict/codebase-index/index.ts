@@ -615,18 +615,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		return this.client?.getClientId() || getClientId()
 	}
 
-	// todo: 实现其他方法
-	async syncCodebase(filePaths: string[]): Promise<{
-		success: boolean
-		message?: string
-		code?: string
-	}> {
-		this.log("todo: 开始同步代码库")
-		return {
-			success: true,
-		}
-	}
-
 	/**
 	 * 启动定时检测
 	 */
