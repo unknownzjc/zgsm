@@ -2383,7 +2383,7 @@ export const webviewMessageHandler = async (
 				const { apiConfiguration } = await provider.getState()
 
 				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					provider.log("仅 Costrict 提供商支持此服务", "error", "ZgsmCodebaseIndexManager")
 					return
 				}
 				// "zgsmPollCodebaseIndexStatus"
@@ -2763,7 +2763,7 @@ export const webviewMessageHandler = async (
 				const { apiConfiguration } = await provider.getState()
 
 				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					provider.log("仅 Costrict 提供商支持此服务", "error", "ZgsmCodebaseIndexManager")
 					return
 				}
 				// 从 message.bool 获取开关状态
@@ -2821,7 +2821,7 @@ export const webviewMessageHandler = async (
 				const { apiConfiguration } = await provider.getState()
 
 				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("apiProvider is not zgsm", "error", "ZgsmCodebaseIndexManager")
+					provider.log("仅 Costrict 提供商支持此服务", "error", "ZgsmCodebaseIndexManager")
 					return
 				}
 				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()

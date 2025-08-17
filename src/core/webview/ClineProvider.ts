@@ -2199,7 +2199,7 @@ export class ClineProvider
 
 	public log(message: string, type: "info" | "error" = "info", id: string = "") {
 		const prefix = [new Date().toLocaleString(), type, id].map((s) => (s ? `[${s}]` : "")).join(" ")
-		const logMessage = `${prefix}${message}`
+		const logMessage = `${prefix} ${message}`
 		this.outputChannel.appendLine(logMessage)
 		console.log(logMessage)
 	}

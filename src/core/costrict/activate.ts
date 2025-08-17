@@ -186,7 +186,7 @@ export async function activate(
 /**
  * Deactivation function for ZGSM
  */
-export function deactivate() {
+export async function deactivate() {
 	// 停止定时检测
 	ZgsmCodebaseIndexManager.getInstance().stopHealthCheck()
 
@@ -195,7 +195,7 @@ export function deactivate() {
 	disconnectIPC()
 	stopIPCServer()
 	// 清理工作区事件监控
-	workspaceEventMonitor.handleVSCodeClose()
+	await workspaceEventMonitor.handleVSCodeClose()
 
 	// Currently no specific cleanup needed
 	loggerDeactivate()

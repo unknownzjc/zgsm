@@ -299,7 +299,7 @@ nwIDAQAB
 	 * 停止已存在的客户端
 	 */
 	public async stopExistingClient(): Promise<void> {
-		if (!(await this.isRunning())) {
+		if (!(await this.isRunning())[0]) {
 			return
 		}
 		try {
@@ -313,12 +313,11 @@ nwIDAQAB
 		}
 	}
 
-	async isRunning(processName = this.processName): Promise<boolean> {
+	async isRunning(processName = this.processName) {
 		const pids = await processIsRunning(processName, this.logger)
 		if (pids.length > 0) {
-			this.logger.info(`${this.processName} PID: \n${pids.join()}`)
 		}
-		return pids.length > 0
+		return [pids.length > 0, pids] as [boolean, number[]]
 	}
 
 	async startClient(versionInfo: VersionInfo, shouldStartCostrictKeeper: boolean, maxRetries = 3): Promise<void> {
@@ -327,7 +326,7 @@ nwIDAQAB
 		while (attempts < maxRetries) {
 			attempts++
 			try {
-				if (shouldStartCostrictKeeper || !(await this.isRunning(this.processName))) {
+				if (shouldStartCostrictKeeper || !(await this.isRunning())[0]) {
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
 					// 启动 costrict-keeper 管理端
 					const port = this.getCostrictServerPort(defaultPort)
@@ -335,7 +334,7 @@ nwIDAQAB
 					await spawnDetached(targetPath, args)
 				}
 
-				if (await this.isRunning(this.processName)) {
+				if ((await this.isRunning())[0]) {
 					await this.initSubService(versionInfo)
 					break
 				}

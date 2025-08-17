@@ -296,7 +296,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated.
 export async function deactivate() {
-	ZgsmCore.deactivate()
+	await ZgsmCore.deactivate()
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
 
 	// const bridgeService = ExtensionBridgeService.getInstance()

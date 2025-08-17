@@ -499,7 +499,11 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 								</TooltipTrigger>
 								{isPendingEnableSection && (
 									<TooltipContent>
-										<p>{isPendingEnable ? "仅 Costrict 提供商可用" : "Codebase 索引构建已禁用"}</p>
+										<p>
+											{isPendingEnable
+												? "仅 Costrict 提供商支持此服务"
+												: "Codebase 索引构建已禁用"}
+										</p>
 									</TooltipContent>
 								)}
 							</Tooltip>
@@ -556,7 +560,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							</TooltipTrigger>
 							{isPendingEnable && (
 								<TooltipContent>
-									<p>仅 Costrict 提供商可用</p>
+									<p>仅 Costrict 提供商支持此服务</p>
 								</TooltipContent>
 							)}
 						</Tooltip>

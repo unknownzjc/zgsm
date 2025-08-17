@@ -49,9 +49,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private isIndexBuildPollRunning: boolean = false
 
 	// 常量定义
-	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
-	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
-	// private readonly INDEX_BUILD_POLL_INTERVAL: number = 600000 // 10分钟
+	private readonly HEALTH_CHECK_INTERVAL: number = 30000 // 半分钟
+	private readonly MAX_FAILURE_COUNT: number = 3 // 最大失败次数
 	private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
 	/**
 	 * 私有构造函数，确保单例模式
@@ -135,7 +134,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				throw new Error("客户端升级检测失败")
 			}
 			if (state === "needZgsm") {
-				this.log("仅 Costrict 提供商可用", "info", "ZgsmCodebaseIndexManager")
+				this.log("仅 Costrict 提供商支持此服务", "info", "ZgsmCodebaseIndexManager")
 				return
 			}
 
@@ -517,14 +516,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public async healthCheck(): Promise<ApiResponse<number>> {
 		try {
 			await this.ensureClientInited()
-			this.log("执行探活检查", "info", "ZgsmCodebaseIndexManager")
+			this.log("执行探活检查", "info", "CostrictHealthCheck")
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
 			return await this.client!.healthCheck(token)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "探活检查时发生未知错误"
-			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			this.log(errorMessage, "error", "CostrictHealthCheck")
 			throw new Error(errorMessage)
 		}
 	}
@@ -636,11 +635,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private startHealthCheck(): void {
 		if (this.isHealthCheckRunning) {
-			this.log("定时检测已在运行中", "info", "ZgsmCodebaseIndexManager")
+			this.log("健康检查已开启", "info", "CostrictHealthCheck")
 			return
 		}
 
-		this.log("启动定时检测", "info", "ZgsmCodebaseIndexManager")
+		this.log("启动健康检查", "info", "CostrictHealthCheck")
 		this.isHealthCheckRunning = true
 		this.healthCheckTimer = setInterval(async () => {
 			await this.performHealthCheck()
@@ -655,7 +654,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			return
 		}
 
-		this.log("停止定时检测", "info", "ZgsmCodebaseIndexManager")
+		this.log("停止定时检测", "info", "CostrictHealthCheck")
 
 		if (this.healthCheckTimer) {
 			clearInterval(this.healthCheckTimer)
@@ -671,20 +670,23 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private async performHealthCheck(): Promise<void> {
 		try {
-			this.log("开始执行健康检查", "info", "ZgsmCodebaseIndexManager")
-
-			const response = await this.healthCheck()
-
-			if (response.success) {
-				this.log("健康检查成功", "info", "ZgsmCodebaseIndexManager")
+			const [active, pids] = await this.client!.isRunning()
+			if (active) {
 				this.healthCheckFailureCount = 0 // 重置失败计数器
+
+				this.log(
+					`[pids: ${pids.join("|")} ] ${this.client?.processName} running`,
+					"info",
+					"CostrictHealthCheck",
+				)
 			} else {
-				this.log(`健康检查失败: ${response.message}`, "error", "ZgsmCodebaseIndexManager")
+				this.log(`健康检查异常`, "error", "CostrictHealthCheck")
+
 				await this.handleHealthCheckFailure()
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "健康检查时发生未知错误"
-			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+			this.log(errorMessage, "error", "CostrictHealthCheck")
 			await this.handleHealthCheckFailure()
 		}
 	}
@@ -699,23 +701,23 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			this.log(
 				`连续失败 ${this.healthCheckFailureCount} 次，超过阈值，准备重启客户端`,
 				"error",
-				"ZgsmCodebaseIndexManager",
+				"CostrictHealthCheck",
 			)
 
 			try {
 				await this.restartClient()
-				this.log("客户端重启成功，重置失败计数器", "info", "ZgsmCodebaseIndexManager")
+				this.log("客户端重启成功，重置失败计数器", "info", "CostrictHealthCheck")
 				this.healthCheckFailureCount = 0
 			} catch (restartError) {
 				const restartErrorMessage =
 					restartError instanceof Error ? restartError.message : "重启客户端时发生未知错误"
-				this.log(restartErrorMessage, "error", "ZgsmCodebaseIndexManager")
+				this.log(restartErrorMessage, "error", "CostrictHealthCheck")
 			}
 		} else {
 			this.log(
 				`健康检查失败次数: ${this.healthCheckFailureCount}/${this.MAX_FAILURE_COUNT}`,
 				"info",
-				"ZgsmCodebaseIndexManager",
+				"CostrictHealthCheck",
 			)
 		}
 	}
