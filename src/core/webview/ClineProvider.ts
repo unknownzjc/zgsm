@@ -2198,7 +2198,7 @@ export class ClineProvider
 	// logging
 
 	public log(message: string, type: "info" | "error" = "info", id: string = "") {
-		const logMessage = `[${new Date().toLocaleString()}] [${type}]${id ? id : ` [${id}] `}${message}`
+		const logMessage = `[${new Date().toLocaleString()}] [${type}]${id ? ` [${id}] ` : ""} ${message}`
 		this.outputChannel.appendLine(logMessage)
 	}
 
