@@ -27,7 +27,6 @@ import getPort, { portNumbers } from "get-port"
 import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
-import { spawn } from "child_process"
 import { getClientId } from "../../../utils/getClientId"
 
 /**
@@ -469,16 +468,25 @@ nwIDAQAB
 	 * @param token 访问令牌
 	 * @returns Promise<ApiResponse<number>> 返回响应数据
 	 */
-	async healthCheck(token?: string): Promise<ApiResponse<number>> {
+	async healthCheck(
+		path: string,
+		token?: string,
+	): Promise<{
+		message: string
+		status: string | boolean
+		[key: string]: any
+	}> {
 		this.serverEndpointAndHostCheck()
-
-		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/health`
 
 		const options: RequestInit = {
 			method: "GET",
 		}
 
-		return this.makeRequest<number>(url, options, token)
+		return this.makeRequest(path, options, token) as unknown as {
+			message: string
+			status: string
+			[key: string]: any
+		}
 	}
 
 	/**

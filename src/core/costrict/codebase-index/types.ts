@@ -192,7 +192,11 @@ export interface ICodebaseIndexManager {
 	/**
 	 * 探活检查
 	 */
-	healthCheck(): Promise<ApiResponse<number>>
+	healthCheck(): Promise<{
+		message: string
+		status: string | boolean
+		[key: string]: any
+	}>
 
 	/**
 	 * 检测忽略文件

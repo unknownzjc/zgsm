@@ -49,8 +49,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private isIndexBuildPollRunning: boolean = false
 
 	// 常量定义
-	private readonly HEALTH_CHECK_INTERVAL: number = 30000 // 半分钟
-	private readonly MAX_FAILURE_COUNT: number = 3 // 最大失败次数
+	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
+	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
 	private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
 	/**
 	 * 私有构造函数，确保单例模式
@@ -510,14 +510,21 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	/**
 	 * 探活检查 1
 	 */
-	public async healthCheck(): Promise<ApiResponse<number>> {
+	public async healthCheck(): Promise<{
+		message: string
+		status: string | boolean
+		[key: string]: any
+	}> {
 		try {
 			await this.ensureClientInited()
 			this.log("执行探活检查", "info", "CostrictHealthCheck")
 
 			// 读取访问令牌
 			const token = await this.readAccessToken()
-			return await this.client!.healthCheck(token)
+			return await this.client!.healthCheck(
+				`http://localhost:${this.client!.getCostrictServerPort(9527)}/healthz`,
+				token,
+			)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "探活检查时发生未知错误"
 			this.log(errorMessage, "error", "CostrictHealthCheck")
@@ -655,8 +662,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	private async performHealthCheck(): Promise<void> {
 		try {
+			const data = await this.healthCheck()
+
 			const [active, pids] = await this.client!.isRunning()
-			if (active) {
+			if (active && (data.status === "success" || data.status === true)) {
 				this.healthCheckFailureCount = 0 // 重置失败计数器
 
 				this.log(
