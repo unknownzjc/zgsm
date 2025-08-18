@@ -622,6 +622,7 @@ export async function getZgsmModels(baseUrl?: string, apiKey?: string, openAiHea
 
 		return result
 	} catch (error) {
+		console.log(`Error fetching zgsmModels from [${baseUrl}/ai-gateway/api/v1/models]:`, error.message)
 		return modelsCache.deref() || []
 	}
 }
