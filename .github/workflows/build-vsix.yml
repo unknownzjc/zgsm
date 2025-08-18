@@ -3,10 +3,11 @@ name: Build VSIX
 on:
   pull_request:
     types: [labeled]
-    branches: [ main ]
+    branches: [ test-ci ]
 
 jobs:
   build:
+    if: contains(github.event.pull_request.labels.*.name, 'build-vsix')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

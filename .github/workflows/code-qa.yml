@@ -6,11 +6,13 @@ on:
         branches: 
           - main
           - dev
+          - test-ci
     pull_request:
         types: [opened, reopened, ready_for_review, synchronize]
         branches:
           - main
           - dev
+          - test-ci
 
 jobs:
     # check-translations:
