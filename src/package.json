@@ -183,6 +183,10 @@
 				"category": "%configuration.title%"
 			},
 			{
+				"command": "zgsm.codeReview",
+				"title": "%command.codeReview.title%"
+			},
+			{
 				"command": "zgsm.reviewFilesAndFolders",
 				"title": "%command.codeReview.title%"
 			},
@@ -231,10 +235,6 @@
 			{
 				"command": "zgsm.view.userHelperDoc",
 				"title": "%command.view.userHelperDoc.title%"
-			},
-			{
-				"command": "zgsm.simplifyCode",
-				"title": "11111"
 			}
 		],
 		"menus": {
@@ -280,6 +280,11 @@
 				{
 					"command": "zgsm.improveCode",
 					"group": "zhuge-shenma@4"
+				},
+				{
+					"command": "zgsm.codeReview",
+					"group": "zhuge-shenma@5",
+					"when": "editorHasSelection && workbenchState != 'empty'"
 				},
 				{
 					"command": "zgsm.view.issue",

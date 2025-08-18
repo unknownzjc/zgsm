@@ -89,11 +89,11 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 	const filteredIssues = useMemo(() => {
 		const matchConfidence = (confidence: number) => {
 			let confidenceLevel: ConfidenceLevel
-			if (confidence >= 0 && confidence <= 4) {
+			if (confidence >= 0.1 && confidence <= 0.4) {
 				confidenceLevel = "low"
-			} else if (confidence >= 5 && confidence <= 7) {
+			} else if (confidence >= 0.5 && confidence <= 0.7) {
 				confidenceLevel = "middle"
-			} else if (confidence >= 8 && confidence <= 10) {
+			} else if (confidence >= 0.8 && confidence <= 1) {
 				confidenceLevel = "high"
 			} else {
 				// 处理超出范围的情况，默认为 middle
