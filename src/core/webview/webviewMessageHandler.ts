@@ -4,7 +4,7 @@ import * as os from "os"
 import * as fs from "fs/promises"
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
-import * as yaml from "yaml"
+import dedent from "dedent"
 
 import {
 	type Language,
@@ -2870,6 +2870,28 @@ export const webviewMessageHandler = async (
 				action: "settingsButtonClicked",
 				values: message.values ?? {},
 			})
+			break
+		}
+		case "copyError": {
+			const { message: errorMessage } = message.values ?? {}
+			const { apiConfiguration } = await provider.getState()
+			const httpProxy = process.env.http_proxy || process.env.HTTP_PROXY
+			const httpsProxy = process.env.https_proxy || process.env.HTTPS_PROXY
+			try {
+				await vscode.env.clipboard.writeText(dedent`
+					message: ${errorMessage}
+					provider: ${apiConfiguration.apiProvider}
+					Model: ${apiConfiguration.apiModelId}
+					${apiConfiguration.apiProvider === "zgsm" ? `BaseUrl: ${apiConfiguration.zgsmBaseUrl}` : ""}
+					vscodeVersion: ${vscode.version}
+					pluginVersion: ${Package.version}
+					httpProxy: ${httpProxy}
+					httpsProxy: ${httpsProxy}
+				`)
+				vscode.window.showInformationMessage(t("common:window.success.copy_success"))
+			} catch (err) {
+				console.log(err)
+			}
 			break
 		}
 	}

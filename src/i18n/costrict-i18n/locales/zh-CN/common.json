@@ -10,6 +10,9 @@
 		"task_prompt": "Costrict 应该做什么？"
 	},
 	"window": {
+		"success": {
+			"copy_success": "复制成功"
+		},
 		"error": {
 			"failed_to_get_login_info": "获取登录信息失败，请重新登录以使用代码补全功能。",
 			"login_failed": "登录失败，请重新登录。",

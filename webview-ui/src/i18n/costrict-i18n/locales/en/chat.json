@@ -93,5 +93,8 @@
 	"rooCloudCTA": {
 		"title": "Costrict Cloud Coming Soon!",
 		"description": "Run Costrict agents in the cloud, access your tasks from anywhere, collaborate with others, and more."
+	},
+	"copy": {
+		"errorDetail": "Copy error detail"
 	}
 }
