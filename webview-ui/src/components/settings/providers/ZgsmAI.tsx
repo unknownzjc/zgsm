@@ -24,6 +24,7 @@ import { R1FormatSetting } from "../R1FormatSetting"
 import { ThinkingBudget } from "../ThinkingBudget"
 import { SetCachedStateField } from "../types"
 import type { OrganizationAllowList } from "@roo/cloud"
+import { isValidUrl } from "@/utils/validate"
 
 type OpenAICompatibleProps = {
 	fromWelcomeView?: boolean
@@ -108,7 +109,12 @@ export const ZgsmAI = ({
 			transform: (event: E) => ProviderSettings[K] = inputEventTransform,
 		) =>
 			(event: E | Event) => {
-				setApiConfigurationField(field, transform(event as E))
+				const val = transform(event as E)
+				if (field === "zgsmBaseUrl" && isValidUrl(val as string)) {
+					setApiConfigurationField(field, (val as string).replace(/\/$/, ""))
+				} else {
+					setApiConfigurationField(field, val)
+				}
 			},
 		[setApiConfigurationField],
 	)
