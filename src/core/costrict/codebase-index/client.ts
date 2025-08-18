@@ -71,18 +71,7 @@ export class CodebaseIndexClient {
 			baseUrl: config.baseUrl,
 			downloadTimeout: config.downloadTimeout || 30_000,
 			versionInfo: config.versionInfo,
-			publicKey:
-				config.publicKey ||
-				process.env.ZGSM_PUBLIC_KEY! ||
-				`-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAp/yvHEtGy09fNgZO2a/e
-oyjEvBqVEjNf9RRf8r5QLeXI/InJGS323faqrVAtEjbOhq1R0KuAYISyFRzPvJYa
-aBdlaDpXOY0UJxz6C/hLSAl2ohn/SvCycYVucrjnPUAwCqDNaLLjyqyTdsSXNh3d
-QHgyBM16LD8oqFHj+/dxlMNxv+FIcc6WeN9F7BmTmvbHt5jBqBxBhXtlR8lx7F/H
-AIMDOcw+6STgS2RFFnTRrBl8ZgJPBUavczm0TY4a9gUErfTnb8zBHtH6K4OPsvEF
-Nimo+oDprwaVnIIPm1UvZtc/Qe/6OD0emoVovSzRYhbaqVPWgKqPNiitW9JZvuV3
-nwIDAQAB
------END PUBLIC KEY-----`,
+			publicKey: config.publicKey || process.env.ZGSM_PUBLIC_KEY!,
 		}
 
 		if (!this.config.publicKey) {
