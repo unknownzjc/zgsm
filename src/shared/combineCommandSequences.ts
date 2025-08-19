@@ -70,7 +70,7 @@ export function combineCommandSequences(messages: ClineMessage[]): ClineMessage[
 		}
 		// Handle command sequences
 		else if (msg.type === "ask" && msg.ask === "command") {
-			let combinedText = msg.text || ""
+			const combinedText = [msg.text || ""]
 			let j = i + 1
 			let previous: { type: "ask" | "say"; text: string } | undefined
 			let lastProcessedIndex = i
@@ -84,7 +84,7 @@ export function combineCommandSequences(messages: ClineMessage[]): ClineMessage[
 
 				if (ask === "command_output" || say === "command_output") {
 					if (!previous) {
-						combinedText += `\n${COMMAND_OUTPUT_STRING}`
+						combinedText.push(`\n${COMMAND_OUTPUT_STRING}`)
 					}
 
 					const isDuplicate = previous && previous.type !== type && previous.text === text
@@ -96,9 +96,9 @@ export function combineCommandSequences(messages: ClineMessage[]): ClineMessage[
 							combinedText.length >
 								combinedText.indexOf(COMMAND_OUTPUT_STRING) + COMMAND_OUTPUT_STRING.length
 						) {
-							combinedText += "\n"
+							combinedText.push("\n")
 						}
-						combinedText += text
+						combinedText.push(text)
 					}
 
 					previous = { type, text }
@@ -109,7 +109,7 @@ export function combineCommandSequences(messages: ClineMessage[]): ClineMessage[
 				j++
 			}
 
-			combinedMessages.set(msg.ts, { ...msg, text: combinedText })
+			combinedMessages.set(msg.ts, { ...msg, text: combinedText.join("") })
 
 			// Only skip ahead if we actually processed command outputs
 			if (lastProcessedIndex > i) {

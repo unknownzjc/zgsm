@@ -841,7 +841,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 					if (lines.length > 0) {
 						// Process each line as a separate file path
-						let newValue = inputValue.slice(0, cursorPosition)
+						const newValue = [inputValue.slice(0, cursorPosition)]
 						let totalLength = 0
 
 						// Using a standard for loop instead of forEach for potential performance gains.
@@ -849,21 +849,21 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							const line = lines[i]
 							// Convert each path to a mention-friendly format
 							const mentionText = convertToMentionPath(line, cwd)
-							newValue += mentionText
+							newValue.push(mentionText)
 							totalLength += mentionText.length
 
 							// Add space after each mention except the last one
 							if (i < lines.length - 1) {
-								newValue += " "
+								newValue.push(" ")
 								totalLength += 1
 							}
 						}
 
 						// Add space after the last mention and append the rest of the input
-						newValue += " " + inputValue.slice(cursorPosition)
+						newValue.push(" ", inputValue.slice(cursorPosition))
 						totalLength += 1
 
-						setInputValue(newValue)
+						setInputValue(newValue.join(""))
 						const newCursorPosition = cursorPosition + totalLength
 						setCursorPosition(newCursorPosition)
 						setIntendedCursorPosition(newCursorPosition)

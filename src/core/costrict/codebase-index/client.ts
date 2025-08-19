@@ -159,23 +159,33 @@ export class CodebaseIndexClient {
 			},
 		}
 
-		try {
-			const response = await fetch(url, finalOptions)
+		const maxRetries = 2
+		let lastError: Error = new Error("未知错误")
 
-			if (!response.ok) {
-				const errorData = await response.text()
-				throw new Error(errorData)
-			}
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			try {
+				const response = await fetch(url, finalOptions)
 
-			const data: ApiResponse<T> = await response.json()
-			return data
-		} catch (error) {
-			if (error instanceof Error) {
-				throw new Error(`${url} HTTP请求时发生错误: ${error.message}`)
-			} else {
-				throw new Error(`${url} HTTP请求时发生未知错误`)
+				if (!response.ok) {
+					const errorData = await response.text()
+					throw new Error(errorData)
+				}
+
+				const data: ApiResponse<T> = await response.json()
+				return data
+			} catch (error) {
+				lastError = error
+
+				if (attempt < maxRetries) {
+					// Wait before retrying (exponential backoff: 1s, 2s)
+					await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+					continue
+				}
 			}
 		}
+
+		// All retries failed, throw the last error
+		throw new Error(`${url} HTTP请求时发生错误: ${lastError.message}`)
 	}
 
 	/**

@@ -98,6 +98,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 	// 轮询相关状态
 	const pollingIntervalId = useRef<NodeJS.Timeout | null>(null)
+	const isPollingActive = useRef<boolean>(false)
 
 	// 判断是否处于【待启用】状态 - 仅当API提供商不是zgsm时
 	const isPendingEnable = useMemo(() => apiConfiguration?.apiProvider !== "zgsm", [apiConfiguration?.apiProvider])
@@ -122,38 +123,53 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		status: "pending",
 	})
 
-	const fetchCodebaseIndexStatus = useCallback(() => {
-		vscode.postMessage({
-			type: "zgsmPollCodebaseIndexStatus",
-		})
-	}, [])
-
+	// 停止轮询
 	const stopPolling = useCallback(() => {
 		if (pollingIntervalId.current) {
 			clearInterval(pollingIntervalId.current)
 			pollingIntervalId.current = null
 		}
+		isPollingActive.current = false
 	}, [])
 
-	// 轮询相关函数 - 移除对 shouldDisableAll 的依赖，避免循环更新
-	const startPolling = useCallback(
-		(delay = 3000) => {
-			stopPolling()
+	// 开始轮询 - 立即获取一次状态，然后每5秒获取一次
+	const startPolling = useCallback(() => {
+		// 如果已经在轮询中，直接返回
+		if (isPollingActive.current) {
+			return
+		}
 
-			const run = async () => {
-				try {
-					await fetchCodebaseIndexStatus()
-				} catch (error) {
-					console.error("Error fetching codebase index status:", error)
-				}
+		// 先停止之前的轮询
+		if (pollingIntervalId.current) {
+			clearInterval(pollingIntervalId.current)
+			pollingIntervalId.current = null
+		}
 
-				pollingIntervalId.current = setTimeout(run, delay)
-			}
+		// 标记轮询状态为活跃
+		isPollingActive.current = true
 
-			run()
-		},
-		[fetchCodebaseIndexStatus, stopPolling],
-	)
+		// 立即获取一次状态
+		vscode.postMessage({
+			type: "zgsmPollCodebaseIndexStatus",
+		})
+
+		// 每5秒获取一次状态
+		pollingIntervalId.current = setInterval(() => {
+			vscode.postMessage({
+				type: "zgsmPollCodebaseIndexStatus",
+			})
+		}, 5000)
+	}, [])
+
+	// 检查是否应该停止轮询（两个索引都完成了）
+	const shouldStopPolling = useCallback((embedding?: IndexStatusInfo, codegraph?: IndexStatusInfo) => {
+		return (
+			embedding &&
+			codegraph &&
+			(embedding.status === "success" || embedding.status === "failed") &&
+			(codegraph.status === "success" || codegraph.status === "failed")
+		)
+	}, [])
 
 	// 处理来自扩展的消息
 	useEffect(() => {
@@ -171,61 +187,69 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
 				}
 
-				// 如果状态为 success 或 error，可以考虑停止轮询
-				if (
-					embedding &&
-					codegraph &&
-					(embedding.status === "success" || embedding.status === "failed") &&
-					(codegraph.status === "success" || codegraph.status === "failed")
-				) {
-					startPolling(10_000) // 降低轮询频率
+				// 如果构建状态为成功/失败，则停止轮询
+				if (shouldStopPolling(embedding, codegraph)) {
+					stopPolling()
 				}
 			}
 		}
 
 		window.addEventListener("message", handleMessage)
-		fetchCodebaseIndexStatus() // 组件加载时立即获取一次状态
+
+		// 1. 打开页面获取一次构建状态，然后每隔5秒获取一次构建状态
+		if (zgsmCodebaseIndexEnabled && !isPendingEnable) {
+			startPolling()
+		}
+
 		return () => {
 			window.removeEventListener("message", handleMessage)
+			// 4. 关闭页面时，停止轮询
+			stopPolling()
 		}
-	}, [fetchCodebaseIndexStatus, startPolling])
+	}, [zgsmCodebaseIndexEnabled, isPendingEnable, startPolling, stopPolling, shouldStopPolling])
+
+	// 防重复调用的 ref
+	const lastToggleTime = useRef<number>(0)
 
 	const handleCodebaseIndexToggle = useCallback(
 		(e: any) => {
+			// 防止重复调用 - 如果距离上次调用少于 200ms，则忽略
+			const now = Date.now()
+			if (now - lastToggleTime.current < 200) {
+				return
+			}
+			lastToggleTime.current = now
+
 			// 在测试中e.preventDefault可能不存在
 			if (e && e.preventDefault) {
 				e.preventDefault()
 			}
+			if (e && e.stopPropagation) {
+				e.stopPropagation()
+			}
+
 			const checked = !zgsmCodebaseIndexEnabled
-			console.log("🔍 handleCodebaseIndexToggle called:", {
-				checked,
-				current: zgsmCodebaseIndexEnabled,
-				isProcessing,
-			})
 
 			// 如果正在处理中，防止重复触发
 			if (isProcessing) {
-				console.log("🚫 Blocked by processing lock")
 				return
 			}
 
 			// 如果是从开启状态切换到关闭状态，需要确认
 			if (!checked) {
-				console.log("⚠️  Showing disable confirmation dialog")
 				setShowDisableConfirmDialog(true)
 				return
 			}
 
-			console.log("✅ Updating state:", checked)
-			// // 只有当状态确实需要改变时才更新
-			// setZgsmCodebaseIndexEnabled(checked)
 			// 发送消息到扩展
 			vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: checked })
 
-			startPolling()
+			// 6. 打开开关时，获取一次构建状态，然后每隔5秒获取一次构建状态
+			setTimeout(() => {
+				startPolling()
+			}, 100)
 		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[zgsmCodebaseIndexEnabled, isProcessing],
+		[zgsmCodebaseIndexEnabled, isProcessing, startPolling],
 	)
 
 	const handleConfirmDisable = useCallback(() => {
@@ -244,8 +268,10 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			// 立即关闭弹窗
 			setShowDisableConfirmDialog(false)
 
+			// 5. 关闭开关时，停止轮询
+			stopPolling()
+
 			// 使用 setTimeout 确保扩展状态更新完成后再重置处理状态
-			// 这避免了扩展状态更新和本地状态更新之间的竞态条件
 			setTimeout(() => {
 				setIsProcessing(false)
 			}, 150)
@@ -253,7 +279,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			console.error("Failed to disable codebase index:", error)
 			setIsProcessing(false)
 		}
-	}, [isProcessing])
+	}, [isProcessing, stopPolling])
 
 	const handleCancelDisable = useCallback(() => {
 		setShowDisableConfirmDialog(false)
@@ -270,13 +296,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			},
 		})
 
-		// 先取消之前的轮询，再开始新的轮询
-		stopPolling()
+		// 7. 手动点击重新构建，获取一次构建状态，然后每隔5秒获取一次构建状态
 		startPolling()
-
-		// 立即触发一次轮询以获取最新状态
-		fetchCodebaseIndexStatus()
-	}, [stopPolling, startPolling, fetchCodebaseIndexStatus])
+	}, [startPolling])
 
 	const handleRebuildCodeIndex = useCallback(() => {
 		setCodeIndex((prev) => ({ ...prev, status: "running", progress: 0 }))
@@ -289,13 +311,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			},
 		})
 
-		// 先取消之前的轮询，再开始新的轮询
-		stopPolling()
+		// 7. 手动点击重新构建，获取一次构建状态，然后每隔5秒获取一次构建状态
 		startPolling()
-
-		// 立即触发一次轮询以获取最新状态
-		fetchCodebaseIndexStatus()
-	}, [stopPolling, startPolling, fetchCodebaseIndexStatus])
+	}, [startPolling])
 
 	const handleEditIgnoreFile = useCallback(() => {
 		vscode.postMessage({
@@ -431,11 +449,21 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 																		variant="ghost"
 																		size="sm"
 																		className="h-6 px-2 text-xs"
-																		onClick={() => {
-																			const fileText =
-																				indexStatus.failedFiles?.join("\n") ||
-																				""
-																			navigator.clipboard.writeText(fileText)
+																		onClick={async () => {
+																			try {
+																				const fileText =
+																					indexStatus.failedFiles?.join(
+																						"\n",
+																					) || ""
+																				await navigator.clipboard.writeText(
+																					fileText,
+																				)
+																			} catch (error) {
+																				console.error(
+																					"Failed to copy to clipboard:",
+																					error,
+																				)
+																			}
 																		}}
 																		disabled={disabled}>
 																		<Copy className="w-3 h-3 mr-1" />
@@ -446,7 +474,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 																	<ul className="text-xs space-y-1">
 																		{indexStatus.failedFiles.map((file, index) => (
 																			<li
-																				key={index}
+																				key={`${file}-${index}`}
 																				className={`text-vscode-errorForeground font-mono p-1 rounded transition-colors duration-150 ${disabled ? "" : "hover:bg-vscode-list-hoverBackground cursor-pointer hover:text-vscode-foreground hover:underline"}`}
 																				onClick={() =>
 																					!disabled &&

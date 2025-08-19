@@ -48,6 +48,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private indexBuildPollTimer: NodeJS.Timeout | null = null
 	private isIndexBuildPollRunning: boolean = false
 
+	// 防重复调用的缓存
+	private pendingIndexStatusRequests = new Map<string, Promise<ApiResponse<IndexStatusResponse>>>()
+	// 最近完成的请求缓存（防止短时间内重复调用）
+	private recentCompletedRequests = new Map<string, { result: ApiResponse<IndexStatusResponse>; timestamp: number }>()
+
 	// 常量定义
 	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
 	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
@@ -572,8 +577,58 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 * @param workspace 工作区路径 1
 	 */
 	public async getIndexStatus(workspace: string): Promise<ApiResponse<IndexStatusResponse>> {
+		// 检查是否已有相同的请求在进行中
+		const requestKey = `getIndexStatus:${workspace}`
+		const now = Date.now()
+
+		// 检查最近完成的请求（1秒内）
+		const recentRequest = this.recentCompletedRequests.get(requestKey)
+		if (recentRequest && now - recentRequest.timestamp < 1000) {
+			this.log(
+				`复用最近完成的查询索引状态请求结果: ${workspace} (${now - recentRequest.timestamp}ms前)`,
+				"info",
+				"ZgsmCodebaseIndexManager",
+			)
+			return recentRequest.result
+		}
+
+		if (this.pendingIndexStatusRequests.has(requestKey)) {
+			// 如果已有相同请求在进行中，等待其完成并复用结果
+			this.log(`复用正在进行的查询索引状态请求: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
+			return await this.pendingIndexStatusRequests.get(requestKey)!
+		}
+		const requestPromise = this._getIndexStatusInternal(workspace)
+		this.pendingIndexStatusRequests.set(requestKey, requestPromise)
+
+		try {
+			const result = await requestPromise
+			// 缓存结果1秒，防止短时间内重复调用
+			this.recentCompletedRequests.set(requestKey, { result, timestamp: now })
+
+			// 清理过期的缓存（保留最近5分钟的）
+			for (const [key, cache] of this.recentCompletedRequests.entries()) {
+				if (now - cache.timestamp > 300000) {
+					// 5分钟
+					this.recentCompletedRequests.delete(key)
+				}
+			}
+
+			return result
+		} finally {
+			// 请求完成后清除缓存
+			this.pendingIndexStatusRequests.delete(requestKey)
+		}
+	}
+
+	/**
+	 * 内部查询索引状态方法
+	 * @param workspace 工作区路径
+	 */
+	private async _getIndexStatusInternal(workspace: string): Promise<ApiResponse<IndexStatusResponse>> {
 		try {
 			await this.ensureClientInited()
+
+			// 添加调用栈信息来追踪调用来源
 			this.log(`查询索引状态: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
 
 			// 读取访问令牌

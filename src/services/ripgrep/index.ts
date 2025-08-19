@@ -105,13 +105,13 @@ async function execRipgrep(bin: string, args: string[]): Promise<string> {
 			crlfDelay: Infinity, // treat \r\n as a single line break even if it's split across chunks. This ensures consistent behavior across different operating systems.
 		})
 
-		let output = ""
+		const output = [""]
 		let lineCount = 0
 		const maxLines = MAX_RESULTS * 5 // limiting ripgrep output with max lines since there's no other way to limit results. it's okay that we're outputting as json, since we're parsing it line by line and ignore anything that's not part of a match. This assumes each result is at most 5 lines.
 
 		rl.on("line", (line) => {
 			if (lineCount < maxLines) {
-				output += line + "\n"
+				output.push(line, "\n")
 				lineCount++
 			} else {
 				rl.close()
@@ -127,7 +127,7 @@ async function execRipgrep(bin: string, args: string[]): Promise<string> {
 			if (errorOutput) {
 				reject(new Error(`ripgrep process error: ${errorOutput}`))
 			} else {
-				resolve(output)
+				resolve(output.join(""))
 			}
 		})
 		rgProcess.on("error", (error) => {
@@ -224,11 +224,13 @@ function formatResults(fileResults: SearchFileResult[], cwd: string): string {
 	const groupedResults: { [key: string]: SearchResult[] } = {}
 
 	let totalResults = fileResults.reduce((sum, file) => sum + file.searchResults.length, 0)
-	let output = ""
+	const output = []
 	if (totalResults >= MAX_RESULTS) {
-		output += `Showing first ${MAX_RESULTS} of ${MAX_RESULTS}+ results. Use a more specific search if necessary.\n\n`
+		output.push(
+			`Showing first ${MAX_RESULTS} of ${MAX_RESULTS}+ results. Use a more specific search if necessary.\n\n`,
+		)
 	} else {
-		output += `Found ${totalResults === 1 ? "1 result" : `${totalResults.toLocaleString()} results`}.\n\n`
+		output.push(`Found ${totalResults === 1 ? "1 result" : `${totalResults.toLocaleString()} results`}.\n\n`)
 	}
 
 	// Group results by file name
@@ -242,7 +244,7 @@ function formatResults(fileResults: SearchFileResult[], cwd: string): string {
 	})
 
 	for (const [filePath, fileResults] of Object.entries(groupedResults)) {
-		output += `# ${filePath.toPosix()}\n`
+		output.push(`# ${filePath.toPosix()}\n`)
 
 		fileResults.forEach((result) => {
 			// Only show results with at least one line
@@ -250,14 +252,14 @@ function formatResults(fileResults: SearchFileResult[], cwd: string): string {
 				// Show all lines in the result
 				result.lines.forEach((line) => {
 					const lineNumber = String(line.line).padStart(3, " ")
-					output += `${lineNumber} | ${line.text.trimEnd()}\n`
+					output.push(`${lineNumber} | ${line.text.trimEnd()}\n`)
 				})
-				output += "----\n"
+				output.push("----\n")
 			}
 		})
 
-		output += "\n"
+		output.push("\n")
 	}
 
-	return output.trim()
+	return output.join("").trim()
 }

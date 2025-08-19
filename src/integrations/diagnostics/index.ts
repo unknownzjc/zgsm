@@ -84,7 +84,7 @@ export async function diagnosticsToProblemsString(
 
 	const documents = new Map<vscode.Uri, vscode.TextDocument>()
 	const fileStats = new Map<vscode.Uri, vscode.FileStat>()
-	let result = ""
+	const result = []
 
 	// If we have a limit, use count-based limiting
 	if (maxDiagnosticMessages && maxDiagnosticMessages > 0) {
@@ -178,16 +178,16 @@ export async function diagnosticsToProblemsString(
 				(a, b) => a.diagnostic.range.start.line - b.diagnostic.range.start.line,
 			)
 			if (sortedDiagnostics.length > 0) {
-				result += `\n\n${path.relative(cwd, uri.fsPath).toPosix()}`
+				result.push(`\n\n${path.relative(cwd, uri.fsPath).toPosix()}`)
 				for (const item of sortedDiagnostics) {
-					result += item.formattedText
+					result.push(item.formattedText)
 				}
 			}
 		}
 
 		// Add a note if we hit the limit
 		if (totalCount > includedCount) {
-			result += `\n\n... ${totalCount - includedCount} more problems omitted to prevent context overflow`
+			result.push(`\n\n... ${totalCount - includedCount} more problems omitted to prevent context overflow`)
 		}
 	} else {
 		// No limit, process all diagnostics as before
@@ -196,7 +196,7 @@ export async function diagnosticsToProblemsString(
 				.filter((d) => severities.includes(d.severity))
 				.sort((a, b) => a.range.start.line - b.range.start.line)
 			if (problems.length > 0) {
-				result += `\n\n${path.relative(cwd, uri.fsPath).toPosix()}`
+				result.push(`\n\n${path.relative(cwd, uri.fsPath).toPosix()}`)
 				for (const diagnostic of problems) {
 					let label: string
 					switch (diagnostic.severity) {
@@ -227,17 +227,17 @@ export async function diagnosticsToProblemsString(
 							const document = documents.get(uri) || (await vscode.workspace.openTextDocument(uri))
 							documents.set(uri, document)
 							const lineContent = document.lineAt(diagnostic.range.start.line).text
-							result += `\n- [${source}${label}] ${line} | ${lineContent} : ${diagnostic.message}`
+							result.push(`\n- [${source}${label}] ${line} | ${lineContent} : ${diagnostic.message}`)
 						} else {
-							result += `\n- [${source}${label}] 1 | (directory) : ${diagnostic.message}`
+							result.push(`\n- [${source}${label}] 1 | (directory) : ${diagnostic.message}`)
 						}
 					} catch {
-						result += `\n- [${source}${label}] ${line} | (unavailable) : ${diagnostic.message}`
+						result.push(`\n- [${source}${label}] ${line} | (unavailable) : ${diagnostic.message}`)
 					}
 				}
 			}
 		}
 	}
 
-	return result.trim()
+	return result.join("").trim()
 }

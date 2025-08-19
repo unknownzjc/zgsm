@@ -55,6 +55,9 @@ import { getCommand } from "../../utils/commands"
 
 const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 
+// 防重复调用的缓存 - 存储正在进行的请求
+const pendingIndexStatusRequests = new Map<string, Promise<any>>()
+
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
@@ -2386,7 +2389,7 @@ export const webviewMessageHandler = async (
 					provider.log("仅 Costrict 提供商支持此服务", "error", "ZgsmCodebaseIndexManager")
 					return
 				}
-				// "zgsmPollCodebaseIndexStatus"
+
 				// 获取当前工作区路径
 				const workspacePath = getWorkspacePath()
 				if (!workspacePath) {
