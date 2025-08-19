@@ -155,26 +155,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		[fetchCodebaseIndexStatus, stopPolling],
 	)
 
-	// 组件加载时开始轮询，组件销毁时停止轮询
-	useEffect(() => {
-		stopPolling()
-		// 只有在启用状态下才开始轮询
-		if (!shouldDisableAll) {
-			// 发送重新构建消息到扩展
-			vscode.postMessage({
-				type: "zgsmRebuildCodebaseIndex",
-				values: {
-					type: "all",
-				},
-			})
-			startPolling()
-		}
-
-		return () => {
-			stopPolling()
-		}
-	}, [shouldDisableAll, startPolling, stopPolling])
-
 	// 处理来自扩展的消息
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent) => {
@@ -182,6 +162,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 			if (message.type === "codebaseIndexStatusResponse" && message.payload?.status) {
 				const { embedding, codegraph } = message.payload.status
+				console.log("codebaseIndexStatusResponse", { embedding, codegraph })
+
 				if (embedding) {
 					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
 				}
@@ -202,10 +184,11 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		}
 
 		window.addEventListener("message", handleMessage)
+		fetchCodebaseIndexStatus() // 组件加载时立即获取一次状态
 		return () => {
 			window.removeEventListener("message", handleMessage)
 		}
-	}, [startPolling])
+	}, [fetchCodebaseIndexStatus, startPolling])
 
 	const handleCodebaseIndexToggle = useCallback(
 		(e: any) => {
@@ -520,8 +503,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				</div>
 			)
 		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[],
+		[handleOpenFailedFile, isPendingEnable],
 	)
 
 	return (
