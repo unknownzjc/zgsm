@@ -111,7 +111,7 @@ export const ZgsmAI = ({
 			(event: E | Event) => {
 				const val = transform(event as E)
 				if (field === "zgsmBaseUrl" && isValidUrl(val as string)) {
-					setApiConfigurationField(field, (val as string).replace(/\/$/, ""))
+					setApiConfigurationField(field, (val as string).trim().replace(/\/$/, ""))
 				} else {
 					setApiConfigurationField(field, val)
 				}

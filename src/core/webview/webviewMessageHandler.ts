@@ -2405,7 +2405,7 @@ export const webviewMessageHandler = async (
 				const response = await zgsmCodebaseIndexManager.getIndexStatus(workspacePath)
 
 				// 返回响应消息
-				provider.postMessageToWebview({
+				await provider.postMessageToWebview({
 					type: "codebaseIndexStatusResponse",
 					payload: {
 						workspace: workspacePath,
@@ -2416,7 +2416,7 @@ export const webviewMessageHandler = async (
 				provider.log(
 					`Error polling codebase index status: ${error instanceof Error ? error.message : String(error)}`,
 				)
-				provider.postMessageToWebview({
+				await provider.postMessageToWebview({
 					type: "codebaseIndexStatusResponse",
 					payload: {
 						success: false,

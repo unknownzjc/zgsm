@@ -122,17 +122,10 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		status: "pending",
 	})
 
-	// 轮询相关函数 - 移除对 shouldDisableAll 的依赖，避免循环更新
-	const startPolling = useCallback((delay = 3000) => {
-		console.log("codebase-index startPolling")
-
-		stopPolling()
-
-		const intervalId = setInterval(() => {
-			fetchCodebaseIndexStatus()
-		}, delay)
-		pollingIntervalId.current = intervalId
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+	const fetchCodebaseIndexStatus = useCallback(() => {
+		vscode.postMessage({
+			type: "zgsmPollCodebaseIndexStatus",
+		})
 	}, [])
 
 	const stopPolling = useCallback(() => {
@@ -142,14 +135,29 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 		}
 	}, [])
 
-	const fetchCodebaseIndexStatus = useCallback(() => {
-		vscode.postMessage({
-			type: "zgsmPollCodebaseIndexStatus",
-		})
-	}, [])
+	// 轮询相关函数 - 移除对 shouldDisableAll 的依赖，避免循环更新
+	const startPolling = useCallback(
+		(delay = 3000) => {
+			stopPolling()
+
+			const run = async () => {
+				try {
+					await fetchCodebaseIndexStatus()
+				} catch (error) {
+					console.error("Error fetching codebase index status:", error)
+				}
+
+				pollingIntervalId.current = setTimeout(run, delay)
+			}
+
+			run()
+		},
+		[fetchCodebaseIndexStatus, stopPolling],
+	)
 
 	// 组件加载时开始轮询，组件销毁时停止轮询
 	useEffect(() => {
+		stopPolling()
 		// 只有在启用状态下才开始轮询
 		if (!shouldDisableAll) {
 			// 发送重新构建消息到扩展

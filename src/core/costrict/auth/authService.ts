@@ -361,8 +361,9 @@ export class ZgsmAuthService {
 	 */
 	private getLoginBaseUrl(apiConfig: ProviderSettings): string {
 		// 优先使用apiConfiguration中的baseUrl
-		if (apiConfig.zgsmBaseUrl?.trim()) {
-			return apiConfig.zgsmBaseUrl
+		const baseUrl = apiConfig.zgsmBaseUrl?.trim()
+		if (baseUrl) {
+			return baseUrl
 		}
 
 		// 使用默认URL
