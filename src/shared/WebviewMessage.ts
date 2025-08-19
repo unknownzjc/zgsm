@@ -230,6 +230,7 @@ export interface WebviewMessage {
 		| "insertTextIntoTextarea"
 		| "startCodereview"
 		| "settingsButtonclicked"
+		| "copyError"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account"

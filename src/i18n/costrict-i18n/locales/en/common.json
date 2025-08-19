@@ -10,6 +10,9 @@
 		"task_prompt": "What should Costrict do?"
 	},
 	"window": {
+		"success": {
+			"copy_success": "Copy success"
+		},
 		"error": {
 			"failed_to_get_login_info": "Failed to get login information. Please log in again to use the completion service.",
 			"login_failed": "Login failed, please log in again.",

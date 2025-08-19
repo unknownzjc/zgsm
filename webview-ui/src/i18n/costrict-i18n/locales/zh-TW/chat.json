@@ -93,5 +93,8 @@
 	"rooCloudCTA": {
 		"title": "Costrict Cloud 即將推出！",
 		"description": "在雲端執行 Costrict 遠端代理、隨時隨地存取您的工作、與他人協作等等。"
+	},
+	"copy": {
+		"errorDetail": "複製錯誤詳情"
 	}
 }

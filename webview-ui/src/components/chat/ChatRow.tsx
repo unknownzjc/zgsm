@@ -349,6 +349,15 @@ export const ChatRowContent = ({
 		return null
 	}, [message.type, message.ask, message.partial, message.text])
 
+	const handleCopyErrorDetail = useCallback(() => {
+		vscode.postMessage({
+			type: "copyError",
+			values: {
+				message: apiRequestFailedMessage,
+			},
+		})
+	}, [apiRequestFailedMessage])
+
 	if (tool) {
 		const toolIcon = (name: string) => (
 			<span
@@ -1024,6 +1033,7 @@ export const ChatRowContent = ({
 											dangerouslySetInnerHTML={{
 												__html: (apiRequestFailedMessage || apiReqStreamingFailedMessage) ?? "",
 											}}></span>
+
 										{apiRequestFailedMessage?.toLowerCase().includes("powershell") && (
 											<>
 												<br />
@@ -1037,6 +1047,16 @@ export const ChatRowContent = ({
 												.
 											</>
 										)}
+										{
+											<>
+												<br />
+												<span
+													className="flex mt-2 text-vscode-textLink-foreground cursor-pointer"
+													onClick={handleCopyErrorDetail}>
+													{t("chat:copy.errorDetail")}
+												</span>
+											</>
+										}
 									</p>
 								</>
 							)}
