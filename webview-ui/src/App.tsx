@@ -301,8 +301,8 @@ const App = () => {
 			{tab === "zgsm-account" && (
 				<ZgsmAccountView apiConfiguration={apiConfiguration} onDone={() => switchTab("chat")} />
 			)}
-			<div className={`${isChatTab ? "" : "hidden"}`}>
-				<div className={`header flex items-center justify-between ${isChatTab ? "" : "hidden"}`}>
+			<div className={`${isChatTab ? "fixed inset-0 flex flex-col" : "hidden"}`}>
+				<div className={`header flex items-center justify-between px-5 ${isChatTab ? "" : "hidden"}`}>
 					<TabList
 						value={tab}
 						onValueChange={(val) => switchTab(val as Tab)}
