@@ -64,6 +64,8 @@ export class CoIgnoreController {
 	 * Load custom patterns from .coignore if it exists
 	 */
 	protected async loadRooIgnore(): Promise<void> {
+		this.ignoreInstance = ignore()
+
 		const rules = this.ignoreFilenames.map(async (filename) => {
 			try {
 				const ignorePath = path.join(this.cwd, filename)
