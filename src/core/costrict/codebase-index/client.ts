@@ -42,7 +42,7 @@ export class CodebaseIndexClient {
 
 	private logger: ILogger
 
-	private config: Omit<Required<CodebaseIndexClientConfig>, "versionInfo"> & { versionInfo?: VersionInfo }
+	private config: CodebaseIndexClientConfig & { versionInfo?: VersionInfo }
 	private serverHost: {
 		potolocol: "http" | "https"
 		port: number
@@ -66,8 +66,8 @@ export class CodebaseIndexClient {
 		this.logger = createLogger(Package.outputChannel)
 		this.config = {
 			downloadTimeout: config.downloadTimeout || 30_000,
-			versionInfo: config.versionInfo,
 			publicKey: config.publicKey || process.env.ZGSM_PUBLIC_KEY!,
+			getLocalVersion: config.getLocalVersion,
 		}
 
 		if (!this.config.publicKey) {
@@ -222,6 +222,27 @@ export class CodebaseIndexClient {
 		return this.versionApi.shouldUpdate(currentVersion)
 	}
 
+	async shouldRunCostrict(canRun: boolean, targetPath: string): Promise<boolean> {
+		let fileok = true
+		if (this.config?.getLocalVersion) {
+			try {
+				const { packageInfo } = (await this.config.getLocalVersion()) ?? {}
+				if (packageInfo) {
+					await this.fileDownloader.verifyFileChecksum(
+						targetPath,
+						packageInfo.checksum,
+						packageInfo.checksumAlgo,
+					)
+				}
+			} catch (error) {
+				this.logger.error(`[RunCostrict] Failed to verify checksum for ${targetPath}: ${error}`)
+				fileok = false
+			}
+		}
+
+		return canRun && fileok
+	}
+
 	/**
 	 * 获取指定版本的包信息
 	 * @param version 版本字符串，格式为 "major.minor.micro"
@@ -243,14 +264,7 @@ export class CodebaseIndexClient {
 		onProgress?: (progress: DownloadProgress) => void,
 	): Promise<DownloadResult> {
 		try {
-			// 1. 获取版本信息
-
-			const versionString = this.formatVersionId(versionInfo.versionId)
-
-			// 2. 获取包信息
 			const packageInfo = await this.getPackageInfo(versionInfo)
-
-			// 3. 下载文件
 			const downloadProgress = (downloaded: number, total: number, progress: number) => {
 				if (onProgress) {
 					onProgress({ downloaded, total, progress })
@@ -317,7 +331,9 @@ export class CodebaseIndexClient {
 		while (attempts < maxRetries) {
 			attempts++
 			try {
-				if (shouldStartCostrictKeeper || !(await this.isRunning())[0]) {
+				if (
+					await this.shouldRunCostrict(shouldStartCostrictKeeper || !(await this.isRunning())[0], targetPath)
+				) {
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
 					// 启动 costrict-keeper 管理端
 					const port = this.getCostrictServerPort(defaultPort)

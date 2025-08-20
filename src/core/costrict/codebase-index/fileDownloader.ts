@@ -223,11 +223,7 @@ export class FileDownloader {
 	 * @param algorithm 校验算法，默认为 md5
 	 * @private
 	 */
-	private async verifyFileChecksum(
-		filePath: string,
-		expectedChecksum: string,
-		algorithm: string = "md5",
-	): Promise<boolean> {
+	async verifyFileChecksum(filePath: string, expectedChecksum: string, algorithm: string = "md5"): Promise<boolean> {
 		return new Promise((resolve, reject) => {
 			const hash = crypto.createHash(algorithm)
 			const stream = fs.createReadStream(filePath)

@@ -17,10 +17,10 @@ import {
 } from "./types"
 import { TelemetryErrorType } from "../telemetry"
 import { TelemetryService } from "@roo-code/telemetry"
-import { ZgsmAuthApi, ZgsmAuthService, ZgsmAuthConfig } from "../auth"
-import { getClientId } from "../../../utils/getClientId"
+import { ZgsmAuthService } from "../auth"
 import { ILogger } from "../../../utils/logger"
 import { getWorkspacePath } from "../../../utils/path"
+import pWaitFor from "p-wait-for"
 
 /**
  * CodebaseIndex 管理器实现类（单例模式）
@@ -112,14 +112,13 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		}
 
 		// 检查本地是否已安装客户端
-		const localVersionInfo = await this.getLocalVersion()
 		try {
 			this.log("初始化 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
 
 			// 创建客户端配置
 			const config: CodebaseIndexClientConfig = {
 				downloadTimeout: 30_000,
-				versionInfo: localVersionInfo,
+				getLocalVersion: () => this.getLocalVersion(),
 			}
 
 			// 创建客户端实例
@@ -127,7 +126,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// 检查并升级客户端
 			const state = await this.checkAndUpgradeClient()
 			if (state === "failed") {
-				throw new Error("客户端升级检测失败")
+				vscode.window.showWarningMessage(`Codebase 启动/升级失败，请重启编辑器尝试`)
+				return
 			}
 			if (state === "needZgsm") {
 				this.log("仅 Costrict 提供商支持此服务", "info", "ZgsmCodebaseIndexManager")
@@ -180,18 +180,42 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	public async checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm"> {
+	public async checkAndUpgradeClient(): Promise<
+		"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm" | "updating"
+	> {
 		try {
 			// 检查本地是否已安装客户端
 			const localVersionInfo = await this.getLocalVersion()
-			if (localVersionInfo?.status === "downloading") {
-				this.log(
-					`[sid: ${vscode.env.sessionId}] 客户端正在下载中，请稍后再试`,
-					"info",
-					"ZgsmCodebaseIndexManager",
-				)
-				return "noUpdate"
+			if (localVersionInfo && localVersionInfo.status === "downloading") {
+				try {
+					this.log(`已存在客户端下载操作...`, "info", "ZgsmCodebaseIndexManager")
+					await pWaitFor(
+						async () => {
+							const localVersionInfo = await this.getLocalVersion()
+							const ok = localVersionInfo && localVersionInfo.status !== "downloading"
+
+							// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+							ok &&
+								this.log(
+									`客户端下载完成: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
+									"info",
+									"ZgsmCodebaseIndexManager",
+								)
+
+							return ok ? true : false
+						},
+						{
+							interval: 1_000,
+							timeout: 60_000,
+						},
+					)
+				} catch (error) {
+					this.log(`客户端下载等待超时`, "info", "ZgsmCodebaseIndexManager")
+
+					return "failed"
+				}
 			}
+
 			this.log("开始检查并升级 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
 			// 获取最新版本信息
@@ -293,7 +317,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// 移除 updatedAt 字段，只返回 VersionInfo 数据
 			const { updatedAt, ...versionInfo } = versionData
 
-			this.log(`本地版本信息已读取: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
+			// this.log(`本地版本信息已读取: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
 
 			return versionInfo as VersionInfo
 		} catch (error) {
@@ -337,12 +361,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				// 保存本地版本信息
 				await this.saveLocalVersion({
 					...versionInfo,
+					packageInfo: result.packageInfo,
 					status: "downloaded",
 				})
 			} else {
 				// 保存本地版本信息
 				await this.saveLocalVersion({
 					...versionInfo,
+					packageInfo: result.packageInfo,
 					status: "failed",
 				})
 				throw new Error(result.error || "下载并安装客户端失败")

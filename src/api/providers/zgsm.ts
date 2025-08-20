@@ -374,7 +374,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 					isPrinted = true
 				}
 				// Process in batch when threshold is reached
-				if (contentBuffer.length >= 10 || Date.now() >= time) {
+				if (contentBuffer.length >= 20 || Date.now() >= time) {
 					const batchedContent = contentBuffer.join("")
 					for (const processedChunk of matcher.update(batchedContent)) {
 						yield processedChunk

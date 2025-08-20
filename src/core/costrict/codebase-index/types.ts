@@ -114,6 +114,7 @@ export interface VersionInfo {
 	versionId: VersionId
 	appUrl: string
 	infoUrl: string
+	packageInfo?: PackageInfoResponse
 	status?: "downloading" | "downloaded" | "failed"
 }
 
@@ -163,7 +164,7 @@ export interface ICodebaseIndexManager {
 	/**
 	 * 检查并升级客户端
 	 */
-	checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm">
+	checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm" | "updating">
 
 	/**
 	 * 设置日志提供者
@@ -225,14 +226,13 @@ export interface CodebaseIndexClientConfig {
 	 * 下载超时时间（毫秒），默认为 30000ms (30秒)
 	 */
 	downloadTimeout?: number
-	/**
-	 * 版本号，用于构建文件路径
-	 */
-	versionInfo?: VersionInfo
+
 	/**
 	 * 签名验证公钥，如果未提供则使用默认公钥
 	 */
 	publicKey?: string
+
+	getLocalVersion?: () => Promise<VersionInfo | undefined>
 }
 
 /**
