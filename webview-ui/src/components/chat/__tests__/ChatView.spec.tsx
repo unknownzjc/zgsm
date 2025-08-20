@@ -1158,7 +1158,7 @@ describe("ChatView - Version Indicator Tests", () => {
 			}),
 		)
 
-		const { getByTestId, queryByTestId } = renderChatView({ showAnnouncement: false })
+		const { getByTestId /* queryByTestId */ } = renderChatView({ showAnnouncement: false })
 
 		// Hydrate state
 		mockPostMessage({
@@ -1178,9 +1178,9 @@ describe("ChatView - Version Indicator Tests", () => {
 		})
 		return
 		// Wait for announcement modal to appear
-		await waitFor(() => {
-			expect(queryByTestId("announcement-modal")).toBeInTheDocument()
-		})
+		// await waitFor(() => {
+		// 	expect(queryByTestId("announcement-modal")).toBeInTheDocument()
+		// })
 	})
 
 	it("version indicator has correct styling classes", () => {

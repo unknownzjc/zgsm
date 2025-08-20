@@ -280,7 +280,7 @@ describe("ZgsmCodebaseSettings", () => {
 		it("启动轮询应该设置定时器并发送轮询消息", () => {
 			renderComponent()
 
-			expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 3000)
+			expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 5000)
 			simulatePollingCallback()
 
 			expect(mockPostMessage).toHaveBeenCalledWith({
@@ -290,7 +290,7 @@ describe("ZgsmCodebaseSettings", () => {
 
 		it("轮询间隔应该正确设置", () => {
 			renderComponent()
-			expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 3000)
+			expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 5000)
 		})
 
 		it("停止轮询应该清除定时器", () => {

@@ -185,6 +185,7 @@ export const SECRET_STATE_KEYS = [
 	"openAiNativeApiKey",
 	"cerebrasApiKey",
 	"deepSeekApiKey",
+	"doubaoApiKey",
 	"moonshotApiKey",
 	"mistralApiKey",
 	"unboundApiKey",
@@ -200,6 +201,7 @@ export const SECRET_STATE_KEYS = [
 	"codebaseIndexMistralApiKey",
 	"huggingFaceApiKey",
 	"sambaNovaApiKey",
+	"zaiApiKey",
 	"fireworksApiKey",
 	"ioIntelligenceApiKey",
 ] as const satisfies readonly (keyof ProviderSettings)[]
