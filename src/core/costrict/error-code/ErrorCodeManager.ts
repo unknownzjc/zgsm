@@ -117,26 +117,8 @@ export class ErrorCodeManager {
 		let rawError = error.error?.metadata?.raw ? JSON.stringify(error.error.metadata.raw, null, 2) : error.message
 		let status = error.status as number
 		const unknownError = { message: t("apiErrors:status.unknown"), solution: t("apiErrors:solution.unknown") }
-		let jsonBody = rawError.split(", response body: {")[1] || ""
-		jsonBody = jsonBody ? `{${jsonBody}` : ""
-		const { headers } = error
+		const { code, headers } = error
 		const requestId = headers?.get("x-request-id") ?? null
-		const zgsmParse = (errStr: string, rawError: string) => {
-			try {
-				const { code, message } = JSON.parse(errStr)
-				this.provider?.log(
-					`[Costrict#apiErrors] task ${taskId}.${instanceId} SerializeError Raw Failed: ${message || rawError}\n\n (${code})`,
-				)
-				return { message, code }
-			} catch (error) {
-				console.warn("[zgsmParse]", error.message)
-
-				return { message: "", code: "" }
-			}
-		}
-		if (!jsonBody && zgsmParse(error.message, error.message).code !== "") {
-			jsonBody = error.message
-		}
 		const { apiConfiguration } = await this.provider.getState()
 		const { zgsmApiKeyExpiredAt, zgsmApiKeyUpdatedAt, isOldModeLoginState } = this.parseZgsmTokenInfo(
 			apiConfiguration.zgsmAccessToken,
@@ -171,8 +153,7 @@ export class ErrorCodeManager {
 			"quota-manager.token_invalid",
 			"quota-manager.voucher_expired",
 		]
-		if (jsonBody) {
-			const { code } = zgsmParse(jsonBody, rawError)
+		if (code) {
 			let { message, solution } = this.errorMap[code] || unknownError
 			if (authRequiredCodes.includes(code)) {
 				rawError = message
