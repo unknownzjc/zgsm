@@ -2884,7 +2884,7 @@ export const webviewMessageHandler = async (
 				await vscode.env.clipboard.writeText(dedent`
 					message: ${errorMessage}
 					provider: ${apiConfiguration.apiProvider}
-					Model: ${apiConfiguration.apiModelId}
+					Model: ${apiConfiguration.apiProvider === "zgsm" ? apiConfiguration.zgsmModelId : apiConfiguration.apiModelId}
 					${apiConfiguration.apiProvider === "zgsm" ? `BaseUrl: ${apiConfiguration.zgsmBaseUrl}` : ""}
 					vscodeVersion: ${vscode.version}
 					pluginVersion: ${Package.version}
