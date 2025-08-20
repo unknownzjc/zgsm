@@ -5,7 +5,7 @@ import { sendZgsmTokens } from "./ipc/client"
 import { getClientId } from "../../../utils/getClientId"
 import { zgsmCodebaseIndexManager } from "../codebase-index"
 import { workspaceEventMonitor } from "../codebase-index/workspace-event-monitor"
-import { writeAccessToken } from "../codebase-index/utils"
+import { writeCostrictAccessToken } from "../codebase-index/utils"
 
 export class ZgsmAuthStorage {
 	private static clineProvider?: ClineProvider
@@ -64,7 +64,7 @@ export class ZgsmAuthStorage {
 		sendZgsmTokens(tokens)
 
 		// 重新初始化 codebase-index 客户端
-		writeAccessToken(tokens.access_token).then(async () => {
+		writeCostrictAccessToken(tokens.access_token).then(async () => {
 			await zgsmCodebaseIndexManager.initialize()
 			zgsmCodebaseIndexManager.syncToken()
 			workspaceEventMonitor.initialize()

@@ -1,3 +1,4 @@
+import * as vscode from "vscode"
 import type { ClineProvider } from "./../../webview/ClineProvider"
 import * as fs from "fs"
 import * as path from "path"
@@ -32,21 +33,20 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	private clineProvider: ClineProvider | null = null
 	private platformDetector: PlatformDetector
 	private isInitialized: boolean = false
-	private serverEndpoint = ""
+	// private serverEndpoint = ""
 	private preBuildInfo = {
 		type: "",
 		time: 0,
 	}
-	private baseUrl = "https://zgsm.sangfor.com/costrict"
 
 	// 定时检测相关属性
 	private healthCheckTimer: NodeJS.Timeout | null = null
 	private healthCheckFailureCount: number = 0
 	private isHealthCheckRunning: boolean = false
 
-	// 定时索引构建相关属性
-	private indexBuildPollTimer: NodeJS.Timeout | null = null
-	private isIndexBuildPollRunning: boolean = false
+	// // 定时索引构建相关属性
+	// private indexBuildPollTimer: NodeJS.Timeout | null = null
+	// private isIndexBuildPollRunning: boolean = false
 
 	// 防重复调用的缓存
 	private pendingIndexStatusRequests = new Map<string, Promise<ApiResponse<IndexStatusResponse>>>()
@@ -56,7 +56,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	// 常量定义
 	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
 	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
-	private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
+	// private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
 	/**
 	 * 私有构造函数，确保单例模式
 	 */
@@ -111,10 +111,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			return
 		}
 
-		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
-		const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
-		this.serverEndpoint = baseUrl
-		this.baseUrl = `${baseUrl}/costrict`
 		// 检查本地是否已安装客户端
 		const localVersionInfo = await this.getLocalVersion()
 		try {
@@ -122,14 +118,12 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 创建客户端配置
 			const config: CodebaseIndexClientConfig = {
-				baseUrl: this.baseUrl,
 				downloadTimeout: 30_000,
 				versionInfo: localVersionInfo,
 			}
 
 			// 创建客户端实例
 			this.client = new CodebaseIndexClient(config)
-			this.client.setServerEndpoint(baseUrl)
 			// 检查并升级客户端
 			const state = await this.checkAndUpgradeClient()
 			if (state === "failed") {
@@ -142,7 +136,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 停止所有定时任务
 			this.stopHealthCheck()
-			this.stopIndexBuildPoll()
+			// this.stopIndexBuildPoll()
 
 			const versionInfo = await this.getLocalVersion()
 			await this.client!.startClient(versionInfo!, state !== "noUpdate")
@@ -151,7 +145,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			// 启动定时检测
 			this.startHealthCheck()
-			this.triggerIndexBuildPoll()
+			// this.triggerIndexBuildPoll()
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "初始化 CodebaseKeeper 客户端时发生未知错误"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
@@ -191,6 +185,11 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// 检查本地是否已安装客户端
 			const localVersionInfo = await this.getLocalVersion()
 			if (localVersionInfo?.status === "downloading") {
+				this.log(
+					`[sid: ${vscode.env.sessionId}] 客户端正在下载中，请稍后再试`,
+					"info",
+					"ZgsmCodebaseIndexManager",
+				)
 				return "noUpdate"
 			}
 			this.log("开始检查并升级 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
@@ -409,7 +408,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public async setServerEndpoint(endpoint: string): Promise<void> {
 		try {
 			await this.ensureClientInited()
-			this.client!.setServerEndpoint(endpoint)
 			this.log(`服务器端点已设置为: ${endpoint}`, "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "设置服务器端点时发生未知错误"
@@ -459,39 +457,39 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		}
 	}
 
-	/**
-	 * 定时索引构建: 每十分钟触发一次
-	 */
-	triggerIndexBuildPoll(): void {
-		if (this.isIndexBuildPollRunning) {
-			this.log("定时索引构建已运行", "info", "ZgsmCodebaseIndexManager")
-			return
-		}
+	// /**
+	//  * 定时索引构建: 每十分钟触发一次
+	//  */
+	// triggerIndexBuildPoll(): void {
+	// 	if (this.isIndexBuildPollRunning) {
+	// 		this.log("定时索引构建已运行", "info", "ZgsmCodebaseIndexManager")
+	// 		return
+	// 	}
 
-		this.log("启动定时索引构建", "info", "ZgsmCodebaseIndexManager")
-		this.isIndexBuildPollRunning = true
-		this.indexBuildPollTimer = setInterval(async () => {
-			await this.performIndexBuildPoll()
-		}, this.INDEX_BUILD_POLL_INTERVAL)
-	}
+	// 	this.log("启动定时索引构建", "info", "ZgsmCodebaseIndexManager")
+	// 	this.isIndexBuildPollRunning = true
+	// 	this.indexBuildPollTimer = setInterval(async () => {
+	// 		await this.performIndexBuildPoll()
+	// 	}, this.INDEX_BUILD_POLL_INTERVAL)
+	// }
 
-	/**
-	 * 停止定时索引构建
-	 */
-	public stopIndexBuildPoll(): void {
-		if (!this.isIndexBuildPollRunning) {
-			return
-		}
+	// /**
+	//  * 停止定时索引构建
+	//  */
+	// public stopIndexBuildPoll(): void {
+	// 	if (!this.isIndexBuildPollRunning) {
+	// 		return
+	// 	}
 
-		this.log("停止定时索引构建", "info", "ZgsmCodebaseIndexManager")
+	// 	this.log("停止定时索引构建", "info", "ZgsmCodebaseIndexManager")
 
-		if (this.indexBuildPollTimer) {
-			clearInterval(this.indexBuildPollTimer)
-			this.indexBuildPollTimer = null
-		}
+	// 	if (this.indexBuildPollTimer) {
+	// 		clearInterval(this.indexBuildPollTimer)
+	// 		this.indexBuildPollTimer = null
+	// 	}
 
-		this.isIndexBuildPollRunning = false
-	}
+	// 	this.isIndexBuildPollRunning = false
+	// }
 
 	private async performIndexBuildPoll(): Promise<void> {
 		try {
@@ -671,10 +669,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			throw new Error("readAccessToken 无法获取访问令牌")
 		}
 		return tokens.access_token
-	}
-
-	private get clientId(): string {
-		return this.client?.getClientId() || getClientId()
 	}
 
 	/**

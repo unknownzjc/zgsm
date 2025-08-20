@@ -2,12 +2,12 @@ import * as fs from "fs"
 import * as https from "https"
 import * as http from "http"
 import { URL } from "url"
-import { PlatformDetector } from "./platform"
 import { PackageInfoResponse, VersionInfo } from "./types"
 import path from "path"
 import * as crypto from "crypto"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
+import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 
 /**
  * 下载进度回调函数类型
@@ -22,20 +22,16 @@ export type DownloadProgressCallback = (downloaded: number, total: number, progr
  * 用于从远程服务器下载客户端文件，支持进度回调和取消操作
  */
 export class FileDownloader {
-	private platformDetector: PlatformDetector
-	private baseUrl: string
 	private publicKey: string
 	private abortController: AbortController | null = null
 	private timeout: number
 	private logger: ILogger
 	/**
 	 * 构造函数
-	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
+	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com
 	 * @param timeout 请求超时时间（毫秒），默认为 30000ms (30秒)
 	 */
-	constructor(baseUrl: string, publicKey: string, timeout: number = 30000) {
-		this.platformDetector = new PlatformDetector()
-		this.baseUrl = baseUrl
+	constructor(publicKey: string, timeout: number = 30000) {
 		this.publicKey = publicKey
 		this.timeout = timeout
 		this.logger = createLogger(Package.outputChannel)
@@ -56,7 +52,9 @@ export class FileDownloader {
 		packageInfo: PackageInfoResponse,
 		onProgress?: DownloadProgressCallback,
 	): Promise<string> {
-		const downloadUrl = `${this.baseUrl}${versionInfo.appUrl}`
+		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+		const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+		const downloadUrl = `${baseUrl}/costrict${versionInfo.appUrl}`
 
 		this.abortController = new AbortController()
 

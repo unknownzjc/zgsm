@@ -64,6 +64,7 @@ import { ZgsmAuthConfig } from "../costrict/auth"
 import { CodeReviewService, startReview } from "../costrict/code-review"
 import { ZgsmCodebaseIndexManager, IndexSwitchRequest } from "../costrict/codebase-index"
 import { ErrorCodeManager } from "../costrict/error-code"
+import { writeCostrictAccessToken } from "../costrict/codebase-index/utils"
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
@@ -1615,6 +1616,9 @@ export const webviewMessageHandler = async (
 					)
 				}
 				await provider.upsertProviderProfile(message.text, message.apiConfiguration)
+				if (message.apiConfiguration?.zgsmAccessToken) {
+					writeCostrictAccessToken(message.apiConfiguration?.zgsmAccessToken)
+				}
 			}
 			break
 		case "renameApiConfiguration":

@@ -40,7 +40,7 @@ export const getWellKnownConfig = () => {
 }
 
 // 读取信息
-export const readAccessToken = () => {
+export const readCostrictAccessToken = () => {
 	const homeDir = os.homedir()
 
 	if (!homeDir) {
@@ -60,7 +60,7 @@ export const readAccessToken = () => {
 	}
 	return JSON.parse(fs.readFileSync(tokenFilePath, "utf8"))
 }
-export const writeAccessToken = async (accessToken: string) => {
+export const writeCostrictAccessToken = async (accessToken: string) => {
 	const homeDir = os.homedir()
 
 	if (!homeDir) {

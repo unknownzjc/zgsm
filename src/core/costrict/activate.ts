@@ -34,7 +34,7 @@ import { getClientId } from "../../utils/getClientId"
 import ZgsmCodebaseIndexManager, { zgsmCodebaseIndexManager } from "./codebase-index"
 import { workspaceEventMonitor } from "./codebase-index/workspace-event-monitor"
 import { initGitCheckoutDetector } from "./codebase-index/git-checkout-detector"
-import { writeAccessToken } from "./codebase-index/utils"
+import { writeCostrictAccessToken } from "./codebase-index/utils"
 
 /**
  * Initialization entry
@@ -105,7 +105,7 @@ export async function activate(
 				if (!tokens) {
 					return
 				}
-				writeAccessToken(tokens.access_token).then(async () => {
+				writeCostrictAccessToken(tokens.access_token).then(async () => {
 					await zgsmCodebaseIndexManager.initialize()
 					zgsmCodebaseIndexManager.syncToken()
 					workspaceEventMonitor.initialize()

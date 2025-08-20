@@ -1,3 +1,4 @@
+import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 import { PlatformDetector } from "./platform"
 import { PlatformResponse, VersionInfo } from "./types"
 
@@ -7,15 +8,9 @@ import { PlatformResponse, VersionInfo } from "./types"
  */
 export class VersionApi {
 	private platformDetector: PlatformDetector
-	private baseUrl: string
 
-	/**
-	 * 构造函数
-	 * @param baseUrl API 基础 URL
-	 */
-	constructor(baseUrl: string) {
+	constructor() {
 		this.platformDetector = new PlatformDetector()
-		this.baseUrl = baseUrl
 	}
 
 	/**
@@ -24,9 +19,11 @@ export class VersionApi {
 	 * @throws 当 API 调用失败时抛出错误
 	 */
 	async getVersionList(): Promise<PlatformResponse> {
+		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+		const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 		const platform = this.platformDetector.platform
 		const arch = this.platformDetector.arch
-		const url = `${this.baseUrl}/costrict/${platform}/${arch}/platform.json`
+		const url = `${baseUrl}/costrict/costrict/${platform}/${arch}/platform.json`
 
 		try {
 			const response = await fetch(url)

@@ -28,6 +28,7 @@ import { v7 as uuidv7 } from "uuid"
 import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
 import { getClientId } from "../../../utils/getClientId"
+import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 
 /**
  * codebase-index 客户端主类
@@ -47,7 +48,6 @@ export class CodebaseIndexClient {
 		port: number
 		[key: string]: any
 	} = {} as any
-	private serverEndpoint: string = ""
 
 	private clientId: string = getClientId()
 
@@ -63,12 +63,8 @@ export class CodebaseIndexClient {
 	 * @param config 客户端配置
 	 */
 	constructor(config: CodebaseIndexClientConfig = {}) {
-		if (!config.baseUrl) {
-			throw new Error("baseUrl is required")
-		}
 		this.logger = createLogger(Package.outputChannel)
 		this.config = {
-			baseUrl: config.baseUrl,
 			downloadTimeout: config.downloadTimeout || 30_000,
 			versionInfo: config.versionInfo,
 			publicKey: config.publicKey || process.env.ZGSM_PUBLIC_KEY!,
@@ -80,13 +76,9 @@ export class CodebaseIndexClient {
 
 		// 初始化所有功能模块
 		this.platformDetector = new PlatformDetector()
-		this.versionApi = new VersionApi(this.config.baseUrl)
-		this.packageInfoApi = new PackageInfoApi(this.config.baseUrl)
-		this.fileDownloader = new FileDownloader(
-			this.config.baseUrl,
-			this.config.publicKey,
-			this.config.downloadTimeout,
-		)
+		this.versionApi = new VersionApi()
+		this.packageInfoApi = new PackageInfoApi()
+		this.fileDownloader = new FileDownloader(this.config.publicKey, this.config.downloadTimeout)
 	}
 	/**
 	 * 设置服务器端点
@@ -99,8 +91,9 @@ export class CodebaseIndexClient {
 	 * 设置服务器端点
 	 * @param endpoint 服务器端点地址
 	 */
-	public setServerEndpoint(endpoint: string): void {
-		this.serverEndpoint = endpoint
+	public async getServerEndpoint() {
+		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+		return zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 	}
 
 	/**
@@ -124,12 +117,12 @@ export class CodebaseIndexClient {
 	 * @param token 访问令牌
 	 * @returns 请求头对象
 	 */
-	private getHeaders(token?: string): RequestHeaders {
+	private async getHeaders(token?: string): Promise<RequestHeaders> {
 		return {
 			"X-Request-ID": uuidv7(),
 			"Client-ID": this.clientId,
 			Authorization: token ? `Bearer ${token}` : "",
-			"Server-Endpoint": this.serverEndpoint,
+			"Server-Endpoint": await this.getServerEndpoint(),
 		}
 	}
 
@@ -141,7 +134,7 @@ export class CodebaseIndexClient {
 	 * @returns 响应数据
 	 */
 	private async makeRequest<T>(url: string, options: RequestInit = {}, token?: string): Promise<ApiResponse<T>> {
-		const headers = this.getHeaders(token)
+		const headers = await this.getHeaders(token)
 
 		const defaultOptions: RequestInit = {
 			headers: {
@@ -456,7 +449,7 @@ export class CodebaseIndexClient {
 			body: JSON.stringify({
 				clientId: this.clientId, // 客户ID
 				accessToken: token, // 访问令牌
-				serverEndpoint: this.serverEndpoint, // 云端服务端点
+				serverEndpoint: await this.getServerEndpoint(), // 云端服务端点
 			}),
 		}
 
@@ -545,10 +538,6 @@ export class CodebaseIndexClient {
 	}
 
 	serverEndpointAndHostCheck() {
-		if (!this.serverEndpoint) {
-			throw new Error("Server endpoint is required!")
-		}
-
 		if (!this.serverHost) {
 			throw new Error("codebase-indexer service norun!")
 		}

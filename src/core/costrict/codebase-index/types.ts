@@ -222,10 +222,6 @@ export interface ICodebaseIndexManager {
  */
 export interface CodebaseIndexClientConfig {
 	/**
-	 * API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
-	 */
-	baseUrl?: string
-	/**
 	 * 下载超时时间（毫秒），默认为 30000ms (30秒)
 	 */
 	downloadTimeout?: number

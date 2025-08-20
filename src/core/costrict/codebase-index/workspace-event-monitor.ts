@@ -602,8 +602,6 @@ export class WorkspaceEventMonitor {
 					this.log.warn(`[WorkspaceEventMonitor] ${evts} 事件发送失败: ${response.message}`)
 				}
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : "未知错误"
-
 				// 检查是否达到总重试时间限制（防止无限循环）
 				const elapsedTime = Date.now() - startTime
 				if (elapsedTime >= maxTotalRetryTime) {

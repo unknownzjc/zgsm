@@ -1,3 +1,4 @@
+import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 import { PackageInfoResponse, VersionInfo } from "./types"
 
 /**
@@ -5,16 +6,6 @@ import { PackageInfoResponse, VersionInfo } from "./types"
  * 用于获取客户端文件检验信息
  */
 export class PackageInfoApi {
-	private baseUrl: string
-
-	/**
-	 * 构造函数
-	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com/costrict
-	 */
-	constructor(baseUrl: string) {
-		this.baseUrl = baseUrl
-	}
-
 	/**
 	 * 获取指定版本的包信息
 	 * @param version 版本字符串，格式为 "major.minor.micro"，例如 "1.0.731"
@@ -22,14 +13,16 @@ export class PackageInfoApi {
 	 * @throws 当 API 调用失败时抛出错误
 	 */
 	async getPackageInfo(versionInfo: VersionInfo): Promise<PackageInfoResponse> {
-		const url = `${this.baseUrl}${versionInfo.infoUrl}`
+		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
+		const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+		const url = `${baseUrl}/costrict${versionInfo.infoUrl}`
 
 		try {
 			const response = await fetch(url)
 
 			if (!response.ok) {
 				const errorData = await await response.text()
-				throw new Error(`获取包信息失败: ${errorData}`)
+				throw new Error(`获取包信息失败 (${url}): ${errorData}`)
 			}
 
 			const data: PackageInfoResponse = await response.json()
