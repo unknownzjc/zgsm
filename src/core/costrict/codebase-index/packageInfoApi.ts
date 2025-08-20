@@ -2,15 +2,15 @@ import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 import { PackageInfoResponse, VersionInfo } from "./types"
 
 /**
- * 包信息 API 类
- * 用于获取客户端文件检验信息
+ * Package information API class
+ * Used to get client file verification information
  */
 export class PackageInfoApi {
 	/**
-	 * 获取指定版本的包信息
-	 * @param version 版本字符串，格式为 "major.minor.micro"，例如 "1.0.731"
-	 * @returns Promise<PackageInfoResponse> 返回包信息响应
-	 * @throws 当 API 调用失败时抛出错误
+	 * Get package information for specified version
+	 * @param version Version string in format "major.minor.micro", e.g. "1.0.731"
+	 * @returns Promise<PackageInfoResponse> Returns package information response
+	 * @throws Throws error when API call fails
 	 */
 	async getPackageInfo(versionInfo: VersionInfo): Promise<PackageInfoResponse> {
 		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
@@ -22,16 +22,16 @@ export class PackageInfoApi {
 
 			if (!response.ok) {
 				const errorData = await await response.text()
-				throw new Error(`获取包信息失败 (${url}): ${errorData}`)
+				throw new Error(`Failed to get package information (${url}): ${errorData}`)
 			}
 
 			const data: PackageInfoResponse = await response.json()
 			return data
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new Error(`获取包信息时发生错误: ${error.message}`)
+				throw new Error(`Error occurred while getting package information: ${error.message}`)
 			} else {
-				throw new Error("获取包信息时发生未知错误")
+				throw new Error("Unknown error occurred while getting package information")
 			}
 		}
 	}

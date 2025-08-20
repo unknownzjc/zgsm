@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 
 /**
- * 工作区事件监控配置管理
+ * Workspace event monitoring configuration management
  */
 export class WorkspaceSettings {
 	private static instance: WorkspaceSettings
@@ -16,7 +16,7 @@ export class WorkspaceSettings {
 	}
 
 	/**
-	 * 获取工作区事件监控配置
+	 * Get workspace event monitoring configuration
 	 */
 	public getWorkspaceEventConfig() {
 		const config = vscode.workspace.getConfiguration("zgsm.workspaceEvents")
@@ -30,7 +30,7 @@ export class WorkspaceSettings {
 	}
 
 	/**
-	 * 监听配置变化
+	 * Listen for configuration changes
 	 */
 	public onConfigurationChanged(callback: () => void): vscode.Disposable {
 		return vscode.workspace.onDidChangeConfiguration((e) => {

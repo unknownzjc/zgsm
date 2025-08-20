@@ -10,16 +10,16 @@ import { Package } from "../../../shared/package"
 import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 
 /**
- * 下载进度回调函数类型
- * @param downloaded 已下载的字节数
- * @param total 总字节数
- * @param progress 下载进度百分比 (0-100)
+ * Download progress callback function type
+ * @param downloaded Number of bytes downloaded
+ * @param total Total number of bytes
+ * @param progress Download progress percentage (0-100)
  */
 export type DownloadProgressCallback = (downloaded: number, total: number, progress: number) => void
 
 /**
- * 文件下载器类
- * 用于从远程服务器下载客户端文件，支持进度回调和取消操作
+ * File downloader class
+ * Used to download client files from remote server, supports progress callback and cancel operations
  */
 export class FileDownloader {
 	private publicKey: string
@@ -27,9 +27,9 @@ export class FileDownloader {
 	private timeout: number
 	private logger: ILogger
 	/**
-	 * 构造函数
-	 * @param baseUrl API 基础 URL，默认为 https://zgsm.sangfor.com
-	 * @param timeout 请求超时时间（毫秒），默认为 30000ms (30秒)
+	 * Constructor
+	 * @param baseUrl API base URL, default is https://zgsm.sangfor.com
+	 * @param timeout Request timeout (milliseconds), default is 30000ms (30 seconds)
 	 */
 	constructor(publicKey: string, timeout: number = 30000) {
 		this.publicKey = publicKey
@@ -38,13 +38,13 @@ export class FileDownloader {
 	}
 
 	/**
-	 * 下载客户端文件
-	 * @param version 版本字符串，格式为 "major.minor.micro"
-	 * @param targetPath 文件保存路径
-	 * @param packageInfo 包信息响应对象
-	 * @param onProgress 下载进度回调函数
-	 * @returns Promise<string> 下载完成后返回文件路径
-	 * @throws 当下载失败时抛出错误
+	 * Download client file
+	 * @param version Version string in format "major.minor.micro"
+	 * @param targetPath File save path
+	 * @param packageInfo Package information response object
+	 * @param onProgress Download progress callback function
+	 * @returns Promise<string> Returns file path after download completion
+	 * @throws Throws error when download fails
 	 */
 	async downloadClient(
 		targetPath: string,
@@ -61,35 +61,35 @@ export class FileDownloader {
 		try {
 			await this.downloadFileWithProgress(downloadUrl, targetPath, onProgress)
 
-			// 验证文件完整性
+			// Verify file integrity
 			await this.verifyFileChecksum(targetPath, packageInfo.checksum, packageInfo.checksumAlgo)
-			// 验证文件签名
+			// Verify file signature
 			if (!(await this.verifySignature(packageInfo.checksum, packageInfo.sign, this.publicKey))) {
 				fs.unlink(targetPath, () => {})
-				throw new Error("文件签名验证失败")
+				throw new Error("File signature verification failed")
 			} else {
-				this.logger.info("文件签名验证成功") // 记录日志
+				this.logger.info("File signature verification successful")
 			}
 
-			// 如果不是 Windows 平台，设置文件可执行权限
+			// If not Windows platform, set file executable permission
 			if (packageInfo.os !== "windows") {
 				await fs.promises.chmod(targetPath, 0o755)
 			}
 
-			// 返回下载的文件路径
+			// Return downloaded file path
 			return targetPath
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new Error(`下载客户端文件失败: ${error.message}`)
+				throw new Error(`Failed to download client file: ${error.message}`)
 			}
-			throw new Error("下载客户端文件时发生未知错误")
+			throw new Error("Unknown error occurred while downloading client file")
 		} finally {
 			this.abortController = null
 		}
 	}
 
 	/**
-	 * 取消当前下载操作
+	 * Cancel current download operation
 	 */
 	cancelDownload(): void {
 		if (this.abortController) {
@@ -99,10 +99,10 @@ export class FileDownloader {
 	}
 
 	/**
-	 * 使用流式下载文件，支持进度回调
-	 * @param url 下载 URL
-	 * @param targetPath 目标文件路径
-	 * @param onProgress 进度回调函数
+	 * Download file using streaming, supports progress callback
+	 * @param url Download URL
+	 * @param targetPath Target file path
+	 * @param onProgress Progress callback function
 	 * @private
 	 */
 	private async downloadFileWithProgress(
@@ -164,7 +164,10 @@ export class FileDownloader {
 								await fs.promises.unlink(targetPath)
 							}
 						} catch (cleanupError) {
-							this.logger.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
+							this.logger.error(
+								`[FileDownloader] Error occurred while cleaning up failed file: ${targetPath}`,
+								cleanupError,
+							)
 						}
 						reject(err)
 					})
@@ -176,7 +179,10 @@ export class FileDownloader {
 							await fs.promises.unlink(targetPath)
 						}
 					} catch (cleanupError) {
-						this.logger.error(`[FileDownloader] 清理失败文件时发生错误: ${targetPath}`, cleanupError)
+						this.logger.error(
+							`[FileDownloader] Error occurred while cleaning up failed file: ${targetPath}`,
+							cleanupError,
+						)
 					}
 					reject(err)
 				})
@@ -217,10 +223,10 @@ export class FileDownloader {
 	}
 
 	/**
-	 * 验证文件校验和
-	 * @param filePath 文件路径
-	 * @param expectedChecksum 期望的校验和
-	 * @param algorithm 校验算法，默认为 md5
+	 * Verify file checksum
+	 * @param filePath File path
+	 * @param expectedChecksum Expected checksum
+	 * @param algorithm Checksum algorithm, default is md5
 	 * @private
 	 */
 	async verifyFileChecksum(filePath: string, expectedChecksum: string, algorithm: string = "md5"): Promise<boolean> {
@@ -238,7 +244,11 @@ export class FileDownloader {
 					resolve(true)
 				} else {
 					fs.unlink(filePath, () => {})
-					reject(new Error(`文件校验失败: 期望 ${expectedChecksum}, 实际 ${actualChecksum}`))
+					reject(
+						new Error(
+							`File checksum verification failed: expected ${expectedChecksum}, actual ${actualChecksum}`,
+						),
+					)
 				}
 			})
 

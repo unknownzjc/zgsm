@@ -13,7 +13,7 @@ export interface CheckoutEvent {
 export class GitCheckoutDetector extends EventEmitter {
 	private git: SimpleGit
 	private lastBranch: string | undefined
-	// 防抖时间戳
+	// Debounce timestamp
 	private lastEmit?: NodeJS.Timeout
 
 	constructor(private repoRoot: string) {
@@ -22,12 +22,12 @@ export class GitCheckoutDetector extends EventEmitter {
 		this.init()
 	}
 
-	/** 返回 .git/HEAD 的绝对路径 */
+	/** Returns absolute path of .git/HEAD */
 	get headPath(): string {
 		return path.join(this.repoRoot, ".git", "HEAD")
 	}
 
-	/** 初始化：读取当前分支 */
+	/** Initialize: read current branch */
 	private async init(): Promise<void> {
 		try {
 			this.lastBranch = await this.currentBranch()
@@ -36,18 +36,18 @@ export class GitCheckoutDetector extends EventEmitter {
 		}
 	}
 
-	/** 对外暴露：当检测到 checkout 时触发 'checkout' 事件 */
+	/** Exposed externally: trigger 'checkout' event when checkout is detected */
 	async onHeadChanged(): Promise<void> {
 		clearTimeout(this.lastEmit)
 
 		this.lastEmit = setTimeout(async () => {
 			try {
 				const newBranch = await this.currentBranch()
-				// 校验：必须是本地分支
+				// Verify: must be a local branch
 				if (!newBranch || !newBranch.startsWith("refs/heads/")) return
 
 				const branchName = newBranch.replace("refs/heads/", "")
-				if (branchName === this.lastBranch?.replace("refs/heads/", "")) return // 未改变
+				if (branchName === this.lastBranch?.replace("refs/heads/", "")) return // Unchanged
 
 				const event: CheckoutEvent = {
 					oldBranch: this.lastBranch,
@@ -56,22 +56,22 @@ export class GitCheckoutDetector extends EventEmitter {
 				this.lastBranch = branchName
 				this.emit("checkout", event)
 			} catch {
-				/* 读取失败时静默忽略 */
+				/* Silently ignore when reading fails */
 			}
 		}, 1000)
 	}
 
-	/** 获取当前本地分支 ref；失败时返回 undefined */
+	/** Get current local branch ref; returns undefined on failure */
 	private async currentBranch(): Promise<string | undefined> {
 		try {
-			// 1. 先尝试拿本地分支 ref
+			// 1. First try to get local branch ref
 			const ref = (await this.git.raw(["symbolic-ref", "HEAD"])).trim()
-			return ref // 形如 refs/heads/main
+			return ref // e.g. refs/heads/main
 		} catch {
-			// 2. 失败说明可能是游离 HEAD，用短哈希当名字
+			// 2. Failure may indicate detached HEAD, use short hash as name
 			try {
 				const sha = (await this.git.revparse(["--short", "HEAD"])).trim()
-				return sha // 形如 a1b2c3d
+				return sha // e.g. a1b2c3d
 			} catch {
 				return undefined
 			}
@@ -85,43 +85,46 @@ export function initGitCheckoutDetector(context: vscode.ExtensionContext, logger
 
 	const detector = new GitCheckoutDetector(root)
 
-	// 用 VS Code 的 watcher 监听 .git/HEAD
+	// Use VS Code's watcher to monitor .git/HEAD
 	const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, ".git/HEAD"))
 	watcher.onDidCreate(() => detector.onHeadChanged())
 	watcher.onDidChange(() => detector.onHeadChanged())
 
-	// 收到事件后弹通知
+	// Show notification after receiving event
 	detector?.on("checkout", async ({ oldBranch, newBranch }) => {
 		oldBranch = oldBranch?.replace("refs/heads/", "")
 		// newBranch
 		try {
 			const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
 
-			// 获取工作区路径
+			// Get workspace path
 			const workspacePath = root
 			const rebuildType = "all"
 			const path = root
 
-			// 构建 IndexBuildRequest
+			// Build IndexBuildRequest
 			const indexBuildRequest = {
 				workspace: workspacePath,
 				path: path,
 				type: rebuildType,
 			} as IndexBuildRequest
 
-			// 调用 ZgsmCodebaseIndexManager.triggerIndexBuild()
+			// Call ZgsmCodebaseIndexManager.triggerIndexBuild()
 			const result = await zgsmCodebaseIndexManager.triggerIndexBuild(indexBuildRequest)
 
 			if (result.success) {
-				vscode.window.showInformationMessage(`分支切换：${oldBranch ?? "(未知)"} → ${newBranch}`)
-				logger.info(`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] 成功触发索引重新构建: ${rebuildType}`)
+				vscode.window.showInformationMessage(`Branch switched: ${oldBranch ?? "(unknown)"} → ${newBranch}`)
+				logger.info(
+					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Successfully triggered index rebuild: ${rebuildType}`,
+				)
 			} else {
 				logger.error(
-					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] 触发索引重新构建失败: ${result.message}`,
+					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Failed to trigger index rebuild: ${result.message}`,
 				)
 			}
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "触发索引重新构建时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while triggering index rebuild"
 			logger.error(`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] ${errorMessage}`)
 		}
 	})

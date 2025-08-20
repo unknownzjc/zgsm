@@ -11,7 +11,7 @@ import { getWorkspacePath } from "../../../utils/path"
 import type { ClineProvider } from "../../webview/ClineProvider"
 
 /**
- * 工作区事件监控配置
+ * Workspace event monitoring configuration
  */
 export interface WorkspaceEventMonitorConfig {
 	enabled: boolean
@@ -22,7 +22,7 @@ export interface WorkspaceEventMonitorConfig {
 }
 
 /**
- * codebase-indexer 事件处理默认配置
+ * Default configuration for codebase-indexer event handling
  */
 const DEFAULT_CONFIG: WorkspaceEventMonitorConfig = {
 	enabled: true,
@@ -33,8 +33,8 @@ const DEFAULT_CONFIG: WorkspaceEventMonitorConfig = {
 }
 
 /**
- * 工作区事件监控器（单例模式）
- * 负责监听工作区事件并推送给服务端
+ * Workspace event monitor (singleton pattern)
+ * Responsible for monitoring workspace events and pushing them to the server
  */
 export class WorkspaceEventMonitor {
 	private static instance: WorkspaceEventMonitor
@@ -47,19 +47,19 @@ export class WorkspaceEventMonitor {
 	private logger?: ILogger
 	private clineProvider?: ClineProvider
 	private ignoreController: CoIgnoreController
-	// 用于解决命令行删除文件问题的文件系统监控器
+	// File system monitor to solve command line file deletion issues
 	private fileSystemWatcher: FSWatcher | null = null
 
-	// 用于解决无内容变更保存问题的文档状态跟踪
+	// Document status tracking to solve save issues without content changes
 	private documentContentCache: Map<string, { contentHash: string; version: number }> = new Map()
 
 	/**
-	 * 私有构造函数，确保单例模式
+	 * Private constructor to ensure singleton pattern
 	 */
 	private constructor() {
 		this.ignoreController = new CoIgnoreController(getWorkspacePath())
 		this.ignoreController.initialize().catch((error) => {
-			this.log.error("[WorkspaceEventMonitor] 初始化忽略控制器失败:", error.message)
+			this.log.error("[WorkspaceEventMonitor] Failed to initialize ignore controller:", error.message)
 		})
 	}
 
@@ -67,7 +67,7 @@ export class WorkspaceEventMonitor {
 		return this.logger || console
 	}
 	/**
-	 * 获取单例实例
+	 * Get singleton instance
 	 */
 	public static getInstance(): WorkspaceEventMonitor {
 		if (!WorkspaceEventMonitor.instance) {
@@ -77,55 +77,56 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 初始化事件监控器
+	 * Initialize event monitor
 	 */
 	public async initialize(): Promise<void> {
 		if (this.isInitialized) {
-			this.log.info("[WorkspaceEventMonitor] 事件监控器已经初始化，跳过")
+			this.log.info("[WorkspaceEventMonitor] Event monitor already initialized, skipping")
 			return
 		}
 
 		try {
-			this.log.info("[WorkspaceEventMonitor] 开始初始化事件监控器")
+			this.log.info("[WorkspaceEventMonitor] Starting to initialize event monitor")
 
-			// 注册VSCode事件监听器
+			// Register VSCode event listeners
 			this.registerEventListeners()
 
-			// 处理当前已打开的工作区
+			// Handle currently opened workspaces
 			this.handleInitialWorkspaceOpen()
 
 			this.isInitialized = true
-			this.log.info("[WorkspaceEventMonitor] 事件监控器初始化成功")
+			this.log.info("[WorkspaceEventMonitor] Event monitor initialized successfully")
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "初始化事件监控器时发生未知错误"
-			this.log.error("[WorkspaceEventMonitor] 初始化失败:", errorMessage)
-			// 在测试环境中跳过遥测服务
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while initializing event monitor"
+			this.log.error("[WorkspaceEventMonitor] Initialization failed:", errorMessage)
+			// Skip telemetry service in test environment
 			try {
 				if (TelemetryService.instance) {
 					TelemetryService.instance.captureError(CodeBaseError.SyncFailed)
 				}
 			} catch {
-				// 忽略遥测服务相关错误
+				// Ignore telemetry service related errors
 			}
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 处理VSCode关闭事件
+	 * Handle VSCode close event
 	 */
 	public async handleVSCodeClose(): Promise<void> {
-		this.log.info("[WorkspaceEventMonitor] 检测到VSCode关闭事件")
+		this.log.info("[WorkspaceEventMonitor] VSCode close event detected")
 
-		// 发送工作区关闭事件
+		// Send workspace close events
 		await this.sendWorkspaceCloseEvents()
 
-		// 继续销毁事件监控器
+		// Continue to destroy event monitor
 		await this.dispose()
 	}
 
 	/**
-	 * 发送工作区关闭事件
+	 * Send workspace close events
 	 */
 	private async sendWorkspaceCloseEvents(): Promise<void> {
 		if (!(await this.ensureServiceEnabled())) return
@@ -137,11 +138,11 @@ export class WorkspaceEventMonitor {
 
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] Unable to determine current workspace")
 			return
 		}
 
-		// 创建关闭事件
+		// Create close events
 		const closeEvents: WorkspaceEventData[] = workspaceFolders.map((folder) => ({
 			eventType: "close_workspace",
 			eventTime: `${Date.now()}`,
@@ -159,65 +160,65 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 销毁事件监控器
+	 * Destroy event monitor
 	 */
 	public async dispose() {
-		this.log.info("[WorkspaceEventMonitor] 开始销毁事件监控器")
-		// 取消定时器
+		this.log.info("[WorkspaceEventMonitor] Starting to destroy event monitor")
+		// Cancel timers
 		if (this.flushTimer) {
 			clearTimeout(this.flushTimer)
 			this.flushTimer = null
 		}
 
-		// 清理事件监听器
+		// Clean up event listeners
 		this.disposables.forEach((disposable) => disposable.dispose())
 		this.disposables = []
 
-		// 关闭文件系统监控器
+		// Close file system monitor
 		if (this.fileSystemWatcher) {
 			this.fileSystemWatcher.close()
 			this.fileSystemWatcher = null
-			this.log.info("[WorkspaceEventMonitor] 文件系统监控器已关闭")
+			this.log.info("[WorkspaceEventMonitor] File system monitor closed")
 		}
 
-		// 清理文档内容缓存
+		// Clean up document content cache
 		this.documentContentCache.clear()
-		this.log.info("[WorkspaceEventMonitor] 文档内容缓存已清理")
+		this.log.info("[WorkspaceEventMonitor] Document content cache cleared")
 
-		// 发送剩余事件
+		// Send remaining events
 		if (this.eventBuffer.size > 0) {
 			await this.flushEventsSync()
 		}
 
 		this.isInitialized = false
-		this.log.info("[WorkspaceEventMonitor] 事件监控器已销毁")
+		this.log.info("[WorkspaceEventMonitor] Event monitor disposed")
 	}
 
 	/**
-	 * 更新配置
+	 * Update configuration
 	 */
 	public updateConfig(newConfig: Partial<WorkspaceEventMonitorConfig>): void {
 		this.config = { ...this.config, ...newConfig }
-		this.log.info("[WorkspaceEventMonitor] 配置已更新:", this.config)
+		this.log.info("[WorkspaceEventMonitor] Configuration updated:", this.config)
 	}
 
 	/**
-	 * 注册事件监听器
+	 * Register event listeners
 	 */
 	private registerEventListeners(): void {
-		// 安全地检查 VSCode API 是否存在
+		// Safely check if VSCode API exists
 		if (typeof vscode === "undefined" || !vscode.workspace) {
-			this.log.warn("[WorkspaceEventMonitor] VSCode API 不可用，跳过事件监听器注册")
+			this.log.warn("[WorkspaceEventMonitor] VSCode API not available, skipping event listener registration")
 			return
 		}
 
 		try {
-			// 文件保存事件
+			// File save event
 			if (vscode.workspace.onDidSaveTextDocument) {
 				this.disposables.push(vscode.workspace.onDidSaveTextDocument(this.handleDocumentSave.bind(this)))
 			}
 
-			// 文件删除/重命名事件
+			// File delete/rename events
 			if (vscode.workspace.onDidDeleteFiles) {
 				this.disposables.push(vscode.workspace.onDidDeleteFiles(this.handleFileDelete.bind(this)))
 			}
@@ -225,63 +226,64 @@ export class WorkspaceEventMonitor {
 				this.disposables.push(vscode.workspace.onDidRenameFiles(this.handleFileRename.bind(this)))
 			}
 
-			// 工作区文件夹变化事件
+			// Workspace folder change events
 			if (vscode.workspace.onDidChangeWorkspaceFolders) {
 				this.disposables.push(
 					vscode.workspace.onDidChangeWorkspaceFolders(this.handleWorkspaceChange.bind(this)),
 				)
 			}
 
-			// 扩展激活事件
+			// Extension activation event
 			if (vscode.workspace.onWillCreateFiles) {
 				this.disposables.push(vscode.workspace.onWillCreateFiles(this.handleWillCreateFiles.bind(this)))
 			}
 
-			// 注册文件系统监控器来解决命令行删除文件问题
+			// Register file system monitor to solve command line file deletion issues
 			this.registerFileSystemWatcher()
 		} catch (error) {
-			this.log.warn("[WorkspaceEventMonitor] 注册事件监听器失败:", error)
+			this.log.warn("[WorkspaceEventMonitor] Failed to register event listeners:", error)
 		}
 	}
 
 	/**
-	 * 注册文件系统监控器
+	 * Register file system monitor
 	 */
 	private registerFileSystemWatcher(): void {
 		const workspaceFolders = vscode.workspace.workspaceFolders
 		if (!workspaceFolders || workspaceFolders.length === 0) {
-			this.log.warn("[WorkspaceEventMonitor] 没有工作区文件夹，跳过文件系统监控器注册")
+			this.log.warn("[WorkspaceEventMonitor] No workspace folders, skipping file system monitor registration")
 			return
 		}
 
-		// 监控所有工作区文件夹
+		// Monitor all workspace folders
 		const watchPaths = workspaceFolders.map((folder) => folder.uri.fsPath)
 
 		try {
 			this.fileSystemWatcher = watch(watchPaths, {
-				ignored: /(^|[\/\\])\../, // 忽略隐藏文件
+				ignored: /(^|[\/\\])\../, // Ignore hidden files
 				persistent: true,
-				ignoreInitial: true, // 忽略初始扫描
+				ignoreInitial: true, // Ignore initial scan
 				awaitWriteFinish: {
 					stabilityThreshold: 1000,
 					pollInterval: 100,
 				},
 			})
 
-			// 监听文件删除事件
+			// Listen for file delete events
 			this.fileSystemWatcher?.on("unlink", (filePath: string) => {
-				// this.log.info(`[WorkspaceEventMonitor] 文件系统监控器检测到文件删除: ${filePath}`)
 				this.handleFileSystemFileDelete(filePath)
 			})
 
-			this.log.info(`[WorkspaceEventMonitor] 文件系统监控器已注册，监控路径: ${watchPaths.join(", ")}`)
+			this.log.info(
+				`[WorkspaceEventMonitor] File system monitor registered, monitoring paths: ${watchPaths.join(", ")}`,
+			)
 		} catch (error) {
-			this.log.error("[WorkspaceEventMonitor] 注册文件系统监控器失败:", error)
+			this.log.error("[WorkspaceEventMonitor] Failed to register file system monitor:", error)
 		}
 	}
 
 	/**
-	 * 处理文件系统检测到的文件删除事件
+	 * Handle file delete event detected by file system
 	 */
 	private async handleFileSystemFileDelete(filePath: string) {
 		if (!this.ignoreController.validateAccess(filePath)) return
@@ -296,11 +298,10 @@ export class WorkspaceEventMonitor {
 		}
 
 		this.addEvent(eventKey, eventData)
-		// this.log.info(`[WorkspaceEventMonitor] 文件系统删除事件已添加到缓冲区: ${filePath}`)
 	}
 
 	/**
-	 * 处理文档保存事件
+	 * Handle document save event
 	 */
 	private async handleDocumentSave(document: vscode.TextDocument) {
 		if (!(await this.ensureServiceEnabled())) return
@@ -314,35 +315,33 @@ export class WorkspaceEventMonitor {
 		const currentContentHash = computeHash(document.getText())
 		const currentVersion = document.version
 
-		// 调试日志：记录保存事件触发
-		this.log.info(`[WorkspaceEventMonitor] 文档保存事件触发: ${filePath}`)
-		// this.log.info(`[WorkspaceEventMonitor] 文档语言ID: ${document.languageId}`)
-		// this.log.info(`[WorkspaceEventMonitor] 文档版本: ${currentVersion}`)
-		// this.log.info(`[WorkspaceEventMonitor] 文档内容hash: ${currentContentHash}`)
+		// Debug log: record save event trigger
+		this.log.info(`[WorkspaceEventMonitor] Document save event triggered: ${filePath}`)
 
-		// 检查文档内容是否真的发生了变化
+		// Check if document content really changed
 		const cachedInfo = this.documentContentCache.get(filePath)
 		let hasContentChanged = false
 
 		if (cachedInfo) {
-			// 比较内容
+			// Compare content
 			hasContentChanged = cachedInfo.contentHash !== currentContentHash
-			this.log.info(`[WorkspaceEventMonitor] 内容变更检查: ${hasContentChanged ? "有变更" : "无变更"}`)
-			// this.log.info(`[WorkspaceEventMonitor] 缓存版本: ${cachedInfo.version}, 当前版本: ${currentVersion}`)
+			this.log.info(
+				`[WorkspaceEventMonitor] Content change check: ${hasContentChanged ? "Changed" : "No change"}`,
+			)
 		} else {
 			hasContentChanged = true
-			this.log.info(`[WorkspaceEventMonitor] 首次保存文档，无缓存信息`)
+			this.log.info(`[WorkspaceEventMonitor] First time saving document, no cache information`)
 		}
 
-		// 更新缓存
+		// Update cache
 		this.documentContentCache.set(filePath, {
 			contentHash: currentContentHash,
 			version: currentVersion,
 		})
 
-		// 只有在内容真正发生变化时才触发事件
+		// Only trigger event when content really changes
 		if (hasContentChanged) {
-			this.log.info(`[WorkspaceEventMonitor] 触发修改事件`)
+			this.log.info(`[WorkspaceEventMonitor] Triggering modify event`)
 			const eventKey = `modify:${filePath}`
 			const eventData: WorkspaceEventData = {
 				eventType: "modify_file",
@@ -353,26 +352,26 @@ export class WorkspaceEventMonitor {
 
 			this.addEvent(eventKey, eventData)
 		} else {
-			this.log.info(`[WorkspaceEventMonitor] 文档内容无变更，跳过事件触发`)
+			this.log.info(`[WorkspaceEventMonitor] Document content unchanged, skipping event trigger`)
 		}
 	}
 
 	/**
-	 * 处理文件删除事件
+	 * Handle file delete event
 	 */
 	private async handleFileDelete(event: vscode.FileDeleteEvent) {
 		if (!(await this.ensureServiceEnabled())) return
 
-		// 调试日志：记录删除事件触发
-		this.log.info(`[WorkspaceEventMonitor] 文件删除事件触发，删除文件数量: ${event.files.length}`)
-		// this.log.info(`[WorkspaceEventMonitor] 删除事件时间: ${new Date().toISOString()}`)
+		// Debug log: record delete event trigger
+		this.log.info(
+			`[WorkspaceEventMonitor] File delete event triggered, number of deleted files: ${event.files.length}`,
+		)
 
 		event.files.forEach((uri) => {
 			if (!this.ignoreController.validateAccess(uri.fsPath)) return
 			if (uri.scheme !== "file") return
 
-			this.log.info(`[WorkspaceEventMonitor] 删除文件: ${uri.fsPath}`)
-			// this.log.info(`[WorkspaceEventMonitor] 删除文件 scheme: ${uri.scheme}`)
+			this.log.info(`[WorkspaceEventMonitor] Deleting file: ${uri.fsPath}`)
 
 			const eventKey = `delete:${uri.fsPath}`
 			const eventData: WorkspaceEventData = {
@@ -387,7 +386,7 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 处理文件重命名/移动事件
+	 * Handle file rename/move event
 	 */
 	private async handleFileRename(event: vscode.FileRenameEvent) {
 		if (!(await this.ensureServiceEnabled())) return
@@ -409,12 +408,12 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 处理工作区变化事件
+	 * Handle workspace change event
 	 */
 	private async handleWorkspaceChange(event: vscode.WorkspaceFoldersChangeEvent) {
 		if (!(await this.ensureServiceEnabled())) return
 
-		// 处理新增的工作区
+		// Handle added workspaces
 		event.added.forEach((folder) => {
 			if (!this.ignoreController.validateAccess(folder.uri.fsPath)) return
 			const eventKey = `workspace:open:${folder.uri.fsPath}`
@@ -426,7 +425,7 @@ export class WorkspaceEventMonitor {
 			this.addEvent(eventKey, eventData)
 		})
 
-		// 处理移除的工作区
+		// Handle removed workspaces
 		event.removed.forEach((folder) => {
 			if (!this.ignoreController.validateAccess(folder.uri.fsPath)) return
 			const eventKey = `workspace:close:${folder.uri.fsPath}`
@@ -440,7 +439,7 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 处理即将创建文件事件
+	 * Handle file creation event
 	 */
 	private async handleWillCreateFiles(event: vscode.FileWillCreateEvent) {
 		if (!(await this.ensureServiceEnabled())) return
@@ -462,7 +461,7 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 处理工作区初始化打开事件
+	 * Handle workspace initial open event
 	 */
 	private async handleInitialWorkspaceOpen() {
 		if (!(await this.ensureServiceEnabled())) return
@@ -485,24 +484,24 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 添加事件到缓冲区
+	 * Add event to buffer
 	 */
 	private addEvent(key: string, event: WorkspaceEventData): void {
-		// 去重：使用事件键作为唯一标识符
+		// Deduplication: use event key as unique identifier
 		this.eventBuffer.set(key, event)
 
-		// 检查是否需要立即刷新
+		// Check if immediate flush is needed
 		const now = Date.now()
 		if (now - this.lastFlushTime >= this.config.debounceMs) {
 			this.scheduleFlush()
 		} else if (this.eventBuffer.size >= this.config.batchSize) {
-			// 如果缓冲区已满，立即刷新
+			// If buffer is full, flush immediately
 			this.flushEvents()
 		}
 	}
 
 	/**
-	 * 计划刷新事件
+	 * Schedule event flush
 	 */
 	private scheduleFlush(): void {
 		if (this.flushTimer) {
@@ -513,8 +512,8 @@ export class WorkspaceEventMonitor {
 			try {
 				await this.flushEvents()
 			} catch (error) {
-				this.log.error("[WorkspaceEventMonitor] 刷新事件时发生错误:", error)
-				// 确保在错误情况下也重置定时器
+				this.log.error("[WorkspaceEventMonitor] Error occurred while flushing events:", error)
+				// Ensure timer is reset even in error case
 			} finally {
 				this.flushTimer = null
 			}
@@ -522,19 +521,19 @@ export class WorkspaceEventMonitor {
 	}
 
 	/**
-	 * 刷新事件到服务端
+	 * Flush events to server
 	 */
 	private async flushEvents(): Promise<void> {
 		if (this.eventBuffer.size === 0) return
 
-		// 获取当前工作区
+		// Get current workspace
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] Unable to determine current workspace")
 			return
 		}
 
-		// 准备事件数据
+		// Prepare event data
 		const events = Array.from(this.eventBuffer.values())
 		this.eventBuffer.clear()
 		this.lastFlushTime = Date.now()
@@ -544,24 +543,24 @@ export class WorkspaceEventMonitor {
 			this.flushTimer = null
 		}
 
-		// 发送到服务端
+		// Send to server
 		await this.sendEventsToServer(workspace, events)
 	}
 
 	/**
-	 * 同步刷新事件到服务端（用于VSCode关闭时的紧急发送）
+	 * Synchronously flush events to server (for emergency sending when VSCode closes)
 	 */
 	private async flushEventsSync(): Promise<void> {
 		if (this.eventBuffer.size === 0) return
 
-		// 获取当前工作区
+		// Get current workspace
 		const workspace = this.getCurrentWorkspace()
 		if (!workspace) {
-			this.log.warn("[WorkspaceEventMonitor] 无法确定当前工作区")
+			this.log.warn("[WorkspaceEventMonitor] Unable to determine current workspace")
 			return
 		}
 
-		// 准备事件数据
+		// Prepare event data
 		const events = Array.from(this.eventBuffer.values())
 		this.eventBuffer.clear()
 		this.lastFlushTime = Date.now()
@@ -571,12 +570,12 @@ export class WorkspaceEventMonitor {
 			this.flushTimer = null
 		}
 
-		// 发送到服务端
+		// Send to server
 		await this.sendEventsToServer(workspace, events)
 	}
 
 	/**
-	 * 发送事件到服务端
+	 * Send events to server
 	 */
 	private async sendEventsToServer(workspace: string, events: WorkspaceEventData[]): Promise<void> {
 		if (events.length === 0) return
@@ -588,56 +587,60 @@ export class WorkspaceEventMonitor {
 		const evts = [...new Set(events.map((v) => v.eventType))].join()
 		let retryCount = 0
 		const startTime = Date.now()
-		const maxTotalRetryTime = 30000 // 30秒总重试时间限制
+		const maxTotalRetryTime = 30000 // 30 seconds total retry time limit
 
 		while (retryCount <= this.config.maxRetries) {
 			try {
-				this.log.info(`[WorkspaceEventMonitor] ${evts} 发送 ${events.length} 个事件到服务端`)
+				this.log.info(`[WorkspaceEventMonitor] ${evts} sending ${events.length} events to server`)
 				const response = await ZgsmCodebaseIndexManager.getInstance().publishWorkspaceEvents(request)
 
 				if (response.success) {
-					this.log.info(`[WorkspaceEventMonitor] ${evts} 事件发送成功，消息响应: ${response.data}`)
+					this.log.info(
+						`[WorkspaceEventMonitor] ${evts} events sent successfully, response: ${response.data}`,
+					)
 					return
 				} else {
-					this.log.warn(`[WorkspaceEventMonitor] ${evts} 事件发送失败: ${response.message}`)
+					this.log.warn(`[WorkspaceEventMonitor] ${evts} events send failed: ${response.message}`)
 				}
 			} catch (error) {
-				// 检查是否达到总重试时间限制（防止无限循环）
+				// Check if total retry time limit is reached (prevent infinite loop)
 				const elapsedTime = Date.now() - startTime
 				if (elapsedTime >= maxTotalRetryTime) {
 					this.log.error(
-						`[WorkspaceEventMonitor] ${evts} 达到总重试时间限制(${maxTotalRetryTime}ms)，放弃重试`,
+						`[WorkspaceEventMonitor] ${evts} reached total retry time limit(${maxTotalRetryTime}ms), giving up`,
 					)
 					break
 				}
 
 				if (retryCount < this.config.maxRetries) {
-					// 使用指数退避策略
+					// Use exponential backoff strategy
 					const delayMs = Math.min(
 						this.config.retryDelayMs * Math.pow(2, retryCount),
-						10000, // 最大延迟10秒
+						10000, // Maximum delay 10 seconds
 					)
-					// this.log.error(`[WorkspaceEventMonitor] ${evts} 发送事件失败 (${delayMs}ms 后重试):`, errorMessage)
-					this.log.info(`[WorkspaceEventMonitor] ${evts} ${retryCount + 1}/${this.config.maxRetries}重试失败`)
+					// this.log.error(`[WorkspaceEventMonitor] ${evts} Failed to send event (retry after ${delayMs}ms):`, errorMessage)
+					this.log.info(
+						`[WorkspaceEventMonitor] ${evts} ${retryCount + 1}/${this.config.maxRetries} retry failed`,
+					)
 					await this.delay(delayMs)
 					retryCount++
 				} else {
 					this.log.error(
-						`[WorkspaceEventMonitor] ${evts} 达到最大重试次数(${this.config.maxRetries})，事件发送失败`,
+						`[WorkspaceEventMonitor] ${evts} reached maximum retry count(${this.config.maxRetries}), event send failed`,
 					)
 					try {
 						TelemetryService.instance?.captureError?.(CodeBaseError.SyncFailed)
 					} catch {
-						// 忽略遥测服务相关错误
+						// Ignore telemetry service related errors
 					}
-					break // 明确退出循环
+					break // Explicitly exit loop
 				}
 			}
 		}
 	}
 
 	/**
-	 * 获取当前工作区路径
+	 * Get current workspace path
 	 */
 	private getCurrentWorkspace(): string | null {
 		const workspaceFolders = vscode.workspace.workspaceFolders
@@ -645,12 +648,12 @@ export class WorkspaceEventMonitor {
 			return null
 		}
 
-		// 如果有多个工作区，使用第一个
+		// If there are multiple workspaces, use the first one
 		return workspaceFolders[0].uri.fsPath
 	}
 
 	/**
-	 * 延迟函数
+	 * Delay function
 	 */
 	private delay(ms: number): Promise<void> {
 		return new Promise((resolve) => setTimeout(resolve, ms))
@@ -663,7 +666,7 @@ export class WorkspaceEventMonitor {
 		this.clineProvider = clineProvider
 	}
 	/**
-	 * 获取当前状态
+	 * Get current status
 	 */
 	public getStatus(): {
 		isInitialized: boolean
@@ -693,6 +696,6 @@ export class WorkspaceEventMonitor {
 }
 
 /**
- * 全局工作区事件监控器实例
+ * Global workspace event monitor instance
  */
 export const workspaceEventMonitor = WorkspaceEventMonitor.getInstance()

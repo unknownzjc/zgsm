@@ -23,8 +23,8 @@ import { getWorkspacePath } from "../../../utils/path"
 import pWaitFor from "p-wait-for"
 
 /**
- * CodebaseIndex 管理器实现类（单例模式）
- * 负责管理 codebase-index 客户端的初始化、版本检查、升级和重启等操作
+ * CodebaseIndex manager implementation class (singleton pattern)
+ * Responsible for managing codebase-index client initialization, version checking, upgrades and restart operations
  */
 export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	public static instance: ZgsmCodebaseIndexManager
@@ -39,34 +39,34 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		time: 0,
 	}
 
-	// 定时检测相关属性
+	// Health check related properties
 	private healthCheckTimer: NodeJS.Timeout | null = null
 	private healthCheckFailureCount: number = 0
 	private isHealthCheckRunning: boolean = false
 
-	// // 定时索引构建相关属性
+	// // Index build polling related properties
 	// private indexBuildPollTimer: NodeJS.Timeout | null = null
 	// private isIndexBuildPollRunning: boolean = false
 
-	// 防重复调用的缓存
+	// Cache to prevent duplicate calls
 	private pendingIndexStatusRequests = new Map<string, Promise<ApiResponse<IndexStatusResponse>>>()
-	// 最近完成的请求缓存（防止短时间内重复调用）
+	// Recently completed request cache (prevents duplicate calls in short time)
 	private recentCompletedRequests = new Map<string, { result: ApiResponse<IndexStatusResponse>; timestamp: number }>()
 
-	// 常量定义
-	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1分钟
-	private readonly MAX_FAILURE_COUNT: number = 2 // 最大失败次数
-	// private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10分钟
+	// Constants definition
+	private readonly HEALTH_CHECK_INTERVAL: number = 60000 // 1 minute
+	private readonly MAX_FAILURE_COUNT: number = 2 // Maximum failure count
+	// private readonly INDEX_BUILD_POLL_INTERVAL: number = 600_000 // 10 minutes
 	/**
-	 * 私有构造函数，确保单例模式
+	 * Private constructor to ensure singleton pattern
 	 */
 	private constructor() {
 		this.platformDetector = new PlatformDetector()
 	}
 
 	/**
-	 * 获取单例实例
-	 * @returns ZgsmCodebaseIndexManager 实例
+	 * Get singleton instance
+	 * @returns ZgsmCodebaseIndexManager instance
 	 */
 	public static getInstance(): ZgsmCodebaseIndexManager {
 		if (!ZgsmCodebaseIndexManager.instance) {
@@ -76,8 +76,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 设置日志提供者
-	 * @param logger 日志提供者
+	 * Set logger provider
+	 * @param logger Logger provider
 	 */
 	public setLogger(logger: ILogger): void {
 		this.logger = logger
@@ -87,13 +87,13 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 内部日志方法
-	 * @param message 日志消息
-	 * @param type 日志类型
-	 * @param id 日志ID
+	 * Internal logging method
+	 * @param message Log message
+	 * @param type Log type
+	 * @param id Log ID
 	 */
 	private log(message: string, type: "info" | "error" = "info", id: string = ""): void {
-		// 如果没有提供日志提供者，使用 console.log
+		// If no logger provider is provided, use console.log
 		if (this.logger?.[type]) {
 			this.logger[type](`[${id}] ${message}`)
 		} else {
@@ -103,51 +103,54 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 初始化客户端
+	 * Initialize client
 	 */
 	public async initialize(): Promise<void> {
 		if (this.isInitialized) {
-			this.log("CodebaseKeeper 客户端已经初始化，跳过", "info", "ZgsmCodebaseIndexManager")
+			this.log("CodebaseKeeper client already initialized, skipping", "info", "ZgsmCodebaseIndexManager")
 			return
 		}
 
-		// 检查本地是否已安装客户端
+		// Check if client is already installed locally
 		try {
-			this.log("初始化 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
+			this.log("Initializing CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
 
-			// 创建客户端配置
+			// Create client configuration
 			const config: CodebaseIndexClientConfig = {
 				downloadTimeout: 30_000,
 				getLocalVersion: () => this.getLocalVersion(),
 			}
 
-			// 创建客户端实例
+			// Create client instance
 			this.client = new CodebaseIndexClient(config)
-			// 检查并升级客户端
+			// Check and upgrade client
 			const state = await this.checkAndUpgradeClient()
 			if (state === "failed") {
-				vscode.window.showWarningMessage(`Codebase 启动/升级失败，请重启编辑器尝试`)
+				vscode.window.showWarningMessage(`Codebase startup/upgrade failed, please restart editor and try again`)
 				return
 			}
 			if (state === "needZgsm") {
-				this.log("仅 Costrict 提供商支持此服务", "info", "ZgsmCodebaseIndexManager")
+				this.log("Only Costrict provider supports this service", "info", "ZgsmCodebaseIndexManager")
 				return
 			}
 
-			// 停止所有定时任务
+			// Stop all scheduled tasks
 			this.stopHealthCheck()
 			// this.stopIndexBuildPoll()
 
 			const versionInfo = await this.getLocalVersion()
 			await this.client!.startClient(versionInfo!, state !== "noUpdate")
 			this.isInitialized = true
-			this.log("CodebaseKeeper 客户端初始化成功", "info", "ZgsmCodebaseIndexManager")
+			this.log("CodebaseKeeper client initialized successfully", "info", "ZgsmCodebaseIndexManager")
 
-			// 启动定时检测
+			// Start scheduled detection
 			this.startHealthCheck()
 			// this.triggerIndexBuildPoll()
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "初始化 CodebaseKeeper 客户端时发生未知错误"
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Unknown error occurred while initializing CodebaseKeeper client"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
@@ -158,37 +161,38 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 重启客户端
+	 * Restart client
 	 */
 	public async restartClient(): Promise<void> {
 		try {
-			this.log("开始重启 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
+			this.log("Starting to restart CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
 
-			// 重新初始化客户端
+			// Re-initialize client
 			this.isInitialized = false
 			await this.initialize()
 
-			this.log("CodebaseKeeper 客户端重启成功", "info", "ZgsmCodebaseIndexManager")
+			this.log("CodebaseKeeper client restarted successfully", "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "重启 CodebaseKeeper 客户端时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while restarting CodebaseKeeper client"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 检查并升级客户端
+	 * Check and upgrade client
 	 */
 	public async checkAndUpgradeClient(): Promise<
 		"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm" | "updating"
 	> {
 		try {
-			// 检查本地是否已安装客户端
+			// Check if client is already installed locally
 			const localVersionInfo = await this.getLocalVersion()
 			if (localVersionInfo && localVersionInfo.status === "downloading") {
 				try {
-					this.log(`已存在客户端下载操作...`, "info", "ZgsmCodebaseIndexManager")
+					this.log(`Client download operation already in progress...`, "info", "ZgsmCodebaseIndexManager")
 					await pWaitFor(
 						async () => {
 							const localVersionInfo = await this.getLocalVersion()
@@ -197,7 +201,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 							// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 							ok &&
 								this.log(
-									`客户端下载完成: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
+									`Client download completed: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
 									"info",
 									"ZgsmCodebaseIndexManager",
 								)
@@ -210,33 +214,37 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 						},
 					)
 				} catch (error) {
-					this.log(`客户端下载等待超时`, "info", "ZgsmCodebaseIndexManager")
+					this.log(`Client download wait timeout`, "info", "ZgsmCodebaseIndexManager")
 
 					return "failed"
 				}
 			}
 
-			this.log("开始检查并升级 CodebaseKeeper 客户端", "info", "ZgsmCodebaseIndexManager")
+			this.log("Starting to check and upgrade CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
-			// 获取最新版本信息
+			// Get latest version information
 			const latestVersionInfo = await this.client!.getLatestVersion()
 			this.log(
-				`最新版本: ${latestVersionInfo?.versionId?.major}.${latestVersionInfo?.versionId?.minor}.${latestVersionInfo?.versionId?.micro}`,
+				`Latest version: ${latestVersionInfo?.versionId?.major}.${latestVersionInfo?.versionId?.minor}.${latestVersionInfo?.versionId?.micro}`,
 				"info",
 				"ZgsmCodebaseIndexManager",
 			)
 
 			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath().targetPath)) {
-				// 本地没有安装，直接安装最新版本
+				// Not installed locally, install latest version directly
 				await this.client!.stopExistingClient()
-				this.log("本地未安装客户端，开始下载最新版本", "info", "ZgsmCodebaseIndexManager")
+				this.log(
+					"Client not installed locally, starting to download latest version",
+					"info",
+					"ZgsmCodebaseIndexManager",
+				)
 				await this.downloadAndInstallClient(latestVersionInfo)
-				this.log("CodebaseKeeper 客户端检查和升级完成", "info", "ZgsmCodebaseIndexManager")
+				this.log("CodebaseKeeper client check and upgrade completed", "info", "ZgsmCodebaseIndexManager")
 				return "firstInstall"
 			} else {
-				// 本地已安装，检查是否需要升级
+				// Already installed locally, check if upgrade is needed
 				this.log(
-					`本地版本: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
+					`Local version: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
 					"info",
 					"ZgsmCodebaseIndexManager",
 				)
@@ -245,12 +253,12 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 				if (hasUpdate) {
 					await this.client!.stopExistingClient()
-					this.log("检测到新版本，开始升级", "info", "ZgsmCodebaseIndexManager")
+					this.log("New version detected, starting upgrade", "info", "ZgsmCodebaseIndexManager")
 					await this.downloadAndInstallClient(latestVersionInfo)
-					this.log("CodebaseKeeper 客户端检查和升级完成", "info", "ZgsmCodebaseIndexManager")
+					this.log("CodebaseKeeper client check and upgrade completed", "info", "ZgsmCodebaseIndexManager")
 					return "upgraded"
 				} else {
-					this.log("当前版本已是最新，无需升级", "info", "ZgsmCodebaseIndexManager")
+					this.log("Current version is already latest, no upgrade needed", "info", "ZgsmCodebaseIndexManager")
 					return "noUpdate"
 				}
 			}
@@ -259,7 +267,9 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				return "needZgsm"
 			}
 			const errorMessage =
-				error instanceof Error ? error.message : "检查并升级 CodebaseKeeper 客户端时发生未知错误"
+				error instanceof Error
+					? error.message
+					: "Unknown error occurred while checking and upgrading CodebaseKeeper client"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			return "failed"
 		}
@@ -267,25 +277,25 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 	private async ensureClientInited() {
 		if (!this.client) {
-			throw new Error("客户端未初始化")
+			throw new Error("Client not initialized")
 		}
 
 		if (!this.clineProvider) {
-			throw new Error("clineProvider 未初始化")
+			throw new Error("clineProvider not initialized")
 		}
 
 		const { apiConfiguration } = await this.clineProvider.getState()
 
 		if (apiConfiguration.apiProvider !== "zgsm") {
-			const err = new Error("仅 Costrict 提供商支持此服务")
+			const err = new Error("Only Costrict provider supports this service")
 			Object.assign(err, { __NEED_ZGSM__: true })
 			throw err
 		}
 	}
 
 	/**
-	 * 获取本地版本信息
-	 * @returns 本地版本信息，如果不存在则返回 null
+	 * Get local version information
+	 * @returns Local version information, returns null if not exists
 	 */
 	private async getLocalVersion(): Promise<VersionInfo | undefined> {
 		try {
@@ -293,39 +303,39 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
 
 			if (!homeDir) {
-				throw new Error("无法确定用户主目录路径")
+				throw new Error("Unable to determine user home directory path")
 			}
 
 			const versionDir = path.join(homeDir, ".costrict", "share")
 			const versionFilePath = path.join(versionDir, "version.json")
 
-			// 检查版本文件是否存在
+			// Check if version file exists
 			if (!fs.existsSync(versionFilePath)) {
-				this.log("本地版本文件不存在", "info", "ZgsmCodebaseIndexManager")
+				this.log("Local version file does not exist", "info", "ZgsmCodebaseIndexManager")
 				return
 			}
 
-			// 读取版本文件
+			// Read version file
 			const versionContent = fs.readFileSync(versionFilePath, "utf8")
 			const versionData = JSON.parse(versionContent)
 
-			// 验证版本数据的基本结构
+			// Verify basic structure of version data
 			if (!versionData || typeof versionData !== "object") {
-				throw new Error("版本文件格式无效")
+				throw new Error("Version file format is invalid")
 			}
 
-			// 移除 updatedAt 字段，只返回 VersionInfo 数据
+			// Remove updatedAt field, return only VersionInfo data
 			const { updatedAt, ...versionInfo } = versionData
 
-			// this.log(`本地版本信息已读取: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
+			// this.log(`Local version information read: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
 
 			return versionInfo as VersionInfo
 		} catch (error) {
 			if (error instanceof SyntaxError) {
-				this.log(`本地版本文件解析失败: JSON 格式错误`, "error", "ZgsmCodebaseIndexManager")
+				this.log(`Local version file parsing failed: JSON format error`, "error", "ZgsmCodebaseIndexManager")
 			} else {
 				this.log(
-					`读取本地版本信息失败: ${error instanceof Error ? error.message : "未知错误"}`,
+					`Failed to read local version information: ${error instanceof Error ? error.message : "Unknown error"}`,
 					"error",
 					"ZgsmCodebaseIndexManager",
 				)
@@ -335,8 +345,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 下载并安装客户端
-	 * @param versionInfo 版本信息
+	 * Download and install client
+	 * @param versionInfo Version information
 	 */
 	private async downloadAndInstallClient(versionInfo: VersionInfo): Promise<void> {
 		try {
@@ -345,38 +355,45 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				status: "downloading",
 			})
 			const versionString = `${versionInfo?.versionId?.major}.${versionInfo?.versionId?.minor}.${versionInfo?.versionId?.micro}`
-			this.log(`开始下载客户端版本: ${versionString}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`Starting to download client version: ${versionString}`, "info", "ZgsmCodebaseIndexManager")
 
 			const result = await this.client!.downloadAndInstallClient(versionInfo, (progress) => {
 				this.log(
-					`下载进度: ${progress.progress}%, ${progress.downloaded}/${progress.total}`,
+					`Download progress: ${progress.progress}%, ${progress.downloaded}/${progress.total}`,
 					"info",
 					"ZgsmCodebaseIndexManager",
 				)
 			})
 
 			if (result.success && result.filePath) {
-				this.log(`客户端下载并安装成功: ${result.filePath}`, "info", "ZgsmCodebaseIndexManager")
+				this.log(
+					`Client downloaded and installed successfully: ${result.filePath}`,
+					"info",
+					"ZgsmCodebaseIndexManager",
+				)
 
-				// 保存本地版本信息
+				// Save local version information
 				await this.saveLocalVersion({
 					...versionInfo,
 					packageInfo: result.packageInfo,
 					status: "downloaded",
 				})
 			} else {
-				// 保存本地版本信息
+				// Save local version information
 				await this.saveLocalVersion({
 					...versionInfo,
 					packageInfo: result.packageInfo,
 					status: "failed",
 				})
-				throw new Error(result.error || "下载并安装客户端失败")
+				throw new Error(result.error || "Failed to download and install client")
 			}
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "下载并安装客户端时发生未知错误"
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Unknown error occurred while downloading and installing client"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-			// 保存本地版本信息
+			// Save local version information with failed status
 			await this.saveLocalVersion({
 				...versionInfo,
 				status: "failed",
@@ -386,8 +403,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 保存本地版本信息 1
-	 * @param versionId 版本ID
+	 * Save local version information
+	 * @param versionId Version ID
 	 */
 	private async saveLocalVersion(versionInfo: VersionInfo): Promise<void> {
 		try {
@@ -395,18 +412,18 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			const homeDir = platform === "windows" ? process.env.USERPROFILE : process.env.HOME
 
 			if (!homeDir) {
-				throw new Error("无法确定用户主目录路径")
+				throw new Error("Unable to determine user home directory path")
 			}
 
 			const versionDir = path.join(homeDir, ".costrict", "share")
 			const versionFilePath = path.join(versionDir, "version.json")
 
-			// 确保目录存在
+			// Ensure directory exists
 			if (!fs.existsSync(versionDir)) {
 				fs.mkdirSync(versionDir, { recursive: true })
 			}
 
-			// 写入版本文件
+			// Write version file
 			const versionData = {
 				...versionInfo,
 				updatedAt: new Date().toISOString(),
@@ -414,10 +431,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			fs.writeFileSync(versionFilePath, JSON.stringify(versionData, null, 2), "utf8")
 
-			this.log(`本地版本信息已保存: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`Local version information saved: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
 			this.log(
-				`保存本地版本信息失败: ${error instanceof Error ? error.message : "未知错误"}`,
+				`Failed to save local version information: ${error instanceof Error ? error.message : "Unknown error"}`,
 				"error",
 				"ZgsmCodebaseIndexManager",
 			)
@@ -428,71 +445,74 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 设置服务器端点
-	 * @param endpoint 服务器端点地址
+	 * Set server endpoint
+	 * @param endpoint Server endpoint address
 	 */
 	public async setServerEndpoint(endpoint: string): Promise<void> {
 		try {
 			await this.ensureClientInited()
-			this.log(`服务器端点已设置为: ${endpoint}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`Server endpoint set to: ${endpoint}`, "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "设置服务器端点时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while setting server endpoint"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 发布工作区事件
-	 * @param request 工作区事件请求
+	 * Publish workspace events
+	 * @param request Workspace event request
 	 */
 	public async publishWorkspaceEvents(request: WorkspaceEventRequest): Promise<ApiResponse<number>> {
 		try {
 			await this.ensureClientInited()
-			// this.log(`发布工作区事件: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
-			// 读取访问令牌
+			// this.log(`Publish workspace events: ${request.workspace}`, "info", "ZgsmCodebaseIndexManager")
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.publishWorkspaceEvents(request, token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "发布工作区事件时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while publishing workspace events"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 手动触发索引构建
-	 * @param request 索引构建请求
+	 * Manually trigger index build
+	 * @param request Index build request
 	 */
 	public async triggerIndexBuild(request: IndexBuildRequest): Promise<ApiResponse<number>> {
 		if (this.preBuildInfo.type === request.type && Date.now() - this.preBuildInfo.time < 300)
-			throw new Error("跳过重复触发索引构建：" + request.type)
+			throw new Error("Skip duplicate index build trigger:" + request.type)
 		this.preBuildInfo.type = request.type
 		this.preBuildInfo.time = Date.now()
 		try {
 			await this.ensureClientInited()
-			this.log(`触发索引构建: ${request.workspace} - ${request.type}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`Trigger index build: ${request.workspace} - ${request.type}`, "info", "ZgsmCodebaseIndexManager")
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.triggerIndexBuild(request, token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "触发索引构建时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while triggering index build"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	// /**
-	//  * 定时索引构建: 每十分钟触发一次
+	//  * Scheduled index build: trigger every ten minutes
 	//  */
 	// triggerIndexBuildPoll(): void {
 	// 	if (this.isIndexBuildPollRunning) {
-	// 		this.log("定时索引构建已运行", "info", "ZgsmCodebaseIndexManager")
+	// 		this.log("Index build polling already running", "info", "ZgsmCodebaseIndexManager")
 	// 		return
 	// 	}
 
-	// 	this.log("启动定时索引构建", "info", "ZgsmCodebaseIndexManager")
+	// 	this.log("Starting index build polling", "info", "ZgsmCodebaseIndexManager")
 	// 	this.isIndexBuildPollRunning = true
 	// 	this.indexBuildPollTimer = setInterval(async () => {
 	// 		await this.performIndexBuildPoll()
@@ -500,14 +520,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	// }
 
 	// /**
-	//  * 停止定时索引构建
+	//  * Stop scheduled index build
 	//  */
 	// public stopIndexBuildPoll(): void {
 	// 	if (!this.isIndexBuildPollRunning) {
 	// 		return
 	// 	}
 
-	// 	this.log("停止定时索引构建", "info", "ZgsmCodebaseIndexManager")
+	// 	this.log("Stopping index build polling", "info", "ZgsmCodebaseIndexManager")
 
 	// 	if (this.indexBuildPollTimer) {
 	// 		clearInterval(this.indexBuildPollTimer)
@@ -517,27 +537,27 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	// 	this.isIndexBuildPollRunning = false
 	// }
 
-	private async performIndexBuildPoll(): Promise<void> {
-		try {
-			const workspacePath = getWorkspacePath() || ""
-			if (workspacePath) {
-				await this.triggerIndexBuild({
-					workspace: workspacePath,
-					path: workspacePath,
-					type: "all",
-				})
-				this.log("定时索引构建成功", "info", "ZgsmCodebaseIndexManager")
-			} else {
-				this.log("工作区路径为空，跳过定时索引构建", "info", "ZgsmCodebaseIndexManager")
-			}
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "定时索引构建发生未知错误"
-			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-		}
-	}
+	// private async performIndexBuildPoll(): Promise<void> {
+	// 	try {
+	// 		const workspacePath = getWorkspacePath() || ""
+	// 		if (workspacePath) {
+	// 			await this.triggerIndexBuild({
+	// 				workspace: workspacePath,
+	// 				path: workspacePath,
+	// 				type: "all",
+	// 			})
+	// 			this.log("Scheduled index build succeeded", "info", "ZgsmCodebaseIndexManager")
+	// 		} else {
+	// 			this.log("Workspace path is empty, skipping scheduled index build", "info", "ZgsmCodebaseIndexManager")
+	// 		}
+	// 	} catch (error) {
+	// 		const errorMessage = error instanceof Error ? error.message : "Unknown error occurred during scheduled index build"
+	// 		this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
+	// 	}
+	// }
 
 	/**
-	 * 探活检查 1
+	 * Health check
 	 */
 	public async healthCheck(): Promise<{
 		message: string
@@ -546,70 +566,71 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}> {
 		try {
 			await this.ensureClientInited()
-			this.log("执行探活检查", "info", "CostrictHealthCheck")
+			this.log("Performing health check", "info", "CostrictHealthCheck")
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.healthCheck(
 				`http://localhost:${this.client!.getCostrictServerPort(9527)}/healthz`,
 				token,
 			)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "探活检查时发生未知错误"
+			const errorMessage = error instanceof Error ? error.message : "Unknown error occurred during health check"
 			this.log(errorMessage, "error", "CostrictHealthCheck")
 			throw new Error(errorMessage)
 		}
 	}
 
-	// token传递接口
+	// Token passing interface
 	public async syncToken(): Promise<ApiResponse<number>> {
 		try {
 			await this.ensureClientInited()
-			this.log("token更新", "info", "ZgsmCodebaseIndexManager")
+			this.log("Token update", "info", "ZgsmCodebaseIndexManager")
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.syncToken(token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "token更新时发生未知错误"
+			const errorMessage = error instanceof Error ? error.message : "Unknown error occurred during token update"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 检测忽略文件
-	 * @param request 忽略文件请求 1
+	 * Check ignore files
+	 * @param request Ignore files request
 	 */
 	public async checkIgnoreFiles(request: IgnoreFilesRequest): Promise<ApiResponse<boolean>> {
 		try {
 			await this.ensureClientInited()
-			this.log(`检测忽略文件: ${request.workspacePath}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(`Checking ignore files: ${request.workspacePath}`, "info", "ZgsmCodebaseIndexManager")
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.checkIgnoreFiles(request, token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "检测忽略文件时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while checking ignore files"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 查询索引状态
-	 * @param workspace 工作区路径 1
+	 * Query index status
+	 * @param workspace Workspace path
 	 */
 	public async getIndexStatus(workspace: string): Promise<ApiResponse<IndexStatusResponse>> {
-		// 检查是否已有相同的请求在进行中
+		// Check if there is already the same request in progress
 		const requestKey = `getIndexStatus:${workspace}`
 		const now = Date.now()
 
-		// 检查最近完成的请求（1秒内）
+		// Check recently completed requests (within 1 second)
 		const recentRequest = this.recentCompletedRequests.get(requestKey)
 		if (recentRequest && now - recentRequest.timestamp < 1000) {
 			this.log(
-				`复用最近完成的查询索引状态请求结果: ${workspace} (${now - recentRequest.timestamp}ms前)`,
+				`Reusing recently completed query index status request result: ${workspace} (${now - recentRequest.timestamp}ms ago)`,
 				"info",
 				"ZgsmCodebaseIndexManager",
 			)
@@ -617,8 +638,8 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		}
 
 		if (this.pendingIndexStatusRequests.has(requestKey)) {
-			// 如果已有相同请求在进行中，等待其完成并复用结果
-			this.log(`复用正在进行的查询索引状态请求: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
+			// If there is already the same request in progress, wait for it to complete and reuse the result
+			this.log(`Reusing ongoing query index status request: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
 			return await this.pendingIndexStatusRequests.get(requestKey)!
 		}
 		const requestPromise = this._getIndexStatusInternal(workspace)
@@ -626,87 +647,93 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 		try {
 			const result = await requestPromise
-			// 缓存结果1秒，防止短时间内重复调用
+			// Cache result for 1 second to prevent duplicate calls in short time
 			this.recentCompletedRequests.set(requestKey, { result, timestamp: now })
 
-			// 清理过期的缓存（保留最近5分钟的）
+			// Clean up expired cache (keep last 5 minutes)
 			for (const [key, cache] of this.recentCompletedRequests.entries()) {
 				if (now - cache.timestamp > 300000) {
-					// 5分钟
+					// 5 minutes
 					this.recentCompletedRequests.delete(key)
 				}
 			}
 
 			return result
 		} finally {
-			// 请求完成后清除缓存
+			// Clear pending request cache after completion
 			this.pendingIndexStatusRequests.delete(requestKey)
 		}
 	}
 
 	/**
-	 * 内部查询索引状态方法
-	 * @param workspace 工作区路径
+	 * Internal method to query index status
+	 * @param workspace Workspace path
 	 */
 	private async _getIndexStatusInternal(workspace: string): Promise<ApiResponse<IndexStatusResponse>> {
 		try {
 			await this.ensureClientInited()
 
-			// 添加调用栈信息来追踪调用来源
-			this.log(`查询索引状态: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
+			// Add call stack information to trace call source
+			this.log(`Querying index status: ${workspace}`, "info", "ZgsmCodebaseIndexManager")
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.getIndexStatus(workspace, token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "查询索引状态时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while querying index status"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 索引功能开关
-	 * @param request 开关请求 1
+	 * Index function toggle
+	 * @param request Toggle request
 	 */
 	public async toggleIndexSwitch(request: IndexSwitchRequest): Promise<ApiResponse<boolean>> {
 		try {
 			await this.ensureClientInited()
-			this.log(`切换索引功能: ${request.workspace} - ${request.switch}`, "info", "ZgsmCodebaseIndexManager")
+			this.log(
+				`Toggle index function: ${request.workspace} - ${request.switch}`,
+				"info",
+				"ZgsmCodebaseIndexManager",
+			)
 
-			// 读取访问令牌
+			// Read access token
 			const token = await this.readAccessToken()
 			return await this.client!.toggleIndexSwitch(request, token)
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "切换索引功能时发生未知错误"
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred while toggling index function"
 			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
 			throw new Error(errorMessage)
 		}
 	}
 
 	/**
-	 * 读取访问令牌
-	 * @returns 访问令牌 1
+	 * Read access token
+	 * @returns Access token
 	 */
 	async readAccessToken() {
 		const zgsmAuthService = ZgsmAuthService.getInstance()
 		const tokens = await zgsmAuthService.getTokens()
 		if (!tokens) {
-			throw new Error("readAccessToken 无法获取访问令牌")
+			throw new Error("readAccessToken failed to get access token")
 		}
 		return tokens.access_token
 	}
 
 	/**
-	 * 启动定时检测
+	 * Start scheduled detection
 	 */
 	private startHealthCheck(): void {
 		if (this.isHealthCheckRunning) {
-			this.log("健康检查已开启", "info", "CostrictHealthCheck")
+			this.log("Health check already started", "info", "CostrictHealthCheck")
 			return
 		}
 
-		this.log("启动健康检查", "info", "CostrictHealthCheck")
+		this.log("Starting health check", "info", "CostrictHealthCheck")
 		this.isHealthCheckRunning = true
 		this.healthCheckTimer = setInterval(async () => {
 			await this.performHealthCheck()
@@ -714,14 +741,14 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 停止定时检测
+	 * Stop scheduled detection
 	 */
 	public stopHealthCheck(): void {
 		if (!this.isHealthCheckRunning) {
 			return
 		}
 
-		this.log("停止定时检测", "info", "CostrictHealthCheck")
+		this.log("Stopping scheduled detection", "info", "CostrictHealthCheck")
 
 		if (this.healthCheckTimer) {
 			clearInterval(this.healthCheckTimer)
@@ -733,7 +760,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 
 	/**
-	 * 执行单次健康检查
+	 * Perform single health check
 	 */
 	private async performHealthCheck(): Promise<void> {
 		try {
@@ -741,7 +768,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 			const [active, pids] = await this.client!.isRunning()
 			if (active && (data.status === "success" || data.status === true)) {
-				this.healthCheckFailureCount = 0 // 重置失败计数器
+				this.healthCheckFailureCount = 0 // Reset failure counter
 
 				this.log(
 					`[pids: ${pids.join("|")} ] ${this.client?.processName} running`,
@@ -749,42 +776,44 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 					"CostrictHealthCheck",
 				)
 			} else {
-				this.log(`健康检查异常`, "error", "CostrictHealthCheck")
+				this.log(`Health check abnormal`, "error", "CostrictHealthCheck")
 
 				await this.handleHealthCheckFailure()
 			}
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : "健康检查时发生未知错误"
+			const errorMessage = error instanceof Error ? error.message : "Unknown error occurred during health check"
 			this.log(errorMessage, "error", "CostrictHealthCheck")
 			await this.handleHealthCheckFailure()
 		}
 	}
 
 	/**
-	 * 处理健康检查失败
+	 * Handle health check failure
 	 */
 	private async handleHealthCheckFailure(): Promise<void> {
 		this.healthCheckFailureCount++
 
 		if (this.healthCheckFailureCount > this.MAX_FAILURE_COUNT) {
 			this.log(
-				`连续失败 ${this.healthCheckFailureCount} 次，超过阈值，准备重启客户端`,
+				`Failed ${this.healthCheckFailureCount} times consecutively, exceeding threshold, preparing to restart client`,
 				"error",
 				"CostrictHealthCheck",
 			)
 
 			try {
 				await this.restartClient()
-				this.log("客户端重启成功，重置失败计数器", "info", "CostrictHealthCheck")
+				this.log("Client restarted successfully, reset failure counter", "info", "CostrictHealthCheck")
 				this.healthCheckFailureCount = 0
 			} catch (restartError) {
 				const restartErrorMessage =
-					restartError instanceof Error ? restartError.message : "重启客户端时发生未知错误"
+					restartError instanceof Error
+						? restartError.message
+						: "Unknown error occurred while restarting client"
 				this.log(restartErrorMessage, "error", "CostrictHealthCheck")
 			}
 		} else {
 			this.log(
-				`健康检查失败次数: ${this.healthCheckFailureCount}/${this.MAX_FAILURE_COUNT}`,
+				`Health check failure count: ${this.healthCheckFailureCount}/${this.MAX_FAILURE_COUNT}`,
 				"info",
 				"CostrictHealthCheck",
 			)
@@ -792,10 +821,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 }
 
-// 导出单例实例
+// Export singleton instance
 export const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
 
-// 导出接口和类型
+// Export interfaces and types
 export type {
 	DownloadProgress,
 	DownloadResult,
@@ -816,5 +845,5 @@ export type {
 	IndexStatusInfo,
 } from "./types"
 
-// 默认导出管理器类
+// Default export manager class
 export default ZgsmCodebaseIndexManager

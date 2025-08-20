@@ -8,11 +8,11 @@ describe("WorkspaceEventMonitor", () => {
 	let mockCodebaseIndexManager: any
 
 	beforeEach(() => {
-		// 重置单例
+		// Reset singleton
 		;(WorkspaceEventMonitor as any).instance = null
 		monitor = WorkspaceEventMonitor.getInstance()
 
-		// 设置默认配置
+		// Set default configuration
 		monitor.updateConfig({
 			enabled: true,
 			debounceMs: 100,
@@ -21,7 +21,7 @@ describe("WorkspaceEventMonitor", () => {
 			retryDelayMs: 10,
 		})
 
-		// 模拟 ZgsmCodebaseIndexManager
+		// Mock ZgsmCodebaseIndexManager
 		mockCodebaseIndexManager = {
 			publishWorkspaceEvents: vi.fn().mockResolvedValue({
 				success: true,
@@ -31,7 +31,7 @@ describe("WorkspaceEventMonitor", () => {
 		}
 		;(ZgsmCodebaseIndexManager as any).getInstance = vi.fn().mockReturnValue(mockCodebaseIndexManager)
 
-		// 模拟 clineProvider 和 API 配置
+		// Mock clineProvider and API configuration
 		const mockClineProvider = {
 			getState: vi.fn().mockResolvedValue({
 				apiConfiguration: {
@@ -47,30 +47,30 @@ describe("WorkspaceEventMonitor", () => {
 		vi.clearAllMocks()
 	})
 
-	describe("单例模式", () => {
-		it("应该返回同一个实例", () => {
+	describe("Singleton Pattern", () => {
+		it("should return the same instance", () => {
 			const instance1 = WorkspaceEventMonitor.getInstance()
 			const instance2 = WorkspaceEventMonitor.getInstance()
 			expect(instance1).toBe(instance2)
 		})
 	})
 
-	describe("初始化和销毁", () => {
-		it("应该成功初始化", async () => {
+	describe("Initialization and Destruction", () => {
+		it("should initialize successfully", async () => {
 			await expect(monitor.initialize()).resolves.not.toThrow()
-			await expect(monitor.initialize()).resolves.not.toThrow() // 重复初始化
+			await expect(monitor.initialize()).resolves.not.toThrow() // Duplicate initialization
 			expect(monitor.getStatus().isInitialized).toBe(true)
 		})
 
-		it("应该正确销毁", async () => {
+		it("should destroy correctly", async () => {
 			await monitor.initialize()
 			monitor.dispose()
 			expect(monitor.getStatus().isInitialized).toBe(false)
 		})
 	})
 
-	describe("配置管理", () => {
-		it("应该更新配置", () => {
+	describe("Configuration Management", () => {
+		it("should update configuration", () => {
 			const newConfig = { enabled: false, batchSize: 100 }
 			monitor.updateConfig(newConfig)
 
@@ -80,8 +80,8 @@ describe("WorkspaceEventMonitor", () => {
 		})
 	})
 
-	describe("事件处理", () => {
-		it("应该处理文档保存事件", async () => {
+	describe("Event Handling", () => {
+		it("should handle document save event", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -91,7 +91,7 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 设置缓存，确保内容有变化
+			// Set cache to ensure content has changed
 			monitor["documentContentCache"].set("/test/file.txt", {
 				contentHash: "different-hash",
 				version: 0,
@@ -101,7 +101,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBeGreaterThan(0)
 		})
 
-		it("应该过滤非文件协议的事件", async () => {
+		it("should filter non-file protocol events", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -111,7 +111,7 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 设置缓存，确保内容有变化
+			// Set cache to ensure content has changed
 			monitor["documentContentCache"].set("/test/file.txt", {
 				contentHash: "different-hash",
 				version: 0,
@@ -121,7 +121,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBe(0)
 		})
 
-		it("应该处理文档保存事件（内容变化时）", async () => {
+		it("should handle document save event (when content changes)", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -131,7 +131,7 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 先设置一个不同的内容缓存，这样保存时会检测到变化
+			// First set a different content cache, so changes will be detected when saving
 			monitor["documentContentCache"].set("/test/file.txt", {
 				contentHash: "different-hash",
 				version: 0,
@@ -141,7 +141,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBeGreaterThan(0)
 		})
 
-		it("应该处理文件删除事件", async () => {
+		it("should handle file delete event", async () => {
 			const mockEvent = {
 				files: [
 					{ fsPath: "/test/file1.txt", scheme: "file" },
@@ -153,7 +153,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBe(2)
 		})
 
-		it("应该处理文件重命名事件", async () => {
+		it("should handle file rename event", async () => {
 			const mockEvent = {
 				files: [
 					{
@@ -167,7 +167,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 
-		it("应该处理工作区变化事件", async () => {
+		it("should handle workspace change event", async () => {
 			const mockEvent = {
 				added: [{ uri: { fsPath: "/workspace/new", scheme: "file" } }],
 				removed: [{ uri: { fsPath: "/workspace/old", scheme: "file" } }],
@@ -177,7 +177,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBe(2)
 		})
 
-		it("应该处理文件创建事件", async () => {
+		it("should handle file creation event", async () => {
 			const mockEvent = {
 				files: [{ fsPath: "/test/new.txt", scheme: "file" }],
 			} as any
@@ -186,7 +186,7 @@ describe("WorkspaceEventMonitor", () => {
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 
-		it("应该遵守enabled配置", async () => {
+		it("should respect enabled configuration", async () => {
 			monitor.updateConfig({ enabled: false })
 
 			const mockDocument = {
@@ -198,7 +198,7 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 设置缓存，确保内容有变化
+			// Set cache to ensure content has changed
 			monitor["documentContentCache"].set("/test/file.txt", {
 				contentHash: "different-hash",
 				version: 0,
@@ -209,8 +209,8 @@ describe("WorkspaceEventMonitor", () => {
 		})
 	})
 
-	describe("事件去重", () => {
-		it("应该去重相同的事件", async () => {
+	describe("Event Deduplication", () => {
+		it("should deduplicate identical events", async () => {
 			const mockDocument = {
 				uri: {
 					fsPath: "/test/file.txt",
@@ -220,24 +220,24 @@ describe("WorkspaceEventMonitor", () => {
 				version: 1,
 			} as any
 
-			// 设置缓存，确保内容有变化
+			// Set cache to ensure content has changed
 			monitor["documentContentCache"].set("/test/file.txt", {
 				contentHash: "different-hash",
 				version: 0,
 			})
 
-			// 多次触发相同事件
+			// Trigger the same event multiple times
 			await monitor["handleDocumentSave"](mockDocument)
 			await monitor["handleDocumentSave"](mockDocument)
 			await monitor["handleDocumentSave"](mockDocument)
 
-			// 应该只保留最新的事件（使用相同的key会覆盖之前的事件）
+			// Should only keep the latest event (using the same key will overwrite previous events)
 			expect(monitor.getStatus().eventBufferSize).toBe(1)
 		})
 	})
 
-	describe("全局实例", () => {
-		it("应该提供全局实例", () => {
+	describe("Global Instance", () => {
+		it("should provide global instance", () => {
 			expect(workspaceEventMonitor).toBeInstanceOf(WorkspaceEventMonitor)
 		})
 	})

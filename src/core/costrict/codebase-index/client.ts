@@ -31,8 +31,8 @@ import { getClientId } from "../../../utils/getClientId"
 import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
 
 /**
- * codebase-index 客户端主类
- * 整合所有功能模块，提供完整的客户端下载和安装功能
+ * Main class for codebase-index client
+ * Integrates all functional modules to provide complete client download and installation functionality
  */
 export class CodebaseIndexClient {
 	private platformDetector: PlatformDetector
@@ -59,8 +59,8 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 构造函数
-	 * @param config 客户端配置
+	 * Constructor
+	 * @param config Client configuration
 	 */
 	constructor(config: CodebaseIndexClientConfig = {}) {
 		this.logger = createLogger(Package.outputChannel)
@@ -74,22 +74,22 @@ export class CodebaseIndexClient {
 			throw new Error("publicKey is required")
 		}
 
-		// 初始化所有功能模块
+		// Initialize all functional modules
 		this.platformDetector = new PlatformDetector()
 		this.versionApi = new VersionApi()
 		this.packageInfoApi = new PackageInfoApi()
 		this.fileDownloader = new FileDownloader(this.config.publicKey, this.config.downloadTimeout)
 	}
 	/**
-	 * 设置服务器端点
-	 * @param endpoint 服务器端点地址
+	 * Set server endpoint
+	 * @param endpoint Server endpoint address
 	 */
 	public setServerHost(hostInfo: ICostrictServiceInfo): void {
 		this.serverHost = hostInfo
 	}
 	/**
-	 * 设置服务器端点
-	 * @param endpoint 服务器端点地址
+	 * Set server endpoint
+	 * @param endpoint Server endpoint address
 	 */
 	public async getServerEndpoint() {
 		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
@@ -97,25 +97,25 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 设置客户端ID
-	 * @param clientId 客户端ID
+	 * Set client ID
+	 * @param clientId Client ID
 	 */
 	public setClientId(clientId: string): void {
 		this.clientId = clientId
 	}
 
 	/**
-	 * 获取客户端ID
-	 * @returns 客户端ID
+	 * Get client ID
+	 * @returns Client ID
 	 */
 	public getClientId(): string {
 		return this.clientId
 	}
 
 	/**
-	 * 获取请求头
-	 * @param token 访问令牌
-	 * @returns 请求头对象
+	 * Get request headers
+	 * @param token Access token
+	 * @returns Request headers object
 	 */
 	private async getHeaders(token?: string): Promise<RequestHeaders> {
 		return {
@@ -127,11 +127,11 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 发送HTTP请求
-	 * @param url 请求URL
-	 * @param options 请求选项
-	 * @param token 访问令牌
-	 * @returns 响应数据
+	 * Send HTTP request
+	 * @param url Request URL
+	 * @param options Request options
+	 * @param token Access token
+	 * @returns Response data
 	 */
 	private async makeRequest<T>(url: string, options: RequestInit = {}, token?: string): Promise<ApiResponse<T>> {
 		const headers = await this.getHeaders(token)
@@ -153,7 +153,7 @@ export class CodebaseIndexClient {
 		}
 
 		const maxRetries = 2
-		let lastError: Error = new Error("未知错误")
+		let lastError: Error = new Error("Unknown error")
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			try {
@@ -178,45 +178,45 @@ export class CodebaseIndexClient {
 		}
 
 		// All retries failed, throw the last error
-		throw new Error(`${url} HTTP请求时发生错误: ${lastError.message}`)
+		throw new Error(`${url} HTTP request error: ${lastError.message}`)
 	}
 
 	/**
-	 * 获取当前平台信息
-	 * @returns 平台名称：'windows'、'darwin' 或 'linux'
+	 * Get current platform information
+	 * @returns Platform name: 'windows', 'darwin' or 'linux'
 	 */
 	get platform(): string {
 		return this.platformDetector.platform
 	}
 
 	/**
-	 * 获取当前架构信息
-	 * @returns 架构名称：'amd64' 或 'arm64'
+	 * Get current architecture information
+	 * @returns Architecture name: 'amd64' or 'arm64'
 	 */
 	get arch(): string {
 		return this.platformDetector.arch
 	}
 
 	/**
-	 * 获取客户端版本列表
-	 * @returns Promise<PlatformResponse> 返回平台版本信息
+	 * Get client version list
+	 * @returns Promise<PlatformResponse> Returns platform version information
 	 */
 	async getVersionList(): Promise<PlatformResponse> {
 		return this.versionApi.getVersionList()
 	}
 
 	/**
-	 * 获取最新版本信息
-	 * @returns Promise<VersionInfo> 返回最新版本信息
+	 * Get latest version information
+	 * @returns Promise<VersionInfo> Returns latest version information
 	 */
 	async getLatestVersion(): Promise<VersionInfo> {
 		return this.versionApi.getLatestVersion()
 	}
 
 	/**
-	 * 检查是否有可用更新
-	 * @param currentVersion 当前版本
-	 * @returns Promise<boolean> 如果有可用更新返回 true，否则返回 false
+	 * Check if there are available updates
+	 * @param currentVersion Current version
+	 * @returns Promise<boolean> Returns true if there are available updates, otherwise returns false
 	 */
 	async shouldUpdate(currentVersion: VersionInfo): Promise<boolean> {
 		return this.versionApi.shouldUpdate(currentVersion)
@@ -244,20 +244,20 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 获取指定版本的包信息
-	 * @param version 版本字符串，格式为 "major.minor.micro"
-	 * @returns Promise<PackageInfoResponse> 返回包信息响应
+	 * Get package information for specified version
+	 * @param version Version string in format "major.minor.micro"
+	 * @returns Promise<PackageInfoResponse> Returns package information response
 	 */
 	async getPackageInfo(versionInfo: VersionInfo): Promise<PackageInfoResponse> {
 		return this.packageInfoApi.getPackageInfo(versionInfo)
 	}
 
 	/**
-	 * 下载并安装客户端（完整流程）
-	 * @param version 版本字符串，格式为 "major.minor.micro"，如果未提供则使用最新版本
-	 * @param targetPath 目标保存路径，如果未提供则使用默认路径
-	 * @param onProgress 下载进度回调函数
-	 * @returns Promise<DownloadResult> 返回下载结果
+	 * Download and install client (complete process)
+	 * @param version Version string in format "major.minor.micro", uses latest version if not provided
+	 * @param targetPath Target save path, uses default path if not provided
+	 * @param onProgress Download progress callback function
+	 * @returns Promise<DownloadResult> Returns download result
 	 */
 	async downloadAndInstallClient(
 		versionInfo: VersionInfo,
@@ -271,7 +271,7 @@ export class CodebaseIndexClient {
 				}
 			}
 			const { targetPath } = this.getTargetPath()
-			// 4. 保存文件
+			// Save file
 			const filePath = await this.fileDownloader.downloadClient(
 				targetPath,
 				versionInfo,
@@ -288,20 +288,23 @@ export class CodebaseIndexClient {
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : "下载和安装客户端时发生未知错误",
+				error:
+					error instanceof Error
+						? error.message
+						: "Unknown error occurred while downloading and installing client",
 			}
 		}
 	}
 
 	/**
-	 * 取消当前下载操作
+	 * Cancel current download operation
 	 */
 	cancelDownload(): void {
 		this.fileDownloader.cancelDownload()
 	}
 
 	/**
-	 * 停止已存在的客户端
+	 * Stop existing client
 	 */
 	public async stopExistingClient(): Promise<void> {
 		if (!(await this.isRunning())[0]) {
@@ -335,7 +338,7 @@ export class CodebaseIndexClient {
 					await this.shouldRunCostrict(shouldStartCostrictKeeper || !(await this.isRunning())[0], targetPath)
 				) {
 					const defaultPort = await getPort({ port: portNumbers(9527, 65535) })
-					// 启动 costrict-keeper 管理端
+					// Start costrict management server
 					const port = this.getCostrictServerPort(defaultPort)
 					const args = ["server", "--listen", `localhost:${port}`]
 					await spawnDetached(targetPath, args)
@@ -356,12 +359,12 @@ export class CodebaseIndexClient {
 		}
 	}
 	/**
-	 * 1.开始获取服务信息：5分钟内 5秒一次，超过5分钟后 30秒一次，直到获取到服务信息开始下一步
-	 * 2.获取到 codebase-sync 服务地址信息（name， protocol，port）
+	 * 1. Start getting service information: every 5 seconds within 5 minutes, every 30 seconds after 5 minutes, until service information is obtained to proceed to next step
+	 * 2. Get codebase-indexer service address information (name, protocol, port)
 	 */
 	async initSubService(versionInfo: VersionInfo, retryTime = 0) {
 		try {
-			// 读取 wellKnownPath
+			// Read wellKnownPath
 			const { services } = getWellKnownConfig()
 			const codebaseIndexerServiceConfig = services.find(
 				(service: any) => service.name === this.serverName.split(".")[0],
@@ -372,13 +375,13 @@ export class CodebaseIndexClient {
 			}
 
 			if (codebaseIndexerServiceConfig.status !== "running") {
-				throw new Error("codebase-indexer service norun!")
+				throw new Error("codebase-indexer service not running!")
 			}
 
 			await this.setServerHost(codebaseIndexerServiceConfig)
 		} catch (error) {
 			this.logger.error(`[CodebaseIndexService] ${error}`)
-			// 文件不存在，等待 5 s后再次尝试
+			// File does not exist, wait and try again
 			const interval = retryTime < 300_000 ? 5000 : 30_000
 			await new Promise((resolve) => setTimeout(resolve, interval))
 			await this.initSubService({ ...versionInfo }, retryTime + interval)
@@ -386,9 +389,9 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 将 VersionId 对象格式化为版本字符串
-	 * @param versionId 版本 ID 对象
-	 * @returns 版本字符串
+	 * Format VersionId object to version string
+	 * @param versionId Version ID object
+	 * @returns Version string
 	 * @private
 	 */
 	private formatVersionId(versionId: VersionId): string {
@@ -396,9 +399,9 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 获取文件存储路径信息
-	 * @param fileName 文件名
-	 * @returns 返回包含目标路径、目录和缓存目录的对象
+	 * Get file storage path information
+	 * @param fileName File name
+	 * @returns Returns object containing target path, directory and cache directory
 	 */
 	getTargetPath(fileName: string = this.processName): { targetPath: string; cacheDir: string; homeDir: string } {
 		const homeDir = os.homedir()
@@ -413,10 +416,10 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 发布工作区事件
-	 * @param request 工作区事件请求
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<number>> 返回响应数据
+	 * Publish workspace events
+	 * @param request Workspace event request
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<number>> Returns response data
 	 */
 	async publishWorkspaceEvents(
 		request: WorkspaceEventRequest,
@@ -437,10 +440,10 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 手动触发索引构建
-	 * @param request 索引构建请求
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<number>> 返回响应数据
+	 * Manually trigger index build
+	 * @param request Index build request
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<number>> Returns response data
 	 */
 	async triggerIndexBuild(request: IndexBuildRequest, token?: string): Promise<ApiResponse<number>> {
 		this.serverEndpointAndHostCheck()
@@ -456,25 +459,25 @@ export class CodebaseIndexClient {
 	}
 
 	async syncToken(token?: string) {
-		// 获取 token
+		// Get token from auth service
 		this.serverEndpointAndHostCheck()
 		const url = `${this.getCodebaseIndexerServerHost(this.serverHost)}/codebase-indexer/api/v1/token`
 
 		const options: RequestInit = {
 			method: "POST",
 			body: JSON.stringify({
-				clientId: this.clientId, // 客户ID
-				accessToken: token, // 访问令牌
-				serverEndpoint: await this.getServerEndpoint(), // 云端服务端点
+				clientId: this.clientId,
+				accessToken: token,
+				serverEndpoint: await this.getServerEndpoint(),
 			}),
 		}
 
 		return this.makeRequest<number>(url, options, token)
 	}
 	/**
-	 * 探活接口
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<number>> 返回响应数据
+	 * Health check interface
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<number>> Returns response data
 	 */
 	async healthCheck(
 		path: string,
@@ -498,10 +501,10 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 检测忽略文件
-	 * @param request 忽略文件请求
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<boolean>> 返回响应数据
+	 * Check ignore files
+	 * @param request Ignore files request
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<boolean>> Returns response data
 	 */
 	async checkIgnoreFiles(request: IgnoreFilesRequest, token?: string): Promise<ApiResponse<boolean>> {
 		this.serverEndpointAndHostCheck()
@@ -517,11 +520,11 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 查询索引状态
-	 * @param clientId 客户端ID
-	 * @param workspace 工作区路径
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<IndexStatusResponse>> 返回响应数据
+	 * Query index status
+	 * @param clientId Client ID
+	 * @param workspace Workspace path
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<IndexStatusResponse>> Returns response data
 	 */
 	async getIndexStatus(workspace: string, token?: string): Promise<ApiResponse<IndexStatusResponse>> {
 		this.serverEndpointAndHostCheck()
@@ -536,10 +539,10 @@ export class CodebaseIndexClient {
 	}
 
 	/**
-	 * 索引功能开关
-	 * @param request 开关请求
-	 * @param token 访问令牌
-	 * @returns Promise<ApiResponse<boolean>> 返回响应数据
+	 * Index function toggle
+	 * @param request Toggle request
+	 * @param token Access token
+	 * @returns Promise<ApiResponse<boolean>> Returns response data
 	 */
 	async toggleIndexSwitch(request: IndexSwitchRequest, token?: string): Promise<ApiResponse<boolean>> {
 		this.serverEndpointAndHostCheck()
@@ -555,7 +558,7 @@ export class CodebaseIndexClient {
 
 	serverEndpointAndHostCheck() {
 		if (!this.serverHost) {
-			throw new Error("codebase-indexer service norun!")
+			throw new Error("codebase-indexer service not running!")
 		}
 	}
 
@@ -564,7 +567,7 @@ export class CodebaseIndexClient {
 			const { homeDir } = this.getTargetPath()
 			const wellKnownPath = path.join(homeDir, ".costrict", "share", ".well-known.json")
 
-			// 判断 wellKnownPath 文件是否存在
+			// Check if well-known file exists
 			if (!fs.existsSync(wellKnownPath)) {
 				return {
 					services: [],
@@ -599,5 +602,5 @@ export class CodebaseIndexClient {
 	}
 }
 
-// 默认导出主客户端类
+// Default export main client class
 export default CodebaseIndexClient

@@ -3,8 +3,8 @@ import { PlatformDetector } from "./platform"
 import { PlatformResponse, VersionInfo } from "./types"
 
 /**
- * 版本 API 类
- * 用于获取客户端版本列表信息
+ * Version API class
+ * Used to get client version list information
  */
 export class VersionApi {
 	private platformDetector: PlatformDetector
@@ -14,9 +14,9 @@ export class VersionApi {
 	}
 
 	/**
-	 * 获取版本列表
-	 * @returns Promise<PlatformResponse> 返回平台版本信息
-	 * @throws 当 API 调用失败时抛出错误
+	 * Get version list
+	 * @returns Promise<PlatformResponse> Returns platform version information
+	 * @throws Throws error when API call fails
 	 */
 	async getVersionList(): Promise<PlatformResponse> {
 		const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
@@ -30,24 +30,24 @@ export class VersionApi {
 
 			if (!response.ok) {
 				const errorData = await response.text()
-				throw new Error(`获取版本列表失败: ${errorData}`)
+				throw new Error(`Failed to get version list: ${errorData}`)
 			}
 
 			const data: PlatformResponse = await response.json()
 			return data
 		} catch (error) {
 			if (error instanceof Error) {
-				throw new Error(`${url} 获取版本列表时发生错误: ${error.message}`)
+				throw new Error(`${url} Error occurred while getting version list: ${error.message}`)
 			} else {
-				throw new Error(`${url} 获取版本列表时发生未知错误`)
+				throw new Error(`${url} Unknown error occurred while getting version list`)
 			}
 		}
 	}
 
 	/**
-	 * 获取最新版本信息
-	 * @returns Promise<VersionInfo> 返回最新版本信息
-	 * @throws 当 API 调用失败时抛出错误
+	 * Get latest version information
+	 * @returns Promise<VersionInfo> Returns latest version information
+	 * @throws Throws error when API call fails
 	 */
 	async getLatestVersion(): Promise<VersionInfo> {
 		const platformData = await this.getVersionList()
@@ -55,16 +55,16 @@ export class VersionApi {
 	}
 
 	/**
-	 * 检查是否有可用更新
-	 * @param currentVersion 当前版本
-	 * @returns Promise<boolean> 如果有可用更新返回 true，否则返回 false
-	 * @throws 当 API 调用失败时抛出错误
+	 * Check if there are available updates
+	 * @param currentVersion Current version
+	 * @returns Promise<boolean> Returns true if there are available updates, otherwise returns false
+	 * @throws Throws error when API call fails
 	 */
 	async shouldUpdate(currentVersionInfo: VersionInfo): Promise<boolean> {
 		try {
 			const latestVersion = await this.getLatestVersion()
 
-			// 简单的版本比较逻辑
+			// Simple version comparison logic
 			if (latestVersion?.versionId?.major > currentVersionInfo?.versionId?.major) {
 				return true
 			}
@@ -84,7 +84,9 @@ export class VersionApi {
 
 			return false
 		} catch (error) {
-			throw new Error(`检查更新时发生错误: ${error instanceof Error ? error.message : "未知错误"}`)
+			throw new Error(
+				`Error occurred while checking for updates: ${error instanceof Error ? error.message : "Unknown error"}`,
+			)
 		}
 	}
 }

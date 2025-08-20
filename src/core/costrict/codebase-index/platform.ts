@@ -1,11 +1,11 @@
 /**
- * 平台和架构检测器
- * 用于检测当前运行环境的平台和架构信息
+ * Platform and architecture detector
+ * Used to detect platform and architecture information of current runtime environment
  */
 export class PlatformDetector {
 	/**
-	 * 获取当前平台信息
-	 * @returns 返回平台名称：'windows'、'darwin' 或 'linux'
+	 * Get current platform information
+	 * @returns Returns platform name: 'windows', 'darwin' or 'linux'
 	 */
 	get platform(): string {
 		switch (process.platform) {
@@ -19,8 +19,8 @@ export class PlatformDetector {
 	}
 
 	/**
-	 * 获取当前架构信息
-	 * @returns 返回架构名称：'amd64' 或 'arm64'
+	 * Get current architecture information
+	 * @returns Returns architecture name: 'amd64' or 'arm64'
 	 */
 	get arch(): string {
 		switch (process.arch) {

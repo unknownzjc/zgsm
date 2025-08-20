@@ -24,7 +24,7 @@ export const getWellKnownConfig = () => {
 		// const { homeDir } = this.getTargetPath()
 		const wellKnownPath = path.join(os.homedir(), ".costrict", "share", ".well-known.json")
 
-		// 判断 wellKnownPath 文件是否存在
+		// Check if wellKnownPath file exists
 		if (!fs.existsSync(wellKnownPath)) {
 			return {
 				services: [],
@@ -39,22 +39,22 @@ export const getWellKnownConfig = () => {
 	}
 }
 
-// 读取信息
+// Read information
 export const readCostrictAccessToken = () => {
 	const homeDir = os.homedir()
 
 	if (!homeDir) {
-		throw new Error("无法确定用户主目录路径")
+		throw new Error("Unable to determine user home directory path")
 	}
 
 	const tokenDir = path.join(homeDir, ".costrict", "share")
 
-	// 确保目录存在
+	// Ensure directory exists
 	if (!fs.existsSync(tokenDir)) {
 		return null
 	}
 	const tokenFilePath = path.join(tokenDir, "auth.json")
-	// 读取令牌文件
+	// Read token file
 	if (!fs.existsSync(tokenFilePath)) {
 		return null
 	}
@@ -64,17 +64,17 @@ export const writeCostrictAccessToken = async (accessToken: string) => {
 	const homeDir = os.homedir()
 
 	if (!homeDir) {
-		throw new Error("无法确定用户主目录路径")
+		throw new Error("Unable to determine user home directory path")
 	}
 
 	const tokenDir = path.join(homeDir, ".costrict", "share")
 
-	// 确保目录存在
+	// Ensure directory exists
 	if (!fs.existsSync(tokenDir)) {
 		fs.mkdirSync(tokenDir, { recursive: true })
 	}
 	const tokenFilePath = path.join(tokenDir, "auth.json")
-	// 写入令牌文件
+	// Write token file
 	const jwt = jwtDecode(accessToken) as any
 	const { zgsmBaseUrl } = await ZgsmAuthApi.getInstance().getApiConfiguration()
 	const baseUrl = zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
@@ -129,7 +129,7 @@ export function processIsRunning(processName: string, logger: ILogger): Promise<
 				const stdout = output.toString("utf8").trim()
 
 				if (platform === "win32") {
-					// Windows 平台处理
+					// Windows platform handling
 					if (!stdout || stdout.includes("No tasks are running") || stdout.includes("信息:")) {
 						return resolve([])
 					}
@@ -141,7 +141,7 @@ export function processIsRunning(processName: string, logger: ILogger): Promise<
 						if (!line.trim()) continue
 
 						try {
-							// 更健壮的 CSV 解析
+							// More robust CSV parsing
 							const parts = line.split('","').map((p) => p.replace(/^"|"$/g, ""))
 							if (parts.length >= 2) {
 								const pid = parseInt(parts[1], 10)
@@ -150,14 +150,14 @@ export function processIsRunning(processName: string, logger: ILogger): Promise<
 								}
 							}
 						} catch (parseError) {
-							logger.warn(`解析行失败: "${line}"` + parseError)
+							logger.warn(`Failed to parse line: "${line}"` + parseError)
 							continue
 						}
 					}
 
 					return resolve(pids)
 				} else {
-					// Linux/macOS 平台处理
+					// Linux/macOS platform handling
 					if (code === 0) {
 						const pids = stdout
 							.split("\n")
@@ -168,18 +168,18 @@ export function processIsRunning(processName: string, logger: ILogger): Promise<
 
 						return resolve(pids)
 					} else {
-						// pgrep 返回非零码通常表示未找到进程
+						// pgrep returning non-zero code usually means process not found
 						return resolve([])
 					}
 				}
 			} catch (error) {
-				logger.error("处理进程列表时出错:" + error.message)
-				return resolve([]) // 出错时返回空数组而不是抛出异常
+				logger.error("Error processing process list: " + error.message)
+				return resolve([]) // Return empty array on error instead of throwing exception
 			}
 		})
 
 		ps.on("error", (err) => {
-			logger.error(`执行命令失败 [${cmd} ${args.join(" ")}]:` + err.message)
+			logger.error(`Command execution failed [${cmd} ${args.join(" ")}]: ` + err.message)
 			reject(err)
 		})
 	})
@@ -202,14 +202,14 @@ export function spawnDetached(
 				}
 			})
 
-			// 给进程一点时间启动
+			// Give process some time to start
 			setTimeout(() => {
 				resolve(child)
 			}, 1000)
 
 			child.unref()
 		} else {
-			// Linux / macOS 直接 spawn
+			// Linux / macOS spawn directly
 			const child = spawn(command, args, {
 				detached: true,
 				stdio: "ignore",
@@ -220,7 +220,7 @@ export function spawnDetached(
 				reject(error)
 			})
 
-			// 给进程一点时间启动
+			// Give process some time to start
 			setTimeout(() => {
 				resolve(child)
 			}, 1000)

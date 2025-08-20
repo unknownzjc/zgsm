@@ -1,7 +1,7 @@
 import { ILogger } from "../../../utils/logger"
 
 /**
- * 版本 ID 接口
+ * Version ID interface
  */
 export interface VersionId {
 	major: number
@@ -10,18 +10,18 @@ export interface VersionId {
 }
 
 /**
- * 工作区事件类型
+ * Workspace event types
  */
 export type WorkspaceEventType =
-	| "open_workspace" // 打开工作区
-	| "close_workspace" // 关闭工作区
-	| "add_file" // 添加了文件
-	| "modify_file" // 修改了文件（编辑并保存才算修改文件）
-	| "delete_file" // 删除了文件/文件夹
-	| "rename_file" // 重命名或移动了文件/文件夹
+	| "open_workspace" // Open workspace
+	| "close_workspace" // Close workspace
+	| "add_file" // Added file
+	| "modify_file" // Modified file (editing and saving counts as file modification)
+	| "delete_file" // Deleted file/folder
+	| "rename_file" // Renamed or moved file/folder
 
 /**
- * 工作区事件数据
+ * Workspace event data
  */
 export interface WorkspaceEventData {
 	eventType: WorkspaceEventType
@@ -31,7 +31,7 @@ export interface WorkspaceEventData {
 }
 
 /**
- * 工作区事件请求
+ * Workspace event request
  */
 export interface WorkspaceEventRequest {
 	workspace: string
@@ -39,7 +39,7 @@ export interface WorkspaceEventRequest {
 }
 
 /**
- * 手动触发索引构建请求
+ * Manually trigger index build request
  */
 export interface IndexBuildRequest {
 	workspace: string
@@ -48,7 +48,7 @@ export interface IndexBuildRequest {
 }
 
 /**
- * 检测忽略文件请求
+ * Check ignore files request
  */
 export interface IgnoreFilesRequest {
 	workspacePath: string
@@ -57,7 +57,7 @@ export interface IgnoreFilesRequest {
 }
 
 /**
- * 索引状态信息
+ * Index status information
  */
 export interface IndexStatusInfo {
 	status: "success" | "failed" | "running" | "pending"
@@ -72,7 +72,7 @@ export interface IndexStatusInfo {
 }
 
 /**
- * 索引状态响应
+ * Index status response
  */
 export interface IndexStatusResponse {
 	embedding: IndexStatusInfo
@@ -80,7 +80,7 @@ export interface IndexStatusResponse {
 }
 
 /**
- * 索引功能开关请求
+ * Index function toggle request
  */
 export interface IndexSwitchRequest {
 	workspace: string
@@ -88,7 +88,7 @@ export interface IndexSwitchRequest {
 }
 
 /**
- * API 通用响应
+ * API common response
  */
 export interface ApiResponse<T = any> {
 	code: string | number
@@ -98,7 +98,7 @@ export interface ApiResponse<T = any> {
 }
 
 /**
- * 请求头配置
+ * Request header configuration
  */
 export interface RequestHeaders {
 	"X-Request-ID": string
@@ -108,7 +108,7 @@ export interface RequestHeaders {
 }
 
 /**
- * 版本信息接口
+ * Version information interface
  */
 export interface VersionInfo {
 	versionId: VersionId
@@ -119,7 +119,7 @@ export interface VersionInfo {
 }
 
 /**
- * 平台响应接口
+ * Platform response interface
  */
 export interface PlatformResponse {
 	packageName: string
@@ -130,7 +130,7 @@ export interface PlatformResponse {
 }
 
 /**
- * 包信息响应接口
+ * Package information response interface
  */
 export interface PackageInfoResponse {
 	packageName: string
@@ -148,50 +148,50 @@ export interface PackageInfoResponse {
 }
 
 /**
- * CodebaseIndex 管理器接口
+ * CodebaseIndex manager interface
  */
 export interface ICodebaseIndexManager {
 	/**
-	 * 初始化客户端
+	 * Initialize client
 	 */
 	initialize(): Promise<void>
 
 	/**
-	 * 重启客户端
+	 * Restart client
 	 */
 	restartClient(): Promise<void>
 
 	/**
-	 * 检查并升级客户端
+	 * Check and upgrade client
 	 */
 	checkAndUpgradeClient(): Promise<"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm" | "updating">
 
 	/**
-	 * 设置日志提供者
-	 * @param logger 日志提供者
+	 * Set logger provider
+	 * @param logger Logger provider
 	 */
 	setLogger(logger: ILogger): void
 
 	/**
-	 * 设置服务器端点
-	 * @param endpoint 服务器端点地址
+	 * Set server endpoint
+	 * @param endpoint Server endpoint address
 	 */
 	setServerEndpoint(endpoint: string): Promise<void>
 
 	/**
-	 * 发布工作区事件
-	 * @param request 工作区事件请求
+	 * Publish workspace events
+	 * @param request Workspace event request
 	 */
 	publishWorkspaceEvents(request: WorkspaceEventRequest): Promise<ApiResponse<number>>
 
 	/**
-	 * 手动触发索引构建
-	 * @param request 索引构建请求
+	 * Manually trigger index build
+	 * @param request Index build request
 	 */
 	triggerIndexBuild(request: IndexBuildRequest): Promise<ApiResponse<number>>
 
 	/**
-	 * 探活检查
+	 * Health check
 	 */
 	healthCheck(): Promise<{
 		message: string
@@ -200,35 +200,35 @@ export interface ICodebaseIndexManager {
 	}>
 
 	/**
-	 * 检测忽略文件
-	 * @param request 忽略文件请求
+	 * Check ignore files
+	 * @param request Ignore files request
 	 */
 	checkIgnoreFiles(request: IgnoreFilesRequest): Promise<ApiResponse<boolean>>
 
 	/**
-	 * 查询索引状态
-	 * @param workspace 工作区路径
+	 * Query index status
+	 * @param workspace Workspace path
 	 */
 	getIndexStatus(workspace: string): Promise<ApiResponse<IndexStatusResponse>>
 
 	/**
-	 * 索引功能开关
-	 * @param request 开关请求
+	 * Index function toggle
+	 * @param request Toggle request
 	 */
 	toggleIndexSwitch(request: IndexSwitchRequest): Promise<ApiResponse<boolean>>
 }
 
 /**
- * 客户端配置接口
+ * Client configuration interface
  */
 export interface CodebaseIndexClientConfig {
 	/**
-	 * 下载超时时间（毫秒），默认为 30000ms (30秒)
+	 * Download timeout (milliseconds), default is 30000ms (30 seconds)
 	 */
 	downloadTimeout?: number
 
 	/**
-	 * 签名验证公钥，如果未提供则使用默认公钥
+	 * Signature verification public key, uses default public key if not provided
 	 */
 	publicKey?: string
 
@@ -236,45 +236,45 @@ export interface CodebaseIndexClientConfig {
 }
 
 /**
- * 客户端下载进度信息接口
+ * Client download progress information interface
  */
 export interface DownloadProgress {
 	/**
-	 * 已下载的字节数
+	 * Number of bytes downloaded
 	 */
 	downloaded: number
 	/**
-	 * 总字节数
+	 * Total number of bytes
 	 */
 	total: number
 	/**
-	 * 下载进度百分比 (0-100)
+	 * Download progress percentage (0-100)
 	 */
 	progress: number
 }
 
 /**
- * 客户端下载结果接口
+ * Client download result interface
  */
 export interface DownloadResult {
 	/**
-	 * 是否成功
+	 * Whether successful
 	 */
 	success: boolean
 	/**
-	 * 文件保存路径
+	 * File save path
 	 */
 	filePath?: string
 	/**
-	 * 错误信息
+	 * Error message
 	 */
 	error?: string
 	/**
-	 * 版本信息
+	 * Version information
 	 */
 	versionInfo?: VersionInfo
 	/**
-	 * 包信息
+	 * Package information
 	 */
 	packageInfo?: PackageInfoResponse
 }
