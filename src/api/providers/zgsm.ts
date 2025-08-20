@@ -369,7 +369,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			// Cache content for batch processing
 			if (delta.content) {
 				contentBuffer.push(delta.content)
-				if (!isPrinted && chunk.model) {
+				if (!isPrinted && chunk.model && this.options.zgsmModelId === "auto") {
 					this.logger.info(`[Current Model]: ${chunk.model}`)
 					isPrinted = true
 				}

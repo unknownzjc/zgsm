@@ -117,24 +117,8 @@ export class ErrorCodeManager {
 		let rawError = error.error?.metadata?.raw ? JSON.stringify(error.error.metadata.raw, null, 2) : error.message
 		let status = error.status as number
 		const unknownError = { message: t("apiErrors:status.unknown"), solution: t("apiErrors:solution.unknown") }
-		let jsonBody = rawError.split(", response body: {")[1] || ""
-		jsonBody = jsonBody ? `{${jsonBody}` : ""
-		const zgsmParse = (errStr: string, rawError: string) => {
-			try {
-				const { code, message } = JSON.parse(errStr)
-				this.provider?.log(
-					`[Costrict#apiErrors] task ${taskId}.${instanceId} SerializeError Raw Failed: ${message || rawError}\n\n (${code})`,
-				)
-				return { message, code }
-			} catch (error) {
-				console.warn("[zgsmParse]", error.message)
-
-				return { message: "", code: "" }
-			}
-		}
-		if (!jsonBody && zgsmParse(error.message, error.message).code !== "") {
-			jsonBody = error.message
-		}
+		const { code, headers } = error
+		const requestId = headers?.get("x-request-id") ?? null
 		const { apiConfiguration } = await this.provider.getState()
 		const { zgsmApiKeyExpiredAt, zgsmApiKeyUpdatedAt, isOldModeLoginState } = this.parseZgsmTokenInfo(
 			apiConfiguration.zgsmAccessToken,
@@ -169,8 +153,7 @@ export class ErrorCodeManager {
 			"quota-manager.token_invalid",
 			"quota-manager.voucher_expired",
 		]
-		if (jsonBody) {
-			const { code } = zgsmParse(jsonBody, rawError)
+		if (code) {
 			let { message, solution } = this.errorMap[code] || unknownError
 			if (authRequiredCodes.includes(code)) {
 				rawError = message
@@ -201,7 +184,7 @@ ${checkRemainingQuotaStr}
 			}
 			TelemetryService.instance.captureError(`ApiError_${code}`)
 			this.provider.log(`[Costrict#apiErrors] task ${taskId}.${instanceId} Raw Error: ${rawError}`)
-			return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}\n${solution}`
+			return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${requestId ? `RequestID: ${requestId}\n\n` : ""}${t("apiErrors:request.solution")}\n${solution}`
 		}
 		const { message, solution } = defaultError[status] || unknownError
 		if (defaultError[status]) {
@@ -212,7 +195,7 @@ ${checkRemainingQuotaStr}
 			TelemetryService.instance.captureError(`ApiError_unknown`)
 		}
 		this.provider.log(`[Costrict#apiErrors] task ${taskId}.${instanceId} Raw Error: ${rawError}`)
-		return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${t("apiErrors:request.solution")}\n${solution}`
+		return `${t("apiErrors:request.error_details")}\n\n${message}\n\n${requestId ? `RequestID: ${requestId}\n\n` : ""}${t("apiErrors:request.solution")}\n${solution}`
 	}
 	private async hashToken(token: string) {
 		const encoder = new TextEncoder()
