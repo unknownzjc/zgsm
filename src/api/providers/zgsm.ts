@@ -29,6 +29,8 @@ import { getZgsmSelectedModelInfo, setZgsmFullResponseData } from "../../shared/
 import { getClientId } from "../../utils/getClientId"
 import { getWorkspacePath } from "../../utils/path"
 import { getApiRequestTimeout } from "./utils/timeout-config"
+import { createLogger, ILogger } from "../../utils/logger"
+import { Package } from "../../shared/package"
 
 let modelsCache = new WeakRef<string[]>([])
 
@@ -38,11 +40,11 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 	private baseURL: string
 	private chatType?: "user" | "system"
 	private headers = {}
-
+	private logger: ILogger
 	constructor(options: ApiHandlerOptions) {
 		super()
 		this.options = options
-
+		this.logger = createLogger(Package.outputChannel)
 		this.baseURL = `${this.options.zgsmBaseUrl?.trim() || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()}/chat-rag/api/v1`
 		const apiKey = options.zgsmAccessToken || "not-provided"
 		const isAzureAiInference = this._isAzureAiInference(this.baseURL)
@@ -359,6 +361,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 		// Use content buffer to reduce matcher.update() calls
 		const contentBuffer: string[] = []
 		let time = Date.now() + 100
+		let isPrinted = false
 		// chunk
 		for await (const chunk of stream) {
 			const delta = chunk.choices[0]?.delta ?? {}
@@ -366,7 +369,10 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 			// Cache content for batch processing
 			if (delta.content) {
 				contentBuffer.push(delta.content)
-
+				if (!isPrinted && chunk.model) {
+					this.logger.info(`[Current Model]: ${chunk.model}`)
+					isPrinted = true
+				}
 				// Process in batch when threshold is reached
 				if (contentBuffer.length >= 10 || Date.now() >= time) {
 					const batchedContent = contentBuffer.join("")
