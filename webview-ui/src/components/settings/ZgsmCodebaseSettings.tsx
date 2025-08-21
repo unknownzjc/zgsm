@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
 import { format } from "date-fns"
-import { useTranslation } from "react-i18next"
 
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 import { vscode } from "@/utils/vscode"
@@ -30,6 +29,7 @@ import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
 import { ExtensionStateContextType } from "@/context/ExtensionStateContext"
 import { useExtensionState } from "@/context/ExtensionStateContext"
+import { useAppTranslation } from "@/i18n/TranslationContext"
 
 interface ZgsmCodebaseSettingsProps {
 	apiConfiguration: ExtensionStateContextType["apiConfiguration"]
@@ -74,7 +74,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo, t: (key: s
 			break
 		case "failed":
 			progress = 100
-			errorMessage = statusInfo.failedReason || t("codebase.general.indexBuildFailed")
+			errorMessage = statusInfo.failedReason || t("settings:codebase.general.indexBuildFailed")
 			break
 	}
 
@@ -94,7 +94,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo, t: (key: s
 
 export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsProps) => {
 	const { zgsmCodebaseIndexEnabled } = useExtensionState()
-	const { t } = useTranslation("settings")
+	const { t } = useAppTranslation()
 	const [showDisableConfirmDialog, setShowDisableConfirmDialog] = useState(false)
 	const [isProcessing, setIsProcessing] = useState(false)
 
@@ -181,7 +181,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			if (message.type === "codebaseIndexStatusResponse" && message.payload?.status) {
 				const { embedding, codegraph } = message.payload.status
 				console.log("codebaseIndexStatusResponse", { embedding, codegraph })
-
+				startPolling()
 				if (embedding) {
 					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding, t))
 				}
@@ -198,9 +198,13 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 		window.addEventListener("message", handleMessage)
 
-		// 1. 打开页面获取一次构建状态，然后每隔5秒获取一次构建状态
+		// 1. 打开页面获取一次构建状态
 		if (zgsmCodebaseIndexEnabled && !isPendingEnable) {
-			startPolling()
+			// startPolling()
+			// 立即获取一次状态
+			vscode.postMessage({
+				type: "zgsmPollCodebaseIndexStatus",
+			})
 		}
 
 		return () => {
@@ -350,23 +354,22 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 						<div>{title}</div>
 					</div>
 					<div className="text-vscode-descriptionForeground text-sm mb-3">{description}</div>
-
 					{isPendingEnableSection ? (
 						<div className="text-vscode-descriptionForeground text-sm italic py-4">
-							{t("codebase.semanticIndex.enableToShowDetails")}
+							{t("settings:codebase.semanticIndex.enableToShowDetails")}
 						</div>
 					) : (
 						<>
 							<div className="grid grid-cols-2 gap-4">
 								<div>
 									<div className="text-vscode-descriptionForeground text-sm">
-										{t("codebase.semanticIndex.fileCount")}
+										{t("settings:codebase.semanticIndex.fileCount")}
 									</div>
 									<div className="font-medium">{indexStatus.fileCount}</div>
 								</div>
 								<div>
 									<div className="text-vscode-descriptionForeground text-sm">
-										{t("codebase.semanticIndex.lastUpdatedTime")}
+										{t("settings:codebase.semanticIndex.lastUpdatedTime")}
 									</div>
 									<div className="font-medium">{indexStatus.lastUpdated}</div>
 								</div>
@@ -374,7 +377,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 							<div className="mt-2">
 								<div className="flex justify-between text-sm mb-1">
-									<span>{t("codebase.semanticIndex.buildProgress")}</span>
+									<span>{t("settings:codebase.semanticIndex.buildProgress")}</span>
 									<span>{indexStatus.progress.toFixed(1)}%</span>
 								</div>
 								<Progress value={indexStatus.progress} className="h-2" />
@@ -387,26 +390,26 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							{isPendingEnableSection ? (
 								<div className="flex items-center gap-2">
 									<div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-									<span>{t("codebase.semanticIndex.pendingEnable")}</span>
+									<span>{t("settings:codebase.semanticIndex.pendingEnable")}</span>
 								</div>
 							) : (
 								<>
 									{indexStatus.status === "running" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-											<span>{t("codebase.semanticIndex.syncing")}</span>
+											<span>{t("settings:codebase.semanticIndex.syncing")}</span>
 										</div>
 									)}
 									{indexStatus.status === "pending" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse"></div>
-											<span>{t("codebase.semanticIndex.pendingSync")}</span>
+											<span>{t("settings:codebase.semanticIndex.pendingSync")}</span>
 										</div>
 									)}
 									{indexStatus.status === "success" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-green-500 rounded-full"></div>
-											<span>{t("codebase.semanticIndex.syncSuccess")}</span>
+											<span>{t("settings:codebase.semanticIndex.syncSuccess")}</span>
 										</div>
 									)}
 									{indexStatus.status === "failed" && (
@@ -416,7 +419,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 													<TooltipTrigger>
 														<div className="flex items-center gap-2">
 															<div className="w-3 h-3 bg-red-500 rounded-full"></div>
-															<span>{t("codebase.semanticIndex.syncFailed")}</span>
+															<span>
+																{t("settings:codebase.semanticIndex.syncFailed")}
+															</span>
 															<Badge variant="destructive" className="text-xs">
 																{indexStatus.failedFiles?.length || 0}
 															</Badge>
@@ -425,7 +430,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 													<TooltipContent>
 														<p>
 															{indexStatus.errorMessage ||
-																t("codebase.semanticIndex.syncFailedFiles")}
+																t("settings:codebase.semanticIndex.syncFailedFiles")}
 														</p>
 													</TooltipContent>
 												</Tooltip>
@@ -435,7 +440,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 												<PopoverTrigger asChild>
 													<Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
 														<AlertCircle className="w-3 h-3 mr-1" />
-														{t("codebase.semanticIndex.viewDetails")}
+														{t("settings:codebase.semanticIndex.viewDetails")}
 													</Button>
 												</PopoverTrigger>
 												<PopoverContent className="w-80 max-h-60 overflow-y-auto">
@@ -443,7 +448,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 														<div className="flex items-center gap-2">
 															<AlertCircle className="w-4 h-4 text-red-500" />
 															<h4 className="font-medium">
-																{t("codebase.semanticIndex.syncFailedFilesTitle")}
+																{t(
+																	"settings:codebase.semanticIndex.syncFailedFilesTitle",
+																)}
 															</h4>
 														</div>
 
@@ -458,7 +465,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 															<div className="space-y-2">
 																<div className="flex justify-between items-center">
 																	<p className="text-sm font-medium">
-																		{t("codebase.semanticIndex.failedFileList")}
+																		{t(
+																			"settings:codebase.semanticIndex.failedFileList",
+																		)}
 																	</p>
 																	<Button
 																		variant="ghost"
@@ -482,7 +491,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 																		}}
 																		disabled={disabled}>
 																		<Copy className="w-3 h-3 mr-1" />
-																		{t("codebase.semanticIndex.copy")}
+																		{t("settings:codebase.semanticIndex.copy")}
 																	</Button>
 																</div>
 																<div className="max-h-40 overflow-y-auto border border-vscode-input-border rounded p-2 bg-vscode-textBlockQuote-background">
@@ -503,7 +512,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 															</div>
 														) : (
 															<p className="text-sm text-vscode-descriptionForeground">
-																{t("codebase.semanticIndex.noFailedFiles")}
+																{t("settings:codebase.semanticIndex.noFailedFiles")}
 															</p>
 														)}
 													</div>
@@ -527,7 +536,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 											<RefreshCw
 												className={`w-3 h-3 ${indexStatus.status === "running" && !isPendingEnableSection ? "animate-spin" : ""}`}
 											/>
-											{t("codebase.semanticIndex.rebuild")}
+											{t("settings:codebase.semanticIndex.rebuild")}
 										</Button>
 									</div>
 								</TooltipTrigger>
@@ -535,8 +544,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 									<TooltipContent>
 										<p>
 											{isPendingEnable
-												? t("codebase.general.onlyCostrictProviderSupport")
-												: t("codebase.semanticIndex.codebaseIndexDisabled")}
+												? t("settings:codebase.general.onlyCostrictProviderSupport")
+												: t("settings:codebase.semanticIndex.codebaseIndexDisabled")}
 										</p>
 									</TooltipContent>
 								)}
@@ -558,24 +567,24 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				}}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>{t("codebase.confirmDialog.title")}</AlertDialogTitle>
+						<AlertDialogTitle>{t("settings:codebase.confirmDialog.title")}</AlertDialogTitle>
 						<AlertDialogDescription>
-							{t("codebase.confirmDialog.description")}
+							{t("settings:codebase.confirmDialog.description")}
 							<ul className="list-disc list-inside mt-2 space-y-1">
-								<li>{t("codebase.confirmDialog.impact1")}</li>
-								<li>{t("codebase.confirmDialog.impact2")}</li>
-								<li>{t("codebase.confirmDialog.impact3")}</li>
-								<li>{t("codebase.confirmDialog.impact4")}</li>
+								<li>{t("settings:codebase.confirmDialog.impact1")}</li>
+								<li>{t("settings:codebase.confirmDialog.impact2")}</li>
+								<li>{t("settings:codebase.confirmDialog.impact3")}</li>
+								<li>{t("settings:codebase.confirmDialog.impact4")}</li>
 							</ul>
 							<br />
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={handleCancelDisable}>
-							{t("codebase.confirmDialog.cancel")}
+							{t("settings:codebase.confirmDialog.cancel")}
 						</AlertDialogCancel>
 						<AlertDialogAction onClick={handleConfirmDisable}>
-							{t("codebase.confirmDialog.confirm")}
+							{t("settings:codebase.confirmDialog.confirm")}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -592,12 +601,12 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 										onChange={handleCodebaseIndexToggle}
 										disabled={isPendingEnable}
 									/>
-									<div>{t("codebase.general.codebaseIndexBuild")}</div>
+									<div>{t("settings:codebase.general.codebaseIndexBuild")}</div>
 								</div>
 							</TooltipTrigger>
 							{isPendingEnable && (
 								<TooltipContent>
-									<p>{t("codebase.general.onlyCostrictProviderSupport")}</p>
+									<p>{t("settings:codebase.general.onlyCostrictProviderSupport")}</p>
 								</TooltipContent>
 							)}
 						</Tooltip>
@@ -608,8 +617,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			<Section>
 				<div className={`space-y-6 ${!zgsmCodebaseIndexEnabled ? "opacity-50" : ""}`}>
 					{renderIndexSection(
-						t("codebase.semanticIndex.title"),
-						t("codebase.semanticIndex.description"),
+						t("settings:codebase.semanticIndex.title"),
+						t("settings:codebase.semanticIndex.description"),
 						semanticIndex,
 						handleRebuildSemanticIndex,
 						!zgsmCodebaseIndexEnabled,
@@ -617,8 +626,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					)}
 
 					{renderIndexSection(
-						t("codebase.codeIndex.title"),
-						t("codebase.codeIndex.description"),
+						t("settings:codebase.codeIndex.title"),
+						t("settings:codebase.codeIndex.description"),
 						codeIndex,
 						handleRebuildCodeIndex,
 						!zgsmCodebaseIndexEnabled,
@@ -628,13 +637,13 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					<div className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background`}>
 						<div className="flex items-center gap-4 font-bold">
 							<FileText className="w-4 h-4" />
-							<div>{t("codebase.ignoreFileSettings.title")}</div>
+							<div>{t("settings:codebase.ignoreFileSettings.title")}</div>
 						</div>
 						<div className="text-vscode-descriptionForeground text-sm mb-3">
-							{t("codebase.ignoreFileSettings.description")}
+							{t("settings:codebase.ignoreFileSettings.description")}
 						</div>
 						<Button onClick={handleEditIgnoreFile} variant="outline" size="sm" className="w-fit">
-							{t("codebase.ignoreFileSettings.edit")}
+							{t("settings:codebase.ignoreFileSettings.edit")}
 						</Button>
 					</div>
 				</div>
