@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown"
 import styled from "styled-components"
 import { visit } from "unist-util-visit"
 import rehypeKatex from "rehype-katex"
+import rehypeRaw from "rehype-raw"
 import remarkMath from "remark-math"
 import remarkGfm from "remark-gfm"
 
@@ -301,7 +302,7 @@ const MarkdownBlock = memo(({ markdown }: MarkdownBlockProps) => {
 						}
 					},
 				]}
-				rehypePlugins={[rehypeKatex as any]}
+				rehypePlugins={[rehypeRaw, rehypeKatex as any]}
 				components={components}>
 				{markdown || ""}
 			</ReactMarkdown>
