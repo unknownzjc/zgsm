@@ -360,21 +360,24 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 
 		// Use content buffer to reduce matcher.update() calls
 		const contentBuffer: string[] = []
-		let time = Date.now() + 100
+		let time = Date.now()
 		let isPrinted = false
+
 		// chunk
 		for await (const chunk of stream) {
 			const delta = chunk.choices[0]?.delta ?? {}
 
 			// Cache content for batch processing
 			if (delta.content) {
+				console.count(`chat time`)
+
 				contentBuffer.push(delta.content)
-				if (!isPrinted && chunk.model && this.options.zgsmModelId === "auto") {
+				if (!isPrinted && chunk.model && this.options.zgsmModelId === "Auto") {
 					this.logger.info(`[Current Model]: ${chunk.model}`)
 					isPrinted = true
 				}
 				// Process in batch when threshold is reached
-				if (contentBuffer.length >= 20 || Date.now() >= time) {
+				if (contentBuffer.length >= 10 || Date.now() >= time) {
 					const batchedContent = contentBuffer.join("")
 					for (const processedChunk of matcher.update(batchedContent)) {
 						yield processedChunk

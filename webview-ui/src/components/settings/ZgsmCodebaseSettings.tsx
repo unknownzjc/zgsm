@@ -88,7 +88,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo, t: (key: s
 		progress,
 		status: statusInfo.status,
 		errorMessage,
-		failedFiles: statusInfo.failedFiles,
+		failedFiles: statusInfo.failedFiles.filter((file) => file !== ""),
 	}
 }
 
@@ -149,11 +149,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 		// 标记轮询状态为活跃
 		isPollingActive.current = true
-
-		// 立即获取一次状态
-		vscode.postMessage({
-			type: "zgsmPollCodebaseIndexStatus",
-		})
 
 		// 每5秒获取一次状态
 		pollingIntervalId.current = setInterval(() => {

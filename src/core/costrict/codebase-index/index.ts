@@ -19,7 +19,7 @@ import { TelemetryErrorType } from "../telemetry"
 import { TelemetryService } from "@roo-code/telemetry"
 import { ZgsmAuthService } from "../auth"
 import { ILogger } from "../../../utils/logger"
-import { getWorkspacePath } from "../../../utils/path"
+// import { getWorkspacePath } from "../../../utils/path"
 import pWaitFor from "p-wait-for"
 
 /**
@@ -113,8 +113,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 
 		// Check if client is already installed locally
 		try {
-			this.log("Initializing CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
-
 			// Create client configuration
 			const config: CodebaseIndexClientConfig = {
 				downloadTimeout: 30_000,
@@ -165,14 +163,9 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	 */
 	public async restartClient(): Promise<void> {
 		try {
-			this.log("Starting to restart CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
-
-			// Re-initialize client
 			this.isInitialized = false
 			await this.initialize()
-
-			this.log("CodebaseKeeper client restarted successfully", "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error occurred while restarting CodebaseKeeper client"
@@ -188,67 +181,49 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		"firstInstall" | "failed" | "upgraded" | "noUpdate" | "needZgsm" | "updating"
 	> {
 		try {
+			let localVersionInfo = await this.getLocalVersion()
 			// Check if client is already installed locally
-			const localVersionInfo = await this.getLocalVersion()
-			if (localVersionInfo && localVersionInfo.status === "downloading") {
-				try {
-					this.log(`Client download operation already in progress...`, "info", "ZgsmCodebaseIndexManager")
-					await pWaitFor(
-						async () => {
-							const localVersionInfo = await this.getLocalVersion()
-							const ok = localVersionInfo && localVersionInfo.status !== "downloading"
 
-							// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-							ok &&
-								this.log(
-									`Client download completed: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
-									"info",
-									"ZgsmCodebaseIndexManager",
-								)
+			if (localVersionInfo) {
+				const elapsed = Date.now() - (localVersionInfo.updateAt || 0)
+				if (localVersionInfo.status === "downloading" && elapsed <= 60_000) {
+					try {
+						this.log(`Client download operation already in progress...`, "info", "ZgsmCodebaseIndexManager")
+						await pWaitFor(
+							async () => {
+								const localVersionInfo = await this.getLocalVersion()
+								const ok = localVersionInfo && localVersionInfo.status !== "downloading"
+								return !!ok
+							},
+							{
+								interval: 10_000,
+								timeout: 120_000,
+							},
+						)
+					} catch (error) {
+						this.log(`Client download wait timeout`, "info", "ZgsmCodebaseIndexManager")
 
-							return ok ? true : false
-						},
-						{
-							interval: 1_000,
-							timeout: 60_000,
-						},
-					)
-				} catch (error) {
-					this.log(`Client download wait timeout`, "info", "ZgsmCodebaseIndexManager")
-
-					return "failed"
+						return "failed"
+					}
+				}
+				if (localVersionInfo.status === "downloading" && elapsed > 60_000) {
+					this.saveLocalVersion({
+						...localVersionInfo,
+						status: "failed",
+					})
 				}
 			}
 
-			this.log("Starting to check and upgrade CodebaseKeeper client", "info", "ZgsmCodebaseIndexManager")
 			await this.ensureClientInited()
 			// Get latest version information
 			const latestVersionInfo = await this.client!.getLatestVersion()
-			this.log(
-				`Latest version: ${latestVersionInfo?.versionId?.major}.${latestVersionInfo?.versionId?.minor}.${latestVersionInfo?.versionId?.micro}`,
-				"info",
-				"ZgsmCodebaseIndexManager",
-			)
-
+			localVersionInfo = await this.getLocalVersion()
 			if (!localVersionInfo || !fs.existsSync(this.client!.getTargetPath().targetPath)) {
 				// Not installed locally, install latest version directly
 				await this.client!.stopExistingClient()
-				this.log(
-					"Client not installed locally, starting to download latest version",
-					"info",
-					"ZgsmCodebaseIndexManager",
-				)
 				await this.downloadAndInstallClient(latestVersionInfo)
-				this.log("CodebaseKeeper client check and upgrade completed", "info", "ZgsmCodebaseIndexManager")
 				return "firstInstall"
 			} else {
-				// Already installed locally, check if upgrade is needed
-				this.log(
-					`Local version: ${localVersionInfo?.versionId?.major}.${localVersionInfo?.versionId?.minor}.${localVersionInfo?.versionId?.micro}`,
-					"info",
-					"ZgsmCodebaseIndexManager",
-				)
-
 				const hasUpdate = await this.client!.shouldUpdate(localVersionInfo)
 
 				if (hasUpdate) {
@@ -324,12 +299,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				throw new Error("Version file format is invalid")
 			}
 
-			// Remove updatedAt field, return only VersionInfo data
-			const { updatedAt, ...versionInfo } = versionData
-
-			// this.log(`Local version information read: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
-
-			return versionInfo as VersionInfo
+			return versionData
 		} catch (error) {
 			if (error instanceof SyntaxError) {
 				this.log(`Local version file parsing failed: JSON format error`, "error", "ZgsmCodebaseIndexManager")
@@ -352,6 +322,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 		try {
 			await this.saveLocalVersion({
 				...versionInfo,
+				updateAt: Date.now(),
 				status: "downloading",
 			})
 			const versionString = `${versionInfo?.versionId?.major}.${versionInfo?.versionId?.minor}.${versionInfo?.versionId?.micro}`
@@ -376,6 +347,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				await this.saveLocalVersion({
 					...versionInfo,
 					packageInfo: result.packageInfo,
+					updateAt: Date.now(),
 					status: "downloaded",
 				})
 			} else {
@@ -383,6 +355,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 				await this.saveLocalVersion({
 					...versionInfo,
 					packageInfo: result.packageInfo,
+					updateAt: Date.now(),
 					status: "failed",
 				})
 				throw new Error(result.error || "Failed to download and install client")
@@ -396,6 +369,7 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// Save local version information with failed status
 			await this.saveLocalVersion({
 				...versionInfo,
+				updateAt: Date.now(),
 				status: "failed",
 			})
 			throw new Error(errorMessage)
@@ -426,12 +400,10 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 			// Write version file
 			const versionData = {
 				...versionInfo,
-				updatedAt: new Date().toISOString(),
+				updateAt: Date.now(),
 			}
 
 			fs.writeFileSync(versionFilePath, JSON.stringify(versionData, null, 2), "utf8")
-
-			this.log(`Local version information saved: ${versionFilePath}`, "info", "ZgsmCodebaseIndexManager")
 		} catch (error) {
 			this.log(
 				`Failed to save local version information: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -442,22 +414,6 @@ export class ZgsmCodebaseIndexManager implements ICodebaseIndexManager {
 	}
 	recordError(type: TelemetryErrorType) {
 		TelemetryService.instance.captureError(`CodeBaseError_${type}`)
-	}
-
-	/**
-	 * Set server endpoint
-	 * @param endpoint Server endpoint address
-	 */
-	public async setServerEndpoint(endpoint: string): Promise<void> {
-		try {
-			await this.ensureClientInited()
-			this.log(`Server endpoint set to: ${endpoint}`, "info", "ZgsmCodebaseIndexManager")
-		} catch (error) {
-			const errorMessage =
-				error instanceof Error ? error.message : "Unknown error occurred while setting server endpoint"
-			this.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-			throw new Error(errorMessage)
-		}
 	}
 
 	/**

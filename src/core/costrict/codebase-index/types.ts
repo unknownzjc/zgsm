@@ -116,6 +116,7 @@ export interface VersionInfo {
 	infoUrl: string
 	packageInfo?: PackageInfoResponse
 	status?: "downloading" | "downloaded" | "failed"
+	updateAt?: number
 }
 
 /**
@@ -171,12 +172,6 @@ export interface ICodebaseIndexManager {
 	 * @param logger Logger provider
 	 */
 	setLogger(logger: ILogger): void
-
-	/**
-	 * Set server endpoint
-	 * @param endpoint Server endpoint address
-	 */
-	setServerEndpoint(endpoint: string): Promise<void>
 
 	/**
 	 * Publish workspace events

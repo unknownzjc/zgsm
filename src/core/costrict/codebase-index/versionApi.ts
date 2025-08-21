@@ -63,7 +63,9 @@ export class VersionApi {
 	async shouldUpdate(currentVersionInfo: VersionInfo): Promise<boolean> {
 		try {
 			const latestVersion = await this.getLatestVersion()
-
+			if (currentVersionInfo.status === "failed") {
+				return true
+			}
 			// Simple version comparison logic
 			if (latestVersion?.versionId?.major > currentVersionInfo?.versionId?.major) {
 				return true

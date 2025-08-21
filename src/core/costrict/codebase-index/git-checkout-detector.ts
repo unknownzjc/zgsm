@@ -3,7 +3,7 @@ import * as path from "path"
 import { EventEmitter } from "events"
 import { simpleGit, SimpleGit } from "simple-git"
 import { ILogger } from "../../../utils/logger"
-import ZgsmCodebaseIndexManager, { IndexBuildRequest } from "."
+import ZgsmCodebaseIndexManager from "."
 
 export interface CheckoutEvent {
 	oldBranch: string | undefined
@@ -98,33 +98,29 @@ export function initGitCheckoutDetector(context: vscode.ExtensionContext, logger
 			const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
 
 			// Get workspace path
-			const workspacePath = root
-			const rebuildType = "all"
-			const path = root
-
-			// Build IndexBuildRequest
-			const indexBuildRequest = {
-				workspace: workspacePath,
-				path: path,
-				type: rebuildType,
-			} as IndexBuildRequest
-
-			// Call ZgsmCodebaseIndexManager.triggerIndexBuild()
-			const result = await zgsmCodebaseIndexManager.triggerIndexBuild(indexBuildRequest)
+			const result = await zgsmCodebaseIndexManager.publishWorkspaceEvents({
+				workspace: root,
+				data: [
+					{
+						eventType: "open_workspace",
+						eventTime: `${Date.now()}`,
+						sourcePath: "",
+						targetPath: "",
+					},
+				],
+			})
 
 			if (result.success) {
 				vscode.window.showInformationMessage(`Branch switched: ${oldBranch ?? "(unknown)"} → ${newBranch}`)
-				logger.info(
-					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Successfully triggered index rebuild: ${rebuildType}`,
-				)
+				logger.info(`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Successfully open_workspace event`)
 			} else {
 				logger.error(
-					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Failed to trigger index rebuild: ${result.message}`,
+					`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] Failed to open_workspace event: ${result.message}`,
 				)
 			}
 		} catch (error) {
 			const errorMessage =
-				error instanceof Error ? error.message : "Unknown error occurred while triggering index rebuild"
+				error instanceof Error ? error.message : "Unknown error occurred while open_workspace event"
 			logger.error(`[GitCheckoutDetector:${oldBranch} -> ${newBranch}] ${errorMessage}`)
 		}
 	})

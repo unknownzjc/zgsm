@@ -158,19 +158,16 @@ export class AICompletionProvider implements InlineCompletionItemProvider, Dispo
 	private enableCompletion(triggerMode: string, docInfo: CompletionDocumentInformation): boolean {
 		if (!LangSetting.completionEnabled) {
 			// Global disable will ignore the trigger mode
-			Logger.info("Completion: The completion extension is disabled, no completion will be performed.")
+			// Logger.info("Completion: The completion extension is disabled, no completion will be performed.")
 			return false
 		}
 		const sw = LangSetting.getCompletionDisable(docInfo.language)
 		if (sw === LangSwitch.Unsupported) {
-			Logger.info(`Completion: The ${docInfo.language} language does not support code completion yet.`)
+			// Logger.info(`Completion: The ${docInfo.language} language does not support code completion yet.`)
 			return false
 		}
 		if (triggerMode === "auto") {
 			if (sw === LangSwitch.Disabled) {
-				Logger.info(
-					`Completion: The completion function of the current language ${docInfo.language} has been disabled.`,
-				)
 				return false
 			}
 		}
