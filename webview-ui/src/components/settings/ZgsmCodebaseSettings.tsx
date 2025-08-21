@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { RefreshCw, FileText, AlertCircle, Copy } from "lucide-react"
 import { format } from "date-fns"
+import { useTranslation } from "react-i18next"
 
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 import { vscode } from "@/utils/vscode"
@@ -57,7 +58,7 @@ export interface IndexStatusInfo {
 }
 
 // 将后端的 IndexStatusInfo 转换为前端组件使用的 IndexStatus 格式
-const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStatus => {
+const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo, t: (key: string) => string): IndexStatus => {
 	let errorMessage: string | undefined
 	let progress = 0
 
@@ -73,7 +74,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 			break
 		case "failed":
 			progress = 100
-			errorMessage = statusInfo.failedReason || "索引构建失败"
+			errorMessage = statusInfo.failedReason || t("codebase.general.indexBuildFailed")
 			break
 	}
 
@@ -93,6 +94,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo): IndexStat
 
 export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsProps) => {
 	const { zgsmCodebaseIndexEnabled } = useExtensionState()
+	const { t } = useTranslation("settings")
 	const [showDisableConfirmDialog, setShowDisableConfirmDialog] = useState(false)
 	const [isProcessing, setIsProcessing] = useState(false)
 
@@ -181,10 +183,10 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				console.log("codebaseIndexStatusResponse", { embedding, codegraph })
 
 				if (embedding) {
-					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding))
+					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding, t))
 				}
 				if (codegraph) {
-					setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph))
+					setCodeIndex(mapIndexStatusInfoToIndexStatus(codegraph, t))
 				}
 
 				// 如果构建状态为成功/失败，则停止轮询
@@ -206,7 +208,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			// 4. 关闭页面时，停止轮询
 			stopPolling()
 		}
-	}, [zgsmCodebaseIndexEnabled, isPendingEnable, startPolling, stopPolling, shouldStopPolling])
+	}, [zgsmCodebaseIndexEnabled, isPendingEnable, startPolling, stopPolling, shouldStopPolling, t])
 
 	// 防重复调用的 ref
 	const lastToggleTime = useRef<number>(0)
@@ -350,23 +352,29 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					<div className="text-vscode-descriptionForeground text-sm mb-3">{description}</div>
 
 					{isPendingEnableSection ? (
-						<div className="text-vscode-descriptionForeground text-sm italic py-4">启用后显示详细信息</div>
+						<div className="text-vscode-descriptionForeground text-sm italic py-4">
+							{t("codebase.semanticIndex.enableToShowDetails")}
+						</div>
 					) : (
 						<>
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<div className="text-vscode-descriptionForeground text-sm">文件数</div>
+									<div className="text-vscode-descriptionForeground text-sm">
+										{t("codebase.semanticIndex.fileCount")}
+									</div>
 									<div className="font-medium">{indexStatus.fileCount}</div>
 								</div>
 								<div>
-									<div className="text-vscode-descriptionForeground text-sm">最新更新时间</div>
+									<div className="text-vscode-descriptionForeground text-sm">
+										{t("codebase.semanticIndex.lastUpdatedTime")}
+									</div>
 									<div className="font-medium">{indexStatus.lastUpdated}</div>
 								</div>
 							</div>
 
 							<div className="mt-2">
 								<div className="flex justify-between text-sm mb-1">
-									<span>构建进度</span>
+									<span>{t("codebase.semanticIndex.buildProgress")}</span>
 									<span>{indexStatus.progress.toFixed(1)}%</span>
 								</div>
 								<Progress value={indexStatus.progress} className="h-2" />
@@ -379,26 +387,26 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 							{isPendingEnableSection ? (
 								<div className="flex items-center gap-2">
 									<div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-									<span>待启用</span>
+									<span>{t("codebase.semanticIndex.pendingEnable")}</span>
 								</div>
 							) : (
 								<>
 									{indexStatus.status === "running" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-											<span>同步中...</span>
+											<span>{t("codebase.semanticIndex.syncing")}</span>
 										</div>
 									)}
 									{indexStatus.status === "pending" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse"></div>
-											<span>待同步</span>
+											<span>{t("codebase.semanticIndex.pendingSync")}</span>
 										</div>
 									)}
 									{indexStatus.status === "success" && (
 										<div className="flex items-center gap-2">
 											<div className="w-3 h-3 bg-green-500 rounded-full"></div>
-											<span>同步成功</span>
+											<span>{t("codebase.semanticIndex.syncSuccess")}</span>
 										</div>
 									)}
 									{indexStatus.status === "failed" && (
@@ -408,14 +416,17 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 													<TooltipTrigger>
 														<div className="flex items-center gap-2">
 															<div className="w-3 h-3 bg-red-500 rounded-full"></div>
-															<span>同步失败</span>
+															<span>{t("codebase.semanticIndex.syncFailed")}</span>
 															<Badge variant="destructive" className="text-xs">
 																{indexStatus.failedFiles?.length || 0}
 															</Badge>
 														</div>
 													</TooltipTrigger>
 													<TooltipContent>
-														<p>{indexStatus.errorMessage || "同步失败文件"}</p>
+														<p>
+															{indexStatus.errorMessage ||
+																t("codebase.semanticIndex.syncFailedFiles")}
+														</p>
 													</TooltipContent>
 												</Tooltip>
 											</TooltipProvider>
@@ -424,14 +435,16 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 												<PopoverTrigger asChild>
 													<Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
 														<AlertCircle className="w-3 h-3 mr-1" />
-														查看详情
+														{t("codebase.semanticIndex.viewDetails")}
 													</Button>
 												</PopoverTrigger>
 												<PopoverContent className="w-80 max-h-60 overflow-y-auto">
 													<div className="space-y-3">
 														<div className="flex items-center gap-2">
 															<AlertCircle className="w-4 h-4 text-red-500" />
-															<h4 className="font-medium">同步失败文件</h4>
+															<h4 className="font-medium">
+																{t("codebase.semanticIndex.syncFailedFilesTitle")}
+															</h4>
 														</div>
 
 														{indexStatus.errorMessage && (
@@ -444,7 +457,9 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 														indexStatus.failedFiles.length > 0 ? (
 															<div className="space-y-2">
 																<div className="flex justify-between items-center">
-																	<p className="text-sm font-medium">失败文件列表:</p>
+																	<p className="text-sm font-medium">
+																		{t("codebase.semanticIndex.failedFileList")}
+																	</p>
 																	<Button
 																		variant="ghost"
 																		size="sm"
@@ -467,7 +482,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 																		}}
 																		disabled={disabled}>
 																		<Copy className="w-3 h-3 mr-1" />
-																		复制
+																		{t("codebase.semanticIndex.copy")}
 																	</Button>
 																</div>
 																<div className="max-h-40 overflow-y-auto border border-vscode-input-border rounded p-2 bg-vscode-textBlockQuote-background">
@@ -488,7 +503,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 															</div>
 														) : (
 															<p className="text-sm text-vscode-descriptionForeground">
-																暂无失败文件信息
+																{t("codebase.semanticIndex.noFailedFiles")}
 															</p>
 														)}
 													</div>
@@ -512,7 +527,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 											<RefreshCw
 												className={`w-3 h-3 ${indexStatus.status === "running" && !isPendingEnableSection ? "animate-spin" : ""}`}
 											/>
-											重新构建
+											{t("codebase.semanticIndex.rebuild")}
 										</Button>
 									</div>
 								</TooltipTrigger>
@@ -520,8 +535,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 									<TooltipContent>
 										<p>
 											{isPendingEnable
-												? "仅 Costrict 提供商支持此服务"
-												: "Codebase 索引构建已禁用"}
+												? t("codebase.general.onlyCostrictProviderSupport")
+												: t("codebase.semanticIndex.codebaseIndexDisabled")}
 										</p>
 									</TooltipContent>
 								)}
@@ -531,7 +546,7 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				</div>
 			)
 		},
-		[handleOpenFailedFile, isPendingEnable],
+		[handleOpenFailedFile, isPendingEnable, t],
 	)
 
 	return (
@@ -543,21 +558,25 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 				}}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>确定要禁用 Codebase 索引构建功能吗？</AlertDialogTitle>
+						<AlertDialogTitle>{t("codebase.confirmDialog.title")}</AlertDialogTitle>
 						<AlertDialogDescription>
-							禁用后将导致以下影响：
+							{t("codebase.confirmDialog.description")}
 							<ul className="list-disc list-inside mt-2 space-y-1">
-								<li>代码补全效果降低</li>
-								<li>代码生成效果降低</li>
-								<li>代码审查功能无法正常使用</li>
-								<li>模型无法对整个项目进行有效分析</li>
+								<li>{t("codebase.confirmDialog.impact1")}</li>
+								<li>{t("codebase.confirmDialog.impact2")}</li>
+								<li>{t("codebase.confirmDialog.impact3")}</li>
+								<li>{t("codebase.confirmDialog.impact4")}</li>
 							</ul>
 							<br />
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel onClick={handleCancelDisable}>取消</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirmDisable}>确认</AlertDialogAction>
+						<AlertDialogCancel onClick={handleCancelDisable}>
+							{t("codebase.confirmDialog.cancel")}
+						</AlertDialogCancel>
+						<AlertDialogAction onClick={handleConfirmDisable}>
+							{t("codebase.confirmDialog.confirm")}
+						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
@@ -573,12 +592,12 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 										onChange={handleCodebaseIndexToggle}
 										disabled={isPendingEnable}
 									/>
-									<div>Codebase索引构建</div>
+									<div>{t("codebase.general.codebaseIndexBuild")}</div>
 								</div>
 							</TooltipTrigger>
 							{isPendingEnable && (
 								<TooltipContent>
-									<p>仅 Costrict 提供商支持此服务</p>
+									<p>{t("codebase.general.onlyCostrictProviderSupport")}</p>
 								</TooltipContent>
 							)}
 						</Tooltip>
@@ -589,8 +608,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 			<Section>
 				<div className={`space-y-6 ${!zgsmCodebaseIndexEnabled ? "opacity-50" : ""}`}>
 					{renderIndexSection(
-						"语义索引构建",
-						"为提高代码补全等功能效果，系统会自动将相关语义索引同步构建上传，方便模型对上下文进行分析理解。",
+						t("codebase.semanticIndex.title"),
+						t("codebase.semanticIndex.description"),
 						semanticIndex,
 						handleRebuildSemanticIndex,
 						!zgsmCodebaseIndexEnabled,
@@ -598,8 +617,8 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					)}
 
 					{renderIndexSection(
-						"代码索引构建",
-						"为保证代码审查功能的正常使用，系统会自动将相关代码索引同步构建上传，方便模型对上下文进行分析理解。",
+						t("codebase.codeIndex.title"),
+						t("codebase.codeIndex.description"),
 						codeIndex,
 						handleRebuildCodeIndex,
 						!zgsmCodebaseIndexEnabled,
@@ -609,13 +628,13 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 					<div className={`flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background`}>
 						<div className="flex items-center gap-4 font-bold">
 							<FileText className="w-4 h-4" />
-							<div>Ignore文件设置</div>
+							<div>{t("codebase.ignoreFileSettings.title")}</div>
 						</div>
 						<div className="text-vscode-descriptionForeground text-sm mb-3">
-							无需同步上传的索引文件可添加到.coignore文件中
+							{t("codebase.ignoreFileSettings.description")}
 						</div>
 						<Button onClick={handleEditIgnoreFile} variant="outline" size="sm" className="w-fit">
-							编辑
+							{t("codebase.ignoreFileSettings.edit")}
 						</Button>
 					</div>
 				</div>
