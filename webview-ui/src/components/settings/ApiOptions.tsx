@@ -33,6 +33,7 @@ import {
 	internationalZAiDefaultModelId,
 	mainlandZAiDefaultModelId,
 	fireworksDefaultModelId,
+	featherlessDefaultModelId,
 	ioIntelligenceDefaultModelId,
 	rooDefaultModelId,
 } from "@roo-code/types"
@@ -91,6 +92,7 @@ import {
 	ZgsmAI,
 	ZAi,
 	Fireworks,
+	Featherless,
 } from "./providers"
 
 import { MODELS_BY_PROVIDER, PROVIDERS } from "./constants"
@@ -353,6 +355,7 @@ const ApiOptions = ({
 							: internationalZAiDefaultModelId,
 				},
 				fireworks: { field: "apiModelId", default: fireworksDefaultModelId },
+				featherless: { field: "apiModelId", default: featherlessDefaultModelId },
 				"io-intelligence": { field: "ioIntelligenceModelId", default: ioIntelligenceDefaultModelId },
 				roo: { field: "apiModelId", default: rooDefaultModelId },
 				openai: { field: "openAiModelId" },
@@ -536,7 +539,11 @@ const ApiOptions = ({
 			)}
 
 			{selectedProvider === "vertex" && (
-				<Vertex apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+				<Vertex
+					apiConfiguration={apiConfiguration}
+					setApiConfigurationField={setApiConfigurationField}
+					fromWelcomeView={fromWelcomeView}
+				/>
 			)}
 
 			{selectedProvider === "gemini" && (
@@ -663,6 +670,10 @@ const ApiOptions = ({
 					)}
 				</div>
 			)} */}
+
+			{selectedProvider === "featherless" && (
+				<Featherless apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+			)}
 
 			{selectedProviderModels.length > 0 && (
 				<>

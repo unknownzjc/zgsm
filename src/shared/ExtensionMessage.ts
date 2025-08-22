@@ -9,6 +9,7 @@ import type {
 	ClineMessage,
 	ModelInfo,
 	MarketplaceItem,
+	TodoItem,
 } from "@roo-code/types"
 import type { CloudUserInfo, OrganizationAllowList, ShareVisibility } from "@roo-code/cloud"
 
@@ -297,6 +298,7 @@ export type ExtensionState = Pick<
 	version: string
 	clineMessages: ClineMessage[]
 	currentTaskItem?: HistoryItem
+	currentTaskTodos?: TodoItem[] // Initial todos for the current task
 	apiConfiguration?: ProviderSettings
 	uriScheme?: string
 	shouldShowAnnouncement: boolean

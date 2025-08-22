@@ -51,6 +51,38 @@ body:
 			description: Exact model name (e.g., Claude 3.7 Sonnet). Use N/A if irrelevant.
 		validations:
 			required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: API Provider
+      options:
+				- Costrict
+        - Anthropic
+        - AWS Bedrock
+        - Chutes AI
+        - DeepSeek
+        - Featherless AI
+        - Fireworks AI
+        - Glama
+        - Google Gemini
+        - Google Vertex AI
+        - Groq
+        - Human Relay Provider
+        - LiteLLM
+        - LM Studio
+        - Mistral AI
+        - Ollama
+        - OpenAI
+        - OpenAI Compatible
+        - OpenRouter
+        - Requesty
+        - SambaNova
+        - Unbound
+        - VS Code Language Model API
+        - xAI (Grok)
+        - Not Applicable / Other
+    validations:
+      required: true
 
 	- type: textarea
 		id: steps

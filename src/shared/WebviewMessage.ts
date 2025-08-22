@@ -231,6 +231,7 @@ export interface WebviewMessage {
 		| "startCodereview"
 		| "settingsButtonclicked"
 		| "copyError"
+		| "showMdmAuthRequiredNotification"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "zgsm-account"

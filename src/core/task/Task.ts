@@ -80,7 +80,7 @@ import { ToolRepetitionDetector } from "../tools/ToolRepetitionDetector"
 import { FileContextTracker } from "../context-tracking/FileContextTracker"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { RooProtectedController } from "../protect/RooProtectedController"
-import { type AssistantMessageContent, presentAssistantMessage, parseAssistantMessage } from "../assistant-message"
+import { type AssistantMessageContent, presentAssistantMessage } from "../assistant-message"
 import { AssistantMessageParser } from "../assistant-message/AssistantMessageParser"
 import { truncateConversationIfNeeded } from "../sliding-window"
 import { ClineProvider } from "../webview/ClineProvider"
@@ -88,6 +88,7 @@ import { MultiSearchReplaceDiffStrategy } from "../diff/strategies/multi-search-
 import { MultiFileSearchReplaceDiffStrategy } from "../diff/strategies/multi-file-search-replace"
 import { readApiMessages, saveApiMessages, readTaskMessages, saveTaskMessages, taskMetadata } from "../task-persistence"
 import { getEnvironmentDetails } from "../environment/getEnvironmentDetails"
+import { checkContextWindowExceededError } from "../context/context-management/context-error-handling"
 import {
 	type CheckpointDiffOptions,
 	type CheckpointRestoreOptions,
@@ -108,6 +109,8 @@ import { ErrorCodeManager } from "../costrict/error-code"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
+const FORCED_CONTEXT_REDUCTION_PERCENT = 75 // Keep 75% of context (remove 25%) on context window errors
+const MAX_CONTEXT_WINDOW_RETRIES = 3 // Maximum retries for context window errors
 
 export type TaskOptions = {
 	provider: ClineProvider
@@ -128,6 +131,7 @@ export type TaskOptions = {
 	parentTask?: Task
 	taskNumber?: number
 	onCreated?: (task: Task) => void
+	initialTodos?: TodoItem[]
 }
 
 export class Task extends EventEmitter<TaskEvents> implements TaskLike {
@@ -274,8 +278,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	didRejectTool = false
 	didAlreadyUseTool = false
 	didCompleteReadingStream = false
-	assistantMessageParser?: AssistantMessageParser
-	isAssistantMessageParserEnabled = false
+	assistantMessageParser: AssistantMessageParser
 	private lastUsedInstructions?: string
 	private skipPrevResponseIdOnce: boolean = false
 
@@ -295,6 +298,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		parentTask,
 		taskNumber = -1,
 		onCreated,
+		initialTodos,
 	}: TaskOptions) {
 		super()
 
@@ -358,6 +362,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			TelemetryService.instance.captureTaskCreated(this.taskId)
 		}
 
+		// Initialize the assistant message parser
+		this.assistantMessageParser = new AssistantMessageParser()
+
 		// Only set up diff strategy if diff is enabled.
 		if (this.diffEnabled) {
 			// Default to old strategy, will be updated if experiment is enabled.
@@ -377,6 +384,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		}
 
 		this.toolRepetitionDetector = new ToolRepetitionDetector(this.consecutiveMistakeLimit)
+
+		// Initialize todo list if provided
+		if (initialTodos && initialTodos.length > 0) {
+			this.todoList = initialTodos
+		}
 
 		onCreated?.(this)
 
@@ -1091,6 +1103,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// messages from previous session).
 		this.clineMessages = []
 		this.apiConversationHistory = []
+
+		// The todo list is already set in the constructor if initialTodos were provided
+		// No need to add any messages - the todoList property is already set
+
 		await this.providerRef.deref()?.postStateToWebview()
 
 		await this.say("text", task, images)
@@ -1403,7 +1419,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		if (this.bridgeService) {
 			this.bridgeService
 				.unsubscribeFromTask(this.taskId)
-				.catch((error) => console.error("Error unsubscribing from task bridge:", error))
+				.catch((error: unknown) => console.error("Error unsubscribing from task bridge:", error))
 			this.bridgeService = null
 		}
 
@@ -1753,9 +1769,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				this.didAlreadyUseTool = false
 				this.presentAssistantMessageLocked = false
 				this.presentAssistantMessageHasPendingUpdates = false
-				if (this.assistantMessageParser) {
-					this.assistantMessageParser.reset()
-				}
+				this.assistantMessageParser.reset()
 
 				await this.diffViewProvider.reset()
 
@@ -1797,12 +1811,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 								// Parse raw assistant message chunk into content blocks.
 								const prevLength = this.assistantMessageContent.length
-								if (this.isAssistantMessageParserEnabled && this.assistantMessageParser) {
-									this.assistantMessageContent = this.assistantMessageParser.processChunk(chunk.text)
-								} else {
-									// Use the old parsing method when experiment is disabled
-									this.assistantMessageContent = parseAssistantMessage(assistantMessage)
-								}
+								this.assistantMessageContent = this.assistantMessageParser.processChunk(chunk.text)
 
 								if (this.assistantMessageContent.length > prevLength) {
 									// New content we need to present, reset to
@@ -2061,11 +2070,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// this.assistantMessageContent.forEach((e) => (e.partial = false))
 
 				// Now that the stream is complete, finalize any remaining partial content blocks
-				if (this.isAssistantMessageParserEnabled && this.assistantMessageParser) {
-					this.assistantMessageParser.finalizeContentBlocks()
-					this.assistantMessageContent = this.assistantMessageParser.getContentBlocks()
-				}
-				// When using old parser, no finalization needed - parsing already happened during streaming
+				this.assistantMessageParser.finalizeContentBlocks()
+				this.assistantMessageContent = this.assistantMessageParser.getContentBlocks()
 
 				if (partialBlocks.length > 0) {
 					// If there is content to update then it will complete and
@@ -2084,9 +2090,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				await this.providerRef.deref()?.postStateToWebview()
 
 				// Reset parser after each complete conversation round
-				if (this.assistantMessageParser) {
-					this.assistantMessageParser.reset()
-				}
+				this.assistantMessageParser.reset()
 
 				// Now add to apiConversationHistory.
 				// Need to save assistant responses to file before proceeding to
@@ -2244,11 +2248,79 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					maxConcurrentFileReads: maxConcurrentFileReads ?? 5,
 					todoListEnabled: apiConfiguration?.todoListEnabled ?? true,
 					useAgentRules: vscode.workspace.getConfiguration("zgsm").get<boolean>("useAgentRules") ?? true,
+					newTaskRequireTodos: vscode.workspace
+						.getConfiguration("roo-cline")
+						.get<boolean>("newTaskRequireTodos", false),
 				},
 				undefined, // todoList
 				this.api.getModel().id,
 			)
 		})()
+	}
+
+	private getCurrentProfileId(state: any): string {
+		return (
+			state?.listApiConfigMeta?.find((profile: any) => profile.name === state?.currentApiConfigName)?.id ??
+			"default"
+		)
+	}
+
+	private async handleContextWindowExceededError(): Promise<void> {
+		const state = await this.providerRef.deref()?.getState()
+		const { profileThresholds = {} } = state ?? {}
+
+		const { contextTokens } = this.getTokenUsage()
+		const modelInfo = this.api.getModel().info
+		const maxTokens = getModelMaxOutputTokens({
+			modelId: this.api.getModel().id,
+			model: modelInfo,
+			settings: this.apiConfiguration,
+		})
+		const contextWindow = modelInfo.contextWindow
+
+		// Get the current profile ID using the helper method
+		const currentProfileId = this.getCurrentProfileId(state)
+
+		// Log the context window error for debugging
+		console.warn(
+			`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
+				`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
+				`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
+		)
+
+		// Force aggressive truncation by keeping only 75% of the conversation history
+		const truncateResult = await truncateConversationIfNeeded({
+			messages: this.apiConversationHistory,
+			totalTokens: contextTokens || 0,
+			maxTokens,
+			contextWindow,
+			apiHandler: this.api,
+			autoCondenseContext: true,
+			autoCondenseContextPercent: FORCED_CONTEXT_REDUCTION_PERCENT,
+			systemPrompt: await this.getSystemPrompt(),
+			taskId: this.taskId,
+			profileThresholds,
+			currentProfileId,
+		})
+
+		if (truncateResult.messages !== this.apiConversationHistory) {
+			await this.overwriteApiConversationHistory(truncateResult.messages)
+		}
+
+		if (truncateResult.summary) {
+			const { summary, cost, prevContextTokens, newContextTokens = 0 } = truncateResult
+			const contextCondense: ContextCondense = { summary, cost, newContextTokens, prevContextTokens }
+			await this.say(
+				"condense_context",
+				undefined /* text */,
+				undefined /* images */,
+				false /* partial */,
+				undefined /* checkpoint */,
+				undefined /* progressStatus */,
+				{ isNonInteractive: true } /* options */,
+				contextCondense,
+			)
+		}
 	}
 
 	public async *attemptApiRequest(retryAttempt: number = 0): ApiStream {
@@ -2329,9 +2401,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			const contextWindow = modelInfo.contextWindow
 
-			const currentProfileId =
-				state?.listApiConfigMeta.find((profile) => profile.name === state?.currentApiConfigName)?.id ??
-				"default"
+			// Get the current profile ID using the helper method
+			const currentProfileId = this.getCurrentProfileId(state)
 
 			const truncateResult = await truncateConversationIfNeeded({
 				messages: this.apiConversationHistory,
@@ -2445,6 +2516,21 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 
 			this.isWaitingForFirstChunk = false
+			const isContextWindowExceededError = checkContextWindowExceededError(error)
+
+			// If it's a context window error and we haven't exceeded max retries for this error type
+			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {
+				console.warn(
+					`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
+						`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
+						`Attempting automatic truncation...`,
+				)
+				await this.handleContextWindowExceededError()
+				// Retry the request after handling the context window error
+				yield* this.attemptApiRequest(retryAttempt + 1)
+				return
+			}
+
 			// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
 			if (autoApprovalEnabled && alwaysApproveResubmit) {
 				const baseDelay = requestDelaySeconds || 5
