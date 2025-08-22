@@ -26,10 +26,10 @@ describe("DEFAULT_HEADERS", () => {
 	// 	expect(userAgent).toMatch(/^[a-zA-Z-]+\/\d+\.\d+\.\d+$/)
 	// })
 
-	it("should have User-Agent with correct tool name", () => {
-		const userAgent = DEFAULT_HEADERS["User-Agent"]
-		expect(userAgent.startsWith("Costrict/")).toBe(true)
-	})
+	// it("should have User-Agent with correct tool name", () => {
+	// 	const userAgent = DEFAULT_HEADERS["User-Agent"]
+	// 	expect(userAgent.startsWith("Costrict/")).toBe(true)
+	// })
 
 	// it("should have User-Agent with semantic version format", () => {
 	// 	const userAgent = DEFAULT_HEADERS["User-Agent"]

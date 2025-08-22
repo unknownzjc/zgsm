@@ -20,10 +20,9 @@ import type { ClineProvider } from "../../webview/ClineProvider"
 import { CompletionAcception } from "./completionDataInterface"
 import { getDependencyImports } from "./extractingImports"
 import { getClientId } from "../../../utils/getClientId"
-// import { createHeaders } from "../../../zgsmAuth/zgsmAuthHandler"
 import { ProviderSettings } from "@roo-code/types"
 import { ZgsmAuthConfig, ZgsmAuthService, ZgsmAuthStorage } from "../auth"
-import { createHeaders } from "../../../utils/zgsmUtils"
+import { COSTRICT_DEFAULT_HEADERS } from "../../../shared/headers"
 /**
  * Completion client, which handles the details of communicating with the large model API and shields the communication details from the caller.
  * The caller can handle network communication as conveniently as calling a local function.
@@ -152,6 +151,10 @@ export class CompletionClient {
 		this.openai = new OpenAI({
 			baseURL: fullUrl,
 			apiKey: config.apiKey,
+			defaultHeaders: {
+				...COSTRICT_DEFAULT_HEADERS,
+				"X-Request-ID": uuidv7(),
+			},
 		})
 
 		if (!this.openai) {
@@ -245,9 +248,10 @@ export class CompletionClient {
 		this.reqs.set(cp.id, abortController)
 
 		Logger.log(`Completion [${cp.id}]: Sending API request`)
-		const headers = createHeaders({
+		const headers = {
+			...COSTRICT_DEFAULT_HEADERS,
 			"X-Request-ID": uuidv7(),
-		})
+		}
 		const repo = workspace?.name?.split(" ")[0] ?? ""
 
 		const config = await this.getApiConfig(apiConfiguration)

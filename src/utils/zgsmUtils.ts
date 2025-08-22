@@ -54,19 +54,19 @@ export function getLocalIP(): string {
 	return "127.0.0.1"
 }
 
-export function createHeaders(dict: Record<string, any> = {}): Record<string, any> {
-	// Get extended information
-	const extension = vscode.extensions.getExtension("zgsm-ai.zgsm")
-	const extVersion = extension?.packageJSON.version || "1.5.5"
-	const ideVersion = vscode.version || ""
-	const hostIp = getLocalIP()
+// export function createHeaders(dict: Record<string, any> = {}): Record<string, any> {
+// 	// Get extended information
+// 	const extension = vscode.extensions.getExtension("zgsm-ai.zgsm")
+// 	const extVersion = extension?.packageJSON.version || "1.5.5"
+// 	const ideVersion = vscode.version || ""
+// 	const hostIp = getLocalIP()
 
-	const headers = {
-		ide: "vscode",
-		"ide-version": extVersion,
-		"ide-real-version": ideVersion,
-		"host-ip": hostIp,
-		...dict,
-	}
-	return headers
-}
+// 	const headers = {
+// 		ide: "vscode",
+// 		"ide-version": extVersion,
+// 		"ide-real-version": ideVersion,
+// 		"host-ip": hostIp,
+// 		...dict,
+// 	}
+// 	return headers
+// }

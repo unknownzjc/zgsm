@@ -46,7 +46,7 @@ import TelemetryBanner from "../common/TelemetryBanner"
 import VersionIndicator from "../common/VersionIndicator"
 import { useTaskSearch } from "../history/useTaskSearch"
 import HistoryPreview from "../history/HistoryPreview"
-import Announcement from "./Announcement"
+// import Announcement from "./Announcement"
 import BrowserSessionRow from "./BrowserSessionRow"
 import ChatRow from "./ChatRow"
 import ChatTextArea from "./ChatTextArea"
@@ -74,6 +74,7 @@ export const MAX_IMAGES_PER_MESSAGE = 20 // Anthropic limits to 20 images
 const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0
 
 const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewProps> = (
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	{ isHidden, showAnnouncement, hideAnnouncement },
 	ref,
 ) => {
@@ -193,6 +194,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const [wasStreaming, setWasStreaming] = useState<boolean>(false)
 	const [showCheckpointWarning, setShowCheckpointWarning] = useState<boolean>(false)
 	const [isCondensing, setIsCondensing] = useState<boolean>(false)
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const [showAnnouncementModal, setShowAnnouncementModal] = useState(false)
 	const [hoverPreviewMap, setHoverPreviewMap] = useState<Map<string, string>>(new Map())
 	const everVisibleMessagesTsRef = useRef<LRUCache<number, boolean>>(
@@ -1808,7 +1810,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		<div
 			data-testid="chat-view"
 			className={isHidden ? "hidden" : "fixed top-8 left-0 right-0 bottom-0 flex flex-col overflow-hidden"}>
-			{(showAnnouncement || showAnnouncementModal) && (
+			{/* {(showAnnouncement || showAnnouncementModal) && (
 				<Announcement
 					hideAnnouncement={() => {
 						if (showAnnouncementModal) {
@@ -1819,7 +1821,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						}
 					}}
 				/>
-			)}
+			)} */}
 			{task ? (
 				<>
 					<TaskHeader
@@ -1865,10 +1867,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					<div
 						className={` w-full flex flex-col gap-4 m-auto ${isExpanded && tasks.length > 0 ? "mt-0" : ""} px-3.5 min-[370px]:px-10 pt-5 transition-all duration-300`}>
 						{/* Version indicator in top-right corner - only on welcome screen */}
-						<VersionIndicator
+						{/* <VersionIndicator
 							onClick={() => setShowAnnouncementModal(false)}
 							className="absolute top-2 right-3 z-10"
-						/>
+						/> */}
+						<VersionIndicator onClick={() => {}} className="absolute top-2 right-3 z-10" />
 
 						<RooHero />
 						{/* {telemetrySetting === "unset" && <TelemetryBanner />} */}

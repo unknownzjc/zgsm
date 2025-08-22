@@ -21,7 +21,6 @@ import { convertToSimpleMessages } from "../transform/simple-format"
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
-import { DEFAULT_HEADERS } from "./constants"
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { ZgsmAuthConfig, ZgsmAuthService } from "../../core/costrict/auth"
@@ -31,6 +30,7 @@ import { getWorkspacePath } from "../../utils/path"
 import { getApiRequestTimeout } from "./utils/timeout-config"
 import { createLogger, ILogger } from "../../utils/logger"
 import { Package } from "../../shared/package"
+import { COSTRICT_DEFAULT_HEADERS } from "../../shared/headers"
 
 let modelsCache = new WeakRef<string[]>([])
 
@@ -52,7 +52,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 		const isAzureOpenAi = urlHost === "azure.com" || urlHost.endsWith(".azure.com") || options.openAiUseAzure
 
 		this.headers = {
-			...DEFAULT_HEADERS,
+			...COSTRICT_DEFAULT_HEADERS,
 			...(this.options.openAiHeaders || {}),
 		}
 		const timeout = getApiRequestTimeout()
@@ -609,7 +609,7 @@ export async function getZgsmModels(baseUrl?: string, apiKey?: string, openAiHea
 
 		const config: Record<string, any> = {}
 		const headers: Record<string, string> = {
-			...DEFAULT_HEADERS,
+			...COSTRICT_DEFAULT_HEADERS,
 			...(openAiHeaders || {}),
 			"X-Request-ID": uuidv7(),
 		}

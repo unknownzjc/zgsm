@@ -29,6 +29,8 @@ import { createLogger, ILogger } from "../../../utils/logger"
 import { Package } from "../../../shared/package"
 import { getClientId } from "../../../utils/getClientId"
 import { ZgsmAuthApi, ZgsmAuthConfig } from "../auth"
+import { COSTRICT_DEFAULT_HEADERS } from "../../../shared/headers"
+// import { DEFAULT_HEADERS } from "../../../api/providers/constants"
 
 /**
  * Main class for codebase-index client
@@ -119,6 +121,7 @@ export class CodebaseIndexClient {
 	 */
 	private async getHeaders(token?: string): Promise<RequestHeaders> {
 		return {
+			...COSTRICT_DEFAULT_HEADERS,
 			"X-Request-ID": uuidv7(),
 			"Client-ID": this.clientId,
 			Authorization: token ? `Bearer ${token}` : "",
