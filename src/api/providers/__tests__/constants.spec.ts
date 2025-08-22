@@ -8,7 +8,7 @@ describe("DEFAULT_HEADERS", () => {
 	it("should contain all required headers", () => {
 		expect(DEFAULT_HEADERS).toHaveProperty("HTTP-Referer")
 		expect(DEFAULT_HEADERS).toHaveProperty("X-Title")
-		expect(DEFAULT_HEADERS).toHaveProperty("User-Agent")
+		expect(DEFAULT_HEADERS).toHaveProperty("X-Costrict-Version")
 	})
 
 	it("should have correct HTTP-Referer value", () => {
@@ -55,6 +55,6 @@ describe("DEFAULT_HEADERS", () => {
 	it("should have exactly 3 headers", () => {
 		const headerKeys = Object.keys(DEFAULT_HEADERS)
 		expect(headerKeys).toHaveLength(3)
-		expect(headerKeys).toEqual(["HTTP-Referer", "X-Title", "User-Agent"])
+		expect(headerKeys).toEqual(["HTTP-Referer", "X-Title", "X-Costrict-Version"])
 	})
 })

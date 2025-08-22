@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { IOIntelligenceHandler } from "../io-intelligence"
 import type { ApiHandlerOptions } from "../../../shared/api"
 import { Anthropic } from "@anthropic-ai/sdk"
+import { Package } from "../../../shared/package"
 
 const mockCreate = vi.fn()
 
@@ -58,9 +59,13 @@ vi.mock("../fetchers/io-intelligence", () => ({
 	})),
 }))
 
-// Mock constants
+// Mock constants - use lazy evaluation to avoid initialization issues
 vi.mock("../constants", () => ({
-	DEFAULT_HEADERS: { "User-Agent": "roo-cline" },
+	DEFAULT_HEADERS: {
+		"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
+		"X-Title": "Costrict",
+		"X-Costrict-Version": "test-version",
+	},
 }))
 
 // Mock transform functions

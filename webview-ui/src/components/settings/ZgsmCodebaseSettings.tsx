@@ -88,7 +88,7 @@ const mapIndexStatusInfoToIndexStatus = (statusInfo: IndexStatusInfo, t: (key: s
 		progress,
 		status: statusInfo.status,
 		errorMessage,
-		failedFiles: statusInfo.failedFiles.filter((file) => file !== ""),
+		failedFiles: (statusInfo.failedFiles || []).filter((file) => file !== ""),
 	}
 }
 

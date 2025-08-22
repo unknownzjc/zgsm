@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { Package } from "../../../shared/package"
 
 // Mock i18n
 vi.mock("../../i18n", () => ({
@@ -11,12 +12,12 @@ vi.mock("../../i18n", () => ({
 	}),
 }))
 
-// Mock DEFAULT_HEADERS
+// Mock DEFAULT_HEADERS - use lazy evaluation to avoid initialization issues
 vi.mock("../constants", () => ({
 	DEFAULT_HEADERS: {
-		"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
-		"X-Title": "Roo Code",
-		"User-Agent": "RooCode/1.0.0",
+		"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
+		"X-Title": "Costrict",
+		"X-Costrict-Version": "test-version",
 	},
 }))
 
@@ -104,9 +105,9 @@ describe("CerebrasHandler", () => {
 					headers: expect.objectContaining({
 						"Content-Type": "application/json",
 						Authorization: "Bearer test-api-key",
-						"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
-						"X-Title": "Roo Code",
-						"User-Agent": "RooCode/1.0.0",
+						"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
+						"X-Title": "Costrict",
+						"X-Costrict-Version": "test-version",
 					}),
 				}),
 			)
