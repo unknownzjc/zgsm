@@ -175,7 +175,6 @@ export const ZgsmCodebaseSettings = ({ apiConfiguration }: ZgsmCodebaseSettingsP
 
 			if (message.type === "codebaseIndexStatusResponse" && message.payload?.status) {
 				const { embedding, codegraph } = message.payload.status
-				console.log("codebaseIndexStatusResponse", { embedding, codegraph })
 				startPolling()
 				if (embedding) {
 					setSemanticIndex(mapIndexStatusInfoToIndexStatus(embedding, t))
