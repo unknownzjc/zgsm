@@ -32,6 +32,7 @@ import { CommentService, type CommentThreadInfo } from "../../../integrations/co
 import type { ClineProvider } from "../../webview/ClineProvider"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeReviewErrorType, type TelemetryErrorType } from "../telemetry"
+import { COSTRICT_DEFAULT_HEADERS } from "../../../shared/headers"
 /**
  * Code Review Service - Singleton
  *
@@ -112,6 +113,7 @@ export class CodeReviewService {
 				Authorization: `Bearer ${apiKey}`,
 				"Accept-Language": language,
 				"X-Request-ID": uuidv7(),
+				...COSTRICT_DEFAULT_HEADERS,
 			},
 		}
 	}
