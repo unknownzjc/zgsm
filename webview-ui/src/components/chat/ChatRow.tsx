@@ -349,14 +349,14 @@ export const ChatRowContent = ({
 		return null
 	}, [message.type, message.ask, message.partial, message.text])
 
-	const handleCopyErrorDetail = useCallback(() => {
+	const handleCopyErrorDetail = useCallback((message: string) => {
 		vscode.postMessage({
 			type: "copyError",
 			values: {
-				message: apiRequestFailedMessage,
+				message,
 			},
 		})
-	}, [apiRequestFailedMessage])
+	}, [])
 
 	if (tool) {
 		const toolIcon = (name: string) => (
@@ -1052,7 +1052,13 @@ export const ChatRowContent = ({
 												<br />
 												<span
 													className="flex mt-2 text-vscode-textLink-foreground cursor-pointer"
-													onClick={handleCopyErrorDetail}>
+													onClick={() =>
+														handleCopyErrorDetail(
+															apiRequestFailedMessage ||
+																apiReqStreamingFailedMessage ||
+																"",
+														)
+													}>
 													{t("chat:copy.errorDetail")}
 												</span>
 											</>
@@ -1227,6 +1233,19 @@ export const ChatRowContent = ({
 					return <CodebaseSearchResultsDisplay results={results} />
 				case "user_edit_todos":
 					return <UpdateTodoListToolBlock userEdited onChange={() => {}} />
+				case "api_req_retry_delayed":
+					return (
+						<>
+							<div style={{ paddingTop: 10 }}>
+								<Markdown markdown={message.text} partial={message.partial} />
+							</div>
+							<span
+								className="flex mt-2 text-vscode-textLink-foreground cursor-pointer"
+								onClick={() => handleCopyErrorDetail(message.text || "")}>
+								{t("chat:copy.errorDetail")}
+							</span>
+						</>
+					)
 				default:
 					return (
 						<>
