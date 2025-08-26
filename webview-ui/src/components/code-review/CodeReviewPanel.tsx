@@ -6,6 +6,7 @@ interface CodeReviewPanelProps {
 	issues: ReviewIssue[]
 	taskStatus: TaskStatus
 	progress: number | null
+	reviewProgress: string
 	errorMessage: string
 	message: string
 	onIssueClick: (issueId: string) => void
@@ -15,6 +16,7 @@ const CodeReviewPanel: React.FC<CodeReviewPanelProps> = ({
 	issues,
 	taskStatus,
 	progress,
+	reviewProgress,
 	message,
 	errorMessage,
 	onIssueClick,
@@ -26,6 +28,7 @@ const CodeReviewPanel: React.FC<CodeReviewPanelProps> = ({
 				<TaskStatusBar
 					taskStatus={taskStatus}
 					progress={progress}
+					reviewProgress={reviewProgress}
 					issues={issues}
 					message={message}
 					errorMessage={errorMessage}

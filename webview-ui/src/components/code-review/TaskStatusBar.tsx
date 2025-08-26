@@ -6,6 +6,7 @@ import { useAppTranslation } from "@/i18n/TranslationContext"
 interface TaskStatusBarProps {
 	taskStatus: TaskStatus
 	progress: number | null
+	reviewProgress: string
 	message: string
 	errorMessage: string
 	issues: ReviewIssue[]
@@ -15,6 +16,7 @@ interface TaskStatusBarProps {
 const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 	taskStatus,
 	progress,
+	reviewProgress,
 	issues,
 	message,
 	errorMessage,
@@ -35,9 +37,11 @@ const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 							{progress !== null && (
 								<div>
 									<span className="ml-2">
-										{t("codereview:taskStatusBar.running", {
-											progress: Math.round(progress * 100),
-										})}
+										{reviewProgress
+											? reviewProgress
+											: t("codereview:taskStatusBar.running", {
+													progress: Math.round(progress * 100),
+												})}
 									</span>
 									<span className="ml-2 text-[#1876F2] cursor-pointer" onClick={() => onTaskCancel()}>
 										{t("codereview:taskStatusBar.cancel")}

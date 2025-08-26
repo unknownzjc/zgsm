@@ -15,7 +15,7 @@ const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ isHidden, onIssueClick,
 	const { reviewTask, reviewPagePayload, setReviewPagePayload, setReviewTask } = useExtensionState()
 	const {
 		status,
-		data: { issues, progress, error = "", message = "" },
+		data: { issues, progress, error = "", message = "", reviewProgress = "" },
 	} = reviewTask
 	const { targets, isCodebaseReady } = reviewPagePayload
 	const onCancel = () => {
@@ -52,6 +52,7 @@ const CodeReviewPage: React.FC<CodeReviewPageProps> = ({ isHidden, onIssueClick,
 				issues={issues} // To be sourced from context
 				taskStatus={status}
 				progress={progress} // To be sourced from context
+				reviewProgress={reviewProgress}
 				message={message}
 				errorMessage={error}
 				onIssueClick={onIssueClick}
