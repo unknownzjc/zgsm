@@ -146,7 +146,9 @@ const CodebaseSync: React.FC<CodebaseSyncProps> = ({ onCancel, targets }) => {
 						className="w-4 h-4 rounded-full border-2 border-transparent animate-spin"
 						style={{ borderTopColor: "rgba(23, 112, 230, 0.7)" }}
 					/>
-					<span className="ml-2">{t("codereview:codebase.running", { progress: indexStatus.process })}</span>
+					<span className="ml-2">
+						{t("codereview:codebase.running", { progress: indexStatus.process.toFixed(1) })}
+					</span>
 				</div>
 			)}
 			{zgsmCodebaseIndexEnabled && indexStatus.status === "failed" && (

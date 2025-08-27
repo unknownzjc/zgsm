@@ -198,6 +198,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			yield this.processUsageMetrics(response.usage, modelInfo)
 		}
+		this.logger.info(`[RequestID]:`, requestId)
 	}
 
 	protected processUsageMetrics(usage: any, _modelInfo?: ModelInfo): ApiStreamUsageChunk {
