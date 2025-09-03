@@ -5,7 +5,8 @@ export * from "./constants"
 
 export function initTelemetry(provider: ClineProvider) {
 	const telemetryService = TelemetryService.instance
-	const baseUrl = provider.getValue("zgsmBaseUrl") ?? ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+	const zgsmBaseUrl = provider.getValue("zgsmBaseUrl")
+	const baseUrl = zgsmBaseUrl ? zgsmBaseUrl : ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 	try {
 		telemetryService.register(new PrometheusTelemetryClient(`${baseUrl}/pushgateway/api/v1`, false))
 		telemetryService.setProvider(provider)
