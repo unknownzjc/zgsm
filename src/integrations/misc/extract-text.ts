@@ -3,10 +3,10 @@ import * as path from "path"
 import pdf from "pdf-parse/lib/pdf-parse"
 import mammoth from "mammoth"
 import fs from "fs/promises"
-import { isBinaryFile } from "isbinaryfile"
 import { extractTextFromXLSX } from "./extract-text-from-xlsx"
 import { countFileLines } from "./line-counter"
 import { readLines } from "./read-lines"
+import { readFileWithEncodingDetection, isBinaryFileWithEncodingDetection } from "../../utils/encoding"
 
 async function extractTextFromPDF(filePath: string): Promise<string> {
 	const dataBuffer = await fs.readFile(filePath)
@@ -20,7 +20,7 @@ async function extractTextFromDOCX(filePath: string): Promise<string> {
 }
 
 async function extractTextFromIPYNB(filePath: string): Promise<string> {
-	const data = await fs.readFile(filePath, "utf8")
+	const data = await readFileWithEncodingDetection(filePath)
 	const notebook = JSON.parse(data)
 	let extractedText = ""
 
@@ -86,7 +86,7 @@ export async function extractTextFromFile(filePath: string, maxReadFileLine?: nu
 	}
 
 	// Handle other files
-	const isBinary = await isBinaryFile(filePath).catch(() => false)
+	const isBinary = await isBinaryFileWithEncodingDetection(filePath)
 
 	if (!isBinary) {
 		// Check if we need to apply line limit
@@ -103,7 +103,7 @@ export async function extractTextFromFile(filePath: string, maxReadFileLine?: nu
 			}
 		}
 		// Read the entire file if no limit or file is within limit
-		return addLineNumbers(await fs.readFile(filePath, "utf8"))
+		return addLineNumbers(await readFileWithEncodingDetection(filePath))
 	} else {
 		throw new Error(`Cannot read text for file type: ${fileExtension}`)
 	}

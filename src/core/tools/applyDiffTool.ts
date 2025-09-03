@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import * as vscode from "vscode"
 
 import { TelemetryService } from "@roo-code/telemetry"
+import { readFileWithEncodingDetection } from "../../utils/encoding"
 import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 import { ClineSayTool } from "../../shared/ExtensionMessage"
@@ -92,7 +93,7 @@ export async function applyDiffToolLegacy(
 				return
 			}
 
-			const originalContent: string = await fs.readFile(absolutePath, "utf-8")
+			const originalContent: string = await readFileWithEncodingDetection(absolutePath)
 
 			// Apply the diff to the original content
 			const diffResult = (await cline.diffStrategy?.applyDiff(
