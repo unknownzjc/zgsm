@@ -2611,7 +2611,7 @@ export class ClineProvider
 		if (zgsmAccessToken) {
 			const decoded = jwtDecode(zgsmAccessToken)
 			userInfo = {
-				userName: (decoded as any).username || "",
+				userName: (decoded as any).displayName || "",
 			}
 		}
 
