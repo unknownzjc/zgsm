@@ -19,7 +19,7 @@ import { v7 as uuidv7 } from "uuid"
 import { ReviewTask, TaskData } from "./types"
 import { createReviewTaskAPI, getReviewResultsAPI, updateIssueStatusAPI, cancelReviewTaskAPI } from "./api"
 import { ReviewComment } from "./reviewComment"
-import { ZgsmAuthService } from "../auth"
+import { ZgsmAuthConfig, ZgsmAuthService } from "../auth"
 
 import { ReviewIssue, IssueStatus, TaskStatus, ReviewTarget } from "../../../shared/codeReview"
 import { ExtensionMessage } from "../../../shared/ExtensionMessage"
@@ -33,6 +33,7 @@ import type { ClineProvider } from "../../webview/ClineProvider"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CodeReviewErrorType, type TelemetryErrorType } from "../telemetry"
 import { COSTRICT_DEFAULT_HEADERS } from "../../../shared/headers"
+import { zgsmCodebaseIndexManager } from "../codebase-index"
 /**
  * Code Review Service - Singleton
  *
@@ -106,7 +107,7 @@ export class CodeReviewService {
 		}
 		const { apiConfiguration, language } = await this.clineProvider.getState()
 		const apiKey = apiConfiguration.zgsmAccessToken
-		const baseURL = apiConfiguration.zgsmBaseUrl || "https://zgsm.sangfor.com"
+		const baseURL = apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
 		return {
 			baseURL,
 			headers: {
@@ -129,6 +130,63 @@ export class CodeReviewService {
 			errorTitle: t("common:review.statusbar.login_expired"),
 		})
 		this.recordReviewError(CodeReviewErrorType.AuthError as TelemetryErrorType)
+	}
+
+	public async startReview(targets: ReviewTarget[], isReviewRepo: boolean = false) {
+		const visibleProvider = this.getProvider()
+		if (visibleProvider) {
+			const filePaths = targets.map((target) => path.join(visibleProvider.cwd, target.file_path))
+			const { zgsmCodebaseIndexEnabled, apiConfiguration } = await visibleProvider.getState()
+			if (apiConfiguration.apiProvider !== "zgsm") {
+				vscode.window.showInformationMessage(t("common:review.tip.api_provider_not_support"))
+				return
+			}
+			if (!isReviewRepo) {
+				try {
+					const success = await vscode.window.withProgress(
+						{
+							location: vscode.ProgressLocation.Notification,
+							title: t("common:review.tip.file_check"),
+						},
+						async (progress) => {
+							const workspace = visibleProvider.cwd
+							const { success } = await zgsmCodebaseIndexManager.checkIgnoreFiles({
+								workspacePath: workspace,
+								workspaceName: path.basename(workspace),
+								filePaths,
+							})
+							progress.report({ increment: 100 })
+							return success
+						},
+					)
+					if (!success) {
+						vscode.window.showInformationMessage(t("common:review.tip.codebase_sync_ignore_file"))
+						return
+					}
+				} catch (error) {
+					vscode.window.showInformationMessage(t("common:review.tip.service_unavailable"))
+					return
+				}
+			}
+			const res = await zgsmCodebaseIndexManager.getIndexStatus(visibleProvider.cwd)
+			const { codegraph } = res.data
+			visibleProvider.postMessageToWebview({
+				type: "reviewPagePayload",
+				payload: {
+					targets,
+					isCodebaseReady:
+						zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100),
+				},
+			})
+			this.resetStatus()
+			visibleProvider.postMessageToWebview({
+				type: "action",
+				action: "codeReviewButtonClicked",
+			})
+			if (zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100)) {
+				await this.startReviewTask(targets)
+			}
+		}
 	}
 
 	// ===== Task Management Methods =====

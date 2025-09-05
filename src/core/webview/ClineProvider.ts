@@ -95,7 +95,7 @@ import { getUri } from "./getUri"
 import { ZgsmAuthCommands } from "../costrict/auth"
 import { getClientId } from "../../utils/getClientId"
 import { defaultCodebaseIndexEnabled } from "../../services/code-index/constants"
-import { CodeReviewService, startReview, ReviewTargetType } from "../costrict/code-review"
+import { CodeReviewService, ReviewTargetType } from "../costrict/code-review"
 
 /**
  * https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -557,7 +557,8 @@ export class ClineProvider
 
 		if (promptType === "ZGSM_CODE_REVIEW") {
 			const reviewInstance = CodeReviewService.getInstance()
-			startReview(reviewInstance, [
+			reviewInstance.setProvider(visibleProvider)
+			reviewInstance.startReview([
 				{
 					type: ReviewTargetType.CODE,
 					file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),

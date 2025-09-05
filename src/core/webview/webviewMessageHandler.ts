@@ -63,7 +63,7 @@ const pendingIndexStatusRequests = new Map<string, Promise<any>>()
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
 import { ZgsmAuthConfig } from "../costrict/auth"
-import { CodeReviewService, startReview } from "../costrict/code-review"
+import { CodeReviewService } from "../costrict/code-review"
 import { ZgsmCodebaseIndexManager, IndexSwitchRequest, IndexStatusInfo } from "../costrict/codebase-index"
 import { ErrorCodeManager } from "../costrict/error-code"
 import { writeCostrictAccessToken } from "../costrict/codebase-index/utils"
@@ -2962,7 +2962,7 @@ export const webviewMessageHandler = async (
 				const { targets } = message.values ?? {}
 				if (targets && targets.length) {
 					const reviewInstance = CodeReviewService.getInstance()
-					startReview(reviewInstance, targets)
+					reviewInstance.startReview(targets)
 				}
 			} catch (err) {}
 			break
