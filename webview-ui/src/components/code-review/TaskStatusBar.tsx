@@ -11,6 +11,7 @@ interface TaskStatusBarProps {
 	errorMessage: string
 	issues: ReviewIssue[]
 	onTaskCancel: () => void
+	hasRunCodebaseSync?: boolean // 是否运行过索引同步服务
 }
 
 const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
@@ -21,6 +22,7 @@ const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 	message,
 	errorMessage,
 	onTaskCancel,
+	hasRunCodebaseSync = false,
 }) => {
 	const { t } = useAppTranslation()
 
@@ -37,11 +39,7 @@ const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 							{progress !== null && (
 								<div>
 									<span className="ml-2">
-										{reviewProgress
-											? reviewProgress
-											: t("codereview:taskStatusBar.running", {
-													progress: Math.round(progress * 100),
-												})}
+										{`${reviewProgress} ${hasRunCodebaseSync ? Math.round((progress * 0.7 + 0.3) * 100) : Math.round(progress * 100)}`}
 									</span>
 									<span className="ml-2 text-[#1876F2] cursor-pointer" onClick={() => onTaskCancel()}>
 										{t("codereview:taskStatusBar.cancel")}
