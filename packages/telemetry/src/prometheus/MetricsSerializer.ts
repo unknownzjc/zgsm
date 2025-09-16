@@ -33,7 +33,6 @@ export class MetricsSerializer {
 		try {
 			const data = await fs.readFile(filePath, "utf-8")
 			const metrics: SerializedMetric[] = JSON.parse(data)
-
 			for (const metricData of metrics) {
 				const metric: Metric<string> | undefined = registry.getSingleMetric(metricData.name)
 				if (!metric) {
@@ -45,14 +44,16 @@ export class MetricsSerializer {
 						metric.inc(item.labels, item.value)
 					}
 				} else if (metric instanceof Histogram) {
-					const sumValue = metricData.values.find((v) => v.metricName?.endsWith("_sum"))
+					const sumMetrics = metricData.values.filter((v) => v.metricName?.endsWith("_sum"))
 
-					if (sumValue && sumValue.value > 0) {
-						metric.observe(sumValue.labels, sumValue.value)
-						this.logger.debug(
-							`[MetricsSerializer] Histogram sum for ${metricData.name} loaded with value: ${sumValue.value}`,
-						)
-					}
+					sumMetrics.forEach((sumValue) => {
+						if (sumValue && sumValue.value > 0) {
+							metric.observe(sumValue.labels, sumValue.value)
+							this.logger.debug(
+								`[MetricsSerializer] Histogram sum for ${metricData.name} loaded with value: ${sumValue.value}`,
+							)
+						}
+					})
 				} else if (metric instanceof Gauge) {
 					for (const item of metricData.values) {
 						metric.set(item.labels, item.value)

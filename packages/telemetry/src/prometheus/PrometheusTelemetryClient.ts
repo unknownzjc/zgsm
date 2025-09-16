@@ -1,4 +1,4 @@
-import { Pushgateway, Registry } from "prom-client"
+import { Registry } from "prom-client"
 import delay from "delay"
 import crypto from "crypto"
 import retry from "async-retry"
@@ -22,6 +22,8 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	private logger: ILogger
 	private metricsSerializer: MetricsSerializer
 	private persistenceFilePath: string
+	private registry: Registry
+	private metricsRecorder: MetricsRecorder
 
 	constructor(endpoint: string, debug = false) {
 		super(
@@ -45,6 +47,13 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 		const persistenceDir = path.join(homeDir, ".costrict", "telemetry")
 		this.persistenceFilePath = path.join(persistenceDir, `metrics-${workspaceHash}.json`)
 
+		// Initialize registry and recorder
+		this.registry = new Registry()
+		this.metricsRecorder = new MetricsRecorder(this.registry)
+
+		// Load persisted metrics asynchronously (don't block constructor)
+		this.loadPersistedMetrics()
+
 		this.setupPush()
 		this.updateTelemetryState(true)
 	}
@@ -52,33 +61,54 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	private async operateWithLock<T>(
 		operation: (recorder: MetricsRecorder, registry: Registry) => Promise<T>,
 	): Promise<T | undefined> {
+		let release: (() => Promise<void>) | null = null
 		try {
-			// Check if file exists first, only create directory and file if needed
-			try {
-				await fs.access(this.persistenceFilePath)
-			} catch (_) {
-				// File doesn't exist, create directory and file
-				await fs.mkdir(path.dirname(this.persistenceFilePath), { recursive: true })
-				await fs.writeFile(this.persistenceFilePath, "[]", "utf-8")
-			}
+			// Add timeout to lock operation to prevent infinite waiting
+			// proper-lockfile returns a release function, which is the recommended way
+			release = await lockfile.lock(this.persistenceFilePath, {
+				stale: 5000, // Consider lock stale after 30 seconds (helps with zombie locks)
+				retries: {
+					retries: 3,
+					maxTimeout: 1000,
+				},
+				onCompromised: (err) => {
+					this.logger.warn(`[PrometheusTelemetryClient] Lock compromised: ${err.message}`)
+				},
+			})
 
-			await lockfile.lock(this.persistenceFilePath)
-
-			const tempRegistry = new Registry()
-			// Recorder is created ONCE here to register metrics.
-			const tempRecorder = new MetricsRecorder(tempRegistry)
-
-			await this.metricsSerializer.load(tempRegistry, this.persistenceFilePath)
-
-			// We pass the recorder instance to the operation.
-			const result = await operation(tempRecorder, tempRegistry)
+			// Use the class-level registry and recorder instances
+			const result = await operation(this.metricsRecorder, this.registry)
 
 			return result
 		} catch (error) {
 			this.logger.error(`[PrometheusTelemetryClient] Lock operation failed: ${error}`)
 			return undefined
 		} finally {
-			await lockfile.unlock(this.persistenceFilePath)
+			if (release) {
+				try {
+					await release()
+				} catch (unlockError) {
+					this.logger.error(`[PrometheusTelemetryClient] Failed to release lock: ${unlockError}`)
+				}
+			}
+		}
+	}
+
+	private async loadPersistedMetrics(): Promise<void> {
+		try {
+			// Check if persistence file exists, create if needed
+			try {
+				await fs.access(this.persistenceFilePath)
+			} catch (_) {
+				// File doesn't exist, create directory and file
+				await fs.mkdir(path.dirname(this.persistenceFilePath), { recursive: true })
+				await fs.writeFile(this.persistenceFilePath, "[]", "utf-8")
+				return
+			}
+			// Load existing metrics
+			await this.metricsSerializer.load(this.registry, this.persistenceFilePath)
+		} catch (error) {
+			this.logger.error(`[PrometheusTelemetryClient] Failed to load persisted metrics: ${error}`)
 		}
 	}
 
@@ -101,30 +131,49 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 	}
 
 	public async pushAdd() {
-		return this.operateWithLock(async (recorder, registry) => {
+		return this.operateWithLock(async (_, registry) => {
 			// recorder is unused here, which is perfectly fine.
-			if ((await registry.getMetricsAsJSON()).length === 0) {
+			const metricsText = await registry.metrics()
+			if (!metricsText.trim()) {
 				this.logger.debug("[PrometheusTelemetryClient] No metrics to push.")
 				return
 			}
 			const provider = this.providerRef?.deref() as unknown as ClineProvider
 			const { apiConfiguration } = await provider.getState()
 			const { zgsmAccessToken } = apiConfiguration
-			const client = new Pushgateway(
-				this.endpoint,
-				{ headers: { Authorization: `Bearer ${zgsmAccessToken}` } },
-				registry,
-			)
-			await retry(
-				() =>
-					client.pushAdd({
-						jobName: "costrict",
-						groupings: { instance: this.hashWorkspaceDir() },
-					}),
-				{ retries: 3 },
-			)
 
-			this.logger.debug("[PrometheusTelemetryClient] Push successful.")
+			const jobName = "costrict"
+			const instance = this.hashWorkspaceDir()
+			const pushUrl = `${this.endpoint}/metrics/job/${encodeURIComponent(jobName)}/instance/${encodeURIComponent(instance)}`
+
+			try {
+				await retry(
+					async () => {
+						const response = await fetch(pushUrl, {
+							method: "POST",
+							headers: {
+								"Content-Type": "text/plain",
+								Authorization: `Bearer ${zgsmAccessToken}`,
+							},
+							body: metricsText,
+						})
+
+						if (!response.ok) {
+							throw new Error(
+								`HTTP error! status: ${response.status}, statusText: ${response.statusText}`,
+							)
+						}
+					},
+					{
+						retries: 2, // Reduce retries to prevent long lock holding
+						maxTimeout: 2000,
+					},
+				)
+
+				this.logger.debug("[PrometheusTelemetryClient] Push successful.")
+			} catch (error) {
+				this.logger.error(`[PrometheusTelemetryClient] Push failed after retries: ${error}`)
+			}
 		})
 	}
 
@@ -140,10 +189,8 @@ export class PrometheusTelemetryClient extends BaseTelemetryClient {
 			// Use the recorder instance passed from operateWithLock. NO `new` here.
 			const properties = await this.getEventProperties(event)
 			recorder.record({ event: event.event, properties })
-
 			// Save the modified state back to the file.
 			await this.metricsSerializer.save(registry, this.persistenceFilePath)
-
 			if (this.debug) {
 				this.logger.debug(`[PrometheusTelemetryClient#capture] Captured and persisted: ${event.event}`)
 			}
