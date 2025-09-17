@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useMemo } from "react"
 import { ReviewIssue, TaskStatus } from "@roo/codeReview"
 import { CheckIcon, InfoCircledIcon } from "@radix-ui/react-icons"
 import { useAppTranslation } from "@/i18n/TranslationContext"
@@ -25,7 +25,9 @@ const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 	hasRunCodebaseSync = false,
 }) => {
 	const { t } = useAppTranslation()
-
+	const adjustedProgress = useMemo(() => {
+		return hasRunCodebaseSync ? Math.round((progress ?? 0 * 0.7 + 0.3) * 100) : Math.round((progress ?? 0) * 100)
+	}, [progress, hasRunCodebaseSync])
 	return (
 		<div className="flex items-center mt-5">
 			{taskStatus === TaskStatus.RUNNING && (
@@ -39,7 +41,9 @@ const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 							{progress !== null && (
 								<div>
 									<span className="ml-2">
-										{`${reviewProgress} ${hasRunCodebaseSync ? Math.round((progress * 0.7 + 0.3) * 100) : Math.round(progress * 100)}`}
+										{reviewProgress
+											? `${reviewProgress} ${adjustedProgress}%`
+											: t("codereview:taskStatusBar.running", { progress: adjustedProgress })}
 									</span>
 									<span className="ml-2 text-[#1876F2] cursor-pointer" onClick={() => onTaskCancel()}>
 										{t("codereview:taskStatusBar.cancel")}
