@@ -165,6 +165,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			let stream
 			try {
+				this.logger.info(`[RequestID]:`, requestId)
 				const { data: _stream, response } = await this.client.chat.completions
 					.create(
 						requestOptions,
@@ -173,6 +174,7 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 						}),
 					)
 					.withResponse()
+				this.logger.info(`[ResponseID]:`, response.headers.get("x-request-id"))
 				stream = _stream
 				this.curStream = _stream
 				if (this.options.zgsmModelId === autoModeModelId) {
@@ -201,12 +203,14 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			let response
 			try {
+				this.logger.info(`[RequestID]:`, requestId)
 				response = await this.client.chat.completions.create(
 					requestOptions,
 					Object.assign(isAzureAiInference ? { path: OPENAI_AZURE_AI_INFERENCE_PATH } : {}, {
 						headers: _headers,
 					}),
 				)
+				this.logger.info(`[ResponseId]:`, response._request_id)
 			} catch (error) {
 				throw handleOpenAIError(error, this.providerName)
 			}
@@ -218,7 +222,6 @@ export class ZgsmAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			yield this.processUsageMetrics(response.usage, modelInfo)
 		}
-		this.logger.info(`[RequestID]:`, requestId)
 	}
 
 	protected processUsageMetrics(usage: any, _modelInfo?: ModelInfo): ApiStreamUsageChunk {
