@@ -367,7 +367,6 @@ export class CodeReviewService {
 	 */
 	async updateIssueStatus(issueId: string, status: IssueStatus): Promise<void> {
 		this.logger.info(`Updating issue status: issueId=${issueId}, status=${status}`)
-
 		// Check if the issue exists in cache
 		const issue = this.getCachedIssue(issueId)
 		if (!issue) {
@@ -409,6 +408,9 @@ export class CodeReviewService {
 			if (this.currentActiveIssueId === issueId && status !== IssueStatus.INITIAL) {
 				this.currentActiveIssueId = null
 			}
+			if (status === IssueStatus.ACCEPT) {
+				this.fixWithAI(issue, result.data.slide_line)
+			}
 
 			// Send status update message to WebView
 			this.sendMessageToWebview({
@@ -428,6 +430,16 @@ export class CodeReviewService {
 			this.recordReviewError(CodeReviewErrorType.UpdateIssueError as TelemetryErrorType)
 			throw error
 		}
+	}
+
+	private async fixWithAI(issue: ReviewIssue, slideLine: number) {
+		const workspaceEdit = new vscode.WorkspaceEdit()
+		const { file_path, start_line, end_line, fix_code } = issue
+		const startLine = start_line - 1 + slideLine
+		const endLine = end_line - 1 + slideLine
+		const absolutePath = path.resolve(this.clineProvider!.cwd, file_path)
+		workspaceEdit.replace(vscode.Uri.file(absolutePath), new vscode.Range(startLine, 0, endLine, 0), fix_code)
+		await vscode.workspace.applyEdit(workspaceEdit)
 	}
 
 	// ===== State Query Methods =====

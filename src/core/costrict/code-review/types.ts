@@ -139,6 +139,9 @@ export interface UpdateIssueStatusResponse {
 	success: boolean
 	/** Response message */
 	message: string
+	data: {
+		slide_line: number
+	}
 }
 
 /**
