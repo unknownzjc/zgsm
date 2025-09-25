@@ -436,11 +436,13 @@ export class CodeReviewService {
 	private async fixWithAI(issue: ReviewIssue, slideLine: number) {
 		const workspaceEdit = new vscode.WorkspaceEdit()
 		const { file_path, start_line, end_line, fix_code } = issue
-		const startLine = start_line - 1 + slideLine
-		const endLine = end_line - 1 + slideLine
-		const absolutePath = path.resolve(this.clineProvider!.cwd, file_path)
-		workspaceEdit.replace(vscode.Uri.file(absolutePath), new vscode.Range(startLine, 0, endLine, 0), fix_code)
-		await vscode.workspace.applyEdit(workspaceEdit)
+		if (fix_code) {
+			const startLine = start_line - 1 + slideLine
+			const endLine = end_line - 1 + slideLine
+			const absolutePath = path.resolve(this.clineProvider!.cwd, file_path)
+			workspaceEdit.replace(vscode.Uri.file(absolutePath), new vscode.Range(startLine, 0, endLine, 0), fix_code)
+			await vscode.workspace.applyEdit(workspaceEdit)
+		}
 	}
 
 	// ===== State Query Methods =====
