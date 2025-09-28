@@ -251,29 +251,31 @@ const CodeReviewContent: React.FC<CodeReviewContentProps> = ({ issues, taskStatu
 									<div className="mb-4">
 										<div className="flex items-center mb-2">
 											<span>{t("codereview:codeReviewContent.confidenceLabel")}</span>
-											<Tooltip>
-												<CircleAlert />
-												<TooltipContent side="top">
-													{t("codereview:codeReviewContent.confidenceTooltip")}
-												</TooltipContent>
-											</Tooltip>
+											<TooltipProvider>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<CircleAlert className="w-4 h-4 ml-1" />
+													</TooltipTrigger>
+													<TooltipContent side="top" className="w-52">
+														{t("codereview:codeReviewContent.confidenceTooltip")}
+													</TooltipContent>
+												</Tooltip>
+											</TooltipProvider>
 										</div>
-										<div className="flex items-center w-full">
+										<div className="flex items-center gap-2">
 											{confidence.map(({ label, value }) => {
 												const isSelected = filterState.selectedConfidence === value
 												const { backgroundColor, color } = getConfidenceStyles(isSelected)
 
 												return (
 													<div
-														className="flex flex-col items-center gap-1 flex-1"
-														key={value}>
-														<div
-															className={`flex justify-center items-center rounded-[20px] py-[3px] px-4 cursor-pointer transition-all duration-200`}
-															style={{
-																backgroundColor,
-																color,
-															}}
-															onClick={() => toggleConfidenceSelect(value)}></div>
+														className={`flex justify-center items-center rounded-[20px] py-[3px] px-4 cursor-pointer transition-all duration-200`}
+														style={{
+															backgroundColor,
+															color,
+														}}
+														key={value}
+														onClick={() => toggleConfidenceSelect(value)}>
 														<span>{label}</span>
 													</div>
 												)
