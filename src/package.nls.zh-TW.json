@@ -42,6 +42,7 @@
 	"command.view.userHelperDoc.title": "Costrict官網",
 	"command.addFileToContext.title": "添加上下文",
 	"command.generateCommitMessage.title": "使用 Costrict 產生提交訊息",
+	"command.askReviewSuggestionWithAI.title": "修復程式碼",
 
 	"intelligentCodeCompletion.enabled.description": "啟用智慧程式碼補全",
 	"intelligentCodeCompletion.betaMode.description": "啟用測試版功能以獲得早期存取權。請查看版本說明了解功能列表。",

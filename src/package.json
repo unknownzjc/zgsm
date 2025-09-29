@@ -216,6 +216,11 @@
 				"category": "%configuration.title%"
 			},
 			{
+				"command": "zgsm.askReviewSuggestionWithAI",
+				"title": "%command.askReviewSuggestionWithAI.title%",
+				"icon": "$(sparkle)"
+			},
+			{
 				"command": "zgsm.improveCode",
 				"title": "%command.improveCode.title%",
 				"category": "%configuration.title%"
@@ -456,6 +461,11 @@
 				{
 					"command": "zgsm.rejectIssue",
 					"group": "navigation@2",
+					"when": "commentThread == CostrictCodeReview"
+				},
+				{
+					"command": "zgsm.askReviewSuggestionWithAI",
+					"group": "navigation@3",
 					"when": "commentThread == CostrictCodeReview"
 				}
 			],
