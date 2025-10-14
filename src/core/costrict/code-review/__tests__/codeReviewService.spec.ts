@@ -53,6 +53,16 @@ vi.mock("vscode", () => ({
 		Editing: 0,
 		Preview: 1,
 	},
+	WorkspaceEdit: vi.fn().mockImplementation(() => ({
+		replace: vi.fn(),
+		delete: vi.fn(),
+		insert: vi.fn(),
+		set: vi.fn(),
+		entries: vi.fn().mockReturnValue([]),
+		get: vi.fn().mockReturnValue(new Map()),
+		has: vi.fn().mockReturnValue(false),
+		size: 0,
+	})),
 	window: {
 		createOutputChannel: vi.fn().mockReturnValue({
 			appendLine: vi.fn(),
@@ -66,6 +76,7 @@ vi.mock("vscode", () => ({
 			onDidDelete: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 			dispose: vi.fn(),
 		}),
+		applyEdit: vi.fn().mockResolvedValue({ succeeded: true }),
 	},
 	RelativePattern: vi.fn().mockImplementation((base, pattern) => ({ base, pattern })),
 	env: {
