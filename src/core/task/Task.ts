@@ -875,6 +875,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 		}
 
+		// No need to ask about tool calls in review mode; this is a temporary measure and needs to be removed later.
+		if (this._taskMode === "review" && type === "tool") {
+			this.approveAsk()
+		}
+
 		// Wait for askResponse to be set.
 		await pWaitFor(() => this.askResponse !== undefined || this.lastMessageTs !== askTs, { interval: 100 })
 

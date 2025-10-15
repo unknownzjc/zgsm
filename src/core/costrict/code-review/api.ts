@@ -17,6 +17,8 @@ import {
 	CancelReviewTaskRequest,
 	CancelReviewTaskResponse,
 	IReviewPrompt,
+	ReportIssueReuqest,
+	ReportIssueResponse,
 } from "./types"
 import { IssueStatus } from "../../../shared/codeReview"
 import type { AxiosRequestConfig } from "axios"
@@ -223,5 +225,14 @@ export async function getPrompt(id: string, options: AxiosRequestConfig = {}) {
 		throw new Error("Issue ID is required")
 	}
 	const response = await axiosInstance.get<IReviewPrompt>(`issue-manager/api/v1/issues/${id}/fix`, options)
+	return response.data
+}
+
+export async function reportIssue(params: ReportIssueReuqest, options: AxiosRequestConfig = {}) {
+	const response = await axiosInstance.post<ReportIssueResponse>(
+		`/issue-manager/api/v1/issues/report`,
+		params,
+		options,
+	)
 	return response.data
 }

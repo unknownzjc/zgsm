@@ -15,13 +15,28 @@ import * as vscode from "vscode"
 import path from "node:path"
 import type { AxiosRequestConfig } from "axios"
 import { v7 as uuidv7 } from "uuid"
+import { RooCodeEventName } from "@roo-code/types"
 
 import { ReviewTask } from "./types"
-import { createReviewTaskAPI, getReviewResultsAPI, updateIssueStatusAPI, cancelReviewTaskAPI, getPrompt } from "./api"
+import {
+	createReviewTaskAPI,
+	getReviewResultsAPI,
+	updateIssueStatusAPI,
+	cancelReviewTaskAPI,
+	getPrompt,
+	reportIssue,
+} from "./api"
 import { ReviewComment } from "./reviewComment"
 import { ZgsmAuthConfig, ZgsmAuthService } from "../auth"
 
-import { ReviewIssue, IssueStatus, TaskStatus, ReviewTarget, TaskData } from "../../../shared/codeReview"
+import {
+	ReviewIssue,
+	IssueStatus,
+	TaskStatus,
+	ReviewTarget,
+	TaskData,
+	ReviewTargetType,
+} from "../../../shared/codeReview"
 import { ExtensionMessage } from "../../../shared/ExtensionMessage"
 import { Package } from "../../../shared/package"
 
@@ -34,6 +49,7 @@ import { TelemetryService } from "@roo-code/telemetry"
 import { CodeReviewErrorType, type TelemetryErrorType } from "../telemetry"
 import { COSTRICT_DEFAULT_HEADERS } from "../../../shared/headers"
 import { zgsmCodebaseIndexManager } from "../codebase-index"
+import { toRelativePath } from "../../../utils/path"
 /**
  * Code Review Service - Singleton
  *
@@ -169,27 +185,78 @@ export class CodeReviewService {
 					return
 				}
 			}
-			const res = await zgsmCodebaseIndexManager.getIndexStatus(visibleProvider.cwd)
-			const { codegraph } = res.data
-			visibleProvider.postMessageToWebview({
-				type: "reviewPagePayload",
-				payload: {
-					targets,
-					isCodebaseReady:
-						zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100),
-				},
-			})
-			this.resetStatus()
-			visibleProvider.postMessageToWebview({
-				type: "action",
-				action: "codeReviewButtonClicked",
-			})
-			if (zgsmCodebaseIndexEnabled && (codegraph.status === "success" || codegraph.process === 100)) {
-				await this.startReviewTask(targets)
-			}
+			const chatMessage = targets
+				.map((item) => {
+					const { type, file_path } = item
+					if (type === ReviewTargetType.FILE) {
+						return `@/${file_path}`
+					} else if (type === ReviewTargetType.FOLDER) {
+						return `@/${file_path}/`
+					}
+					return ""
+				})
+				.join(" ")
+			this.createReviewTask(chatMessage, targets)
 		}
 	}
 
+	public async createReviewTask(message: string, targets: ReviewTarget[]) {
+		const provider = this.getProvider()
+		if (provider) {
+			this.reset()
+			const task = await provider.createTask(message, undefined, undefined, undefined, { mode: "review" })
+			provider.postMessageToWebview({
+				type: "action",
+				action: "codeReviewButtonClicked",
+			})
+			task.on(RooCodeEventName.TaskStarted, () => {
+				this.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
+					issues: [],
+					progress: 0,
+				})
+			})
+			task.on(RooCodeEventName.TaskToolFailed, () => {
+				this.sendReviewTaskUpdateMessage(TaskStatus.ERROR, {
+					issues: [],
+					progress: 0,
+					error: t("common:review.tip.service_unavailable"),
+				})
+			})
+			task.on(RooCodeEventName.TaskAskResponded, () => {
+				const messageCount = task.clineMessages.length
+
+				let progress = 0
+				if (messageCount <= 10) {
+					progress = messageCount * 0.05
+				} else {
+					progress = Math.min(0.5 + (messageCount - 10) * 0.02, 0.95)
+				}
+				this.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
+					issues: [],
+					progress: Math.round(progress * 100) / 100,
+				})
+			})
+			task.on(RooCodeEventName.TaskCompleted, async () => {
+				this.logger.info("[CodeReview] Review Task completed")
+				const message = task.clineMessages.find((msg) => msg.type === "say" && msg.say === "completion_result")
+				if (message?.text) {
+					const { issues, review_task_id } = await this.getIssues(message.text, targets)
+					this.currentTask = {
+						...this.currentTask,
+						taskId: review_task_id,
+						isCompleted: true,
+						progress: 1,
+						review_progress: "",
+						total: issues.length,
+					}
+					this.updateCachedIssues(issues)
+				}
+				this.completeTask()
+				await provider.removeClineFromStack()
+				await provider.refreshWorkspace()
+			})
+		}
+	}
 	// ===== Task Management Methods =====
 
 	/**
@@ -204,7 +271,7 @@ export class CodeReviewService {
 		}
 
 		// Abort current task if exists
-		await this.abortCurrentTask()
+		this.abortCurrentTask()
 		this.commentService?.clearAllCommentThreads()
 
 		// Create new AbortController for this task
@@ -235,7 +302,6 @@ export class CodeReviewService {
 			// Create ReviewTask object
 			this.currentTask = {
 				taskId: taskResponse.data.review_task_id,
-				targets: targets,
 				isCompleted: false,
 				progress: 0,
 				review_progress: "",
@@ -258,22 +324,54 @@ export class CodeReviewService {
 			this.recordReviewError(CodeReviewErrorType.StartReviewError as TelemetryErrorType)
 		}
 	}
-	public resetStatus() {
+	public reset() {
+		this.abortCurrentTask()
+		this.currentTask = {
+			taskId: "",
+			isCompleted: false,
+			progress: 0,
+			review_progress: "",
+			total: 0,
+		}
 		this.sendReviewTaskUpdateMessage(TaskStatus.INITIAL, {
 			issues: [],
 			progress: 0,
 		})
 	}
+
+	public async getIssues(report: string, targets: ReviewTarget[]) {
+		const clientId = await this.getClientId()
+		const workspace = this.clineProvider?.cwd || ""
+		const requestOptions = await this.getRequestOptions()
+		try {
+			const { data } = await reportIssue(
+				{
+					review_report: report,
+					client_id: clientId,
+					workspace,
+					review_code: targets,
+				},
+				requestOptions,
+			)
+			return (
+				data ?? {
+					issues: [],
+					review_task_id: "",
+					count: 0,
+				}
+			)
+		} catch (error) {
+			return {
+				issues: [],
+				review_task_id: "",
+				count: 0,
+			}
+		}
+	}
 	/**
 	 * Abort current running task
 	 */
-	async abortCurrentTask(): Promise<void> {
-		// Abort AbortController if exists
-		if (this.taskAbortController) {
-			this.taskAbortController.abort("abort current task")
-			this.taskAbortController = null
-		}
-
+	abortCurrentTask(): void {
 		// Clear cache
 		this.clearCache()
 
@@ -294,36 +392,10 @@ export class CodeReviewService {
 		if (!this.currentTask) {
 			throw new Error("No active task to cancel")
 		}
-
-		// Abort AbortController to stop polling
-		if (this.taskAbortController) {
-			this.taskAbortController.abort("cancel current task")
-			const clientId = await this.getClientId()
-			const workspace = this.clineProvider?.cwd || ""
-			const requestOptions = await this.getRequestOptions()
-			try {
-				await cancelReviewTaskAPI(
-					{
-						client_id: clientId,
-						workspace,
-					},
-					requestOptions,
-				)
-			} catch (error) {
-				this.logger.error("Failed to cancel current task:", error)
-				if (error.name === "AuthError") {
-					await this.handleAuthError()
-				}
-				this.recordReviewError(CodeReviewErrorType.CancelReviewError as TelemetryErrorType)
-				throw error
-			} finally {
-				this.taskAbortController = null
-				this.completeTask()
-			}
-		} else {
-			// Mark task as completed and send completion message
-			this.completeTask()
-		}
+		this.completeTask()
+		const provider = this.getProvider()
+		await provider?.removeClineFromStack()
+		await provider?.refreshWorkspace()
 	}
 
 	// ===== Issue Management Methods =====
@@ -536,7 +608,7 @@ export class CodeReviewService {
 		const requestOptions = await this.getRequestOptions()
 		const { data } = await getPrompt(id, requestOptions)
 
-		const task = await provider.createTask(data.prompt)
+		const task = await provider.createTask(data.prompt, undefined, undefined, undefined, { mode: "code" })
 		await provider.postMessageToWebview({
 			type: "action",
 			action: "switchTab",
@@ -723,13 +795,14 @@ export class CodeReviewService {
 			"logo.svg",
 		)
 		const cwd = this.clineProvider!.cwd
+		let message = issue.message.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
 		return {
 			issueId: issue.id,
 			fileUri: vscode.Uri.file(path.resolve(cwd, issue.file_path)),
 			range: new vscode.Range(issue.start_line - 1, 0, issue.end_line - 1, Number.MAX_SAFE_INTEGER),
 			comment: new ReviewComment(
 				issue.id,
-				new vscode.MarkdownString(`${issue.title ? `### ${issue.title}\n\n` : ""}${issue.message}`),
+				new vscode.MarkdownString(`${issue.title ? `### ${issue.title}\n\n` : ""}${message}`),
 				vscode.CommentMode.Preview,
 				{ name: "Costrict", iconPath },
 				undefined,

@@ -682,11 +682,17 @@ export class ClineProvider
 		}
 
 		const { customSupportPrompts } = await visibleProvider.getState()
-
 		if (promptType === "ZGSM_CODE_REVIEW") {
 			const reviewInstance = CodeReviewService.getInstance()
 			reviewInstance.setProvider(visibleProvider)
-			reviewInstance.startReview([
+			const filePath = toRelativePath(params.filePath as string, visibleProvider.cwd)
+			const chatMessage = supportPrompt.create("ADD_TO_CONTEXT", {
+				filePath,
+				startLine: Number(params.startLine) + 1 + "",
+				endLine: Number(params.endLine) + 1 + "",
+				selectedText: params.selectedText,
+			})
+			reviewInstance.createReviewTask(chatMessage, [
 				{
 					type: ReviewTargetType.CODE,
 					file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),

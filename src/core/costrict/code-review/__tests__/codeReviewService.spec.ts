@@ -130,6 +130,13 @@ const mockClineProvider = {
 		},
 		language: "zh-CN",
 	}),
+	removeClineFromStack: vi.fn().mockResolvedValue(undefined),
+	refreshWorkspace: vi.fn().mockResolvedValue(undefined),
+	createTask: vi.fn().mockReturnValue({
+		taskId: "test-task-id",
+		on: vi.fn(),
+		clineMessages: [],
+	}),
 } as unknown as ClineProvider
 
 // Test data
@@ -279,9 +286,9 @@ describe("CodeReviewService", () => {
 			await expect(service.startReviewTask([])).rejects.toThrow("At least one review target is required")
 		})
 
-		it("should not throw error for abortCurrentTask when no task is running", async () => {
+		it("should not throw error for abortCurrentTask when no task is running", () => {
 			// Should not throw error when no current task
-			await expect(service.abortCurrentTask()).resolves.not.toThrow()
+			expect(() => service.abortCurrentTask()).not.toThrow()
 		})
 
 		it("should throw error for setActiveIssue when issue not found", async () => {
@@ -405,7 +412,7 @@ describe("CodeReviewService", () => {
 			await service.startReviewTask([mockReviewTarget])
 
 			// Abort task
-			await service.abortCurrentTask()
+			service.abortCurrentTask()
 
 			// Verify cleanup
 			expect(service.getCurrentTask()).toBeNull()
@@ -439,10 +446,6 @@ describe("CodeReviewService", () => {
 				message: "Success",
 				data: { review_task_id: "test-task" },
 			})
-			mockCancelReviewTaskAPI.mockResolvedValue({
-				success: true,
-				message: "Task canceled successfully",
-			})
 			await service.startReviewTask([mockReviewTarget])
 
 			// Verify task is running
@@ -452,14 +455,9 @@ describe("CodeReviewService", () => {
 			// Cancel task
 			await service.cancelCurrentTask()
 
-			// Verify cancelReviewTaskAPI was called
-			expect(mockCancelReviewTaskAPI).toHaveBeenCalledWith(
-				{
-					client_id: expect.any(String),
-					workspace: "/test/workspace",
-				},
-				expect.any(Object),
-			)
+			// Verify provider methods were called
+			expect(mockClineProvider.removeClineFromStack).toHaveBeenCalled()
+			expect(mockClineProvider.refreshWorkspace).toHaveBeenCalled()
 
 			// Verify task is marked as completed
 			expect(service.getCurrentTask()?.isCompleted).toBe(true)
@@ -485,10 +483,6 @@ describe("CodeReviewService", () => {
 				code: 200,
 				message: "Success",
 				data: { review_task_id: "test-task" },
-			})
-			mockCancelReviewTaskAPI.mockResolvedValue({
-				success: true,
-				message: "Task canceled successfully",
 			})
 
 			// Setup polling response
@@ -535,10 +529,6 @@ describe("CodeReviewService", () => {
 				message: "Success",
 				data: { review_task_id: "test-task" },
 			})
-			mockCancelReviewTaskAPI.mockResolvedValue({
-				success: true,
-				message: "Task canceled successfully",
-			})
 			mockGetReviewResultsAPI.mockResolvedValue({
 				code: 200,
 				message: "Success",
@@ -578,10 +568,6 @@ describe("CodeReviewService", () => {
 				code: 200,
 				message: "Success",
 				data: { review_task_id: "test-task" },
-			})
-			mockCancelReviewTaskAPI.mockResolvedValue({
-				success: true,
-				message: "Task canceled successfully",
 			})
 
 			// Setup polling response with progress
@@ -629,32 +615,6 @@ describe("CodeReviewService", () => {
 						}),
 					}),
 				}),
-			)
-		})
-
-		it("should handle API error when canceling task", async () => {
-			// Setup running task
-			mockCreateReviewTaskAPI.mockResolvedValue({
-				code: 200,
-				message: "Success",
-				data: { review_task_id: "test-task" },
-			})
-			mockCancelReviewTaskAPI.mockRejectedValue(new Error("Cancel API Error"))
-			await service.startReviewTask([mockReviewTarget])
-
-			// Verify task is running
-			expect(service.isTaskRunning()).toBe(true)
-
-			// Cancel task should throw error
-			await expect(service.cancelCurrentTask()).rejects.toThrow("Cancel API Error")
-
-			// Verify cancelReviewTaskAPI was called
-			expect(mockCancelReviewTaskAPI).toHaveBeenCalledWith(
-				{
-					client_id: expect.any(String),
-					workspace: "/test/workspace",
-				},
-				expect.any(Object),
 			)
 		})
 	})
@@ -724,7 +684,7 @@ describe("CodeReviewService", () => {
 			expect(service.getAllCachedIssues()).toHaveLength(2)
 
 			// Clear cache through task abort
-			await service.abortCurrentTask()
+			service.abortCurrentTask()
 
 			// Verify cache is cleared
 			expect(service.getAllCachedIssues()).toHaveLength(0)
@@ -740,7 +700,7 @@ describe("CodeReviewService", () => {
 			expect(service.getCurrentActiveIssueId()).toBe(mockIssue.id)
 
 			// Clear through abort
-			await service.abortCurrentTask()
+			service.abortCurrentTask()
 
 			// Verify active issue is cleared
 			expect(service.getCurrentActiveIssueId()).toBeNull()
@@ -798,7 +758,7 @@ describe("Polling Mechanism", () => {
 		expect(mockGetReviewResultsAPI).toHaveBeenCalledWith("test-task", 0, expect.any(String), expect.any(Object))
 
 		// Abort task
-		await service.abortCurrentTask()
+		service.abortCurrentTask()
 
 		// Reset mock to track new calls
 		mockGetReviewResultsAPI.mockClear()
@@ -1004,7 +964,7 @@ describe("Polling Mechanism", () => {
 		mockGetReviewResultsAPI.mockClear()
 
 		// Abort task
-		await service.abortCurrentTask()
+		service.abortCurrentTask()
 
 		// Advance time
 		vi.runOnlyPendingTimers()
@@ -1185,6 +1145,13 @@ describe("CodeReviewService - setActiveIssue and updateIssueStatus", () => {
 					zgsmBaseUrl: "https://zgsm.sangfor.com",
 				},
 				language: "zh-CN",
+			}),
+			removeClineFromStack: vi.fn().mockResolvedValue(undefined),
+			refreshWorkspace: vi.fn().mockResolvedValue(undefined),
+			createTask: vi.fn().mockReturnValue({
+				taskId: "test-task-id",
+				on: vi.fn(),
+				clineMessages: [],
 			}),
 		} as unknown as ClineProvider
 
