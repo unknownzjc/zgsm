@@ -363,10 +363,7 @@ export class CodeReviewService {
 					workspace,
 					review_code: targets,
 				},
-				{
-					...requestOptions,
-					baseURL: "http://127.0.0.1:8081",
-				},
+				requestOptions,
 			)
 			return (
 				data ?? {
