@@ -177,23 +177,69 @@ export class CodeReviewService {
 		if (provider) {
 			this.reset()
 			let isCompleted = false
+			let timeoutId: NodeJS.Timeout | undefined
+			const TASK_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
+
 			const task = await provider.createTask(message, undefined, undefined, undefined, { mode: "review" })
 			provider.postMessageToWebview({
 				type: "action",
 				action: "codeReviewButtonClicked",
 			})
+
+			// Helper function to clear timeout timer
+			const clearTimeoutIfExists = () => {
+				if (timeoutId) {
+					clearTimeout(timeoutId)
+					timeoutId = undefined
+				}
+			}
+
+			// Timeout handler function
+			const handleTimeout = async () => {
+				// Double-check to prevent race condition with TaskCompleted
+				if (!isCompleted) {
+					// Set isCompleted first to prevent concurrent execution
+					isCompleted = true
+					this.logger.info(`[CodeReview] Task timeout after ${TASK_TIMEOUT_MS / 1000} seconds`)
+					this.sendReviewTaskUpdateMessage(TaskStatus.ERROR, {
+						issues: [],
+						progress: 0,
+						error: t("common:review.tip.task_timeout"),
+					})
+					await provider.removeClineFromStack()
+					await provider.refreshWorkspace()
+				}
+			}
+
 			task.on(RooCodeEventName.TaskStarted, () => {
 				this.sendReviewTaskUpdateMessage(TaskStatus.RUNNING, {
 					issues: [],
 					progress: 0,
 				})
+				// Start timeout timer when task starts
+				timeoutId = setTimeout(handleTimeout, TASK_TIMEOUT_MS)
 			})
-			task.on(RooCodeEventName.TaskToolFailed, () => {
-				this.sendReviewTaskUpdateMessage(TaskStatus.ERROR, {
-					issues: [],
-					progress: 0,
-					error: t("common:review.tip.service_unavailable"),
-				})
+			task.on(RooCodeEventName.TaskResumable, () => {
+				if (!isCompleted) {
+					// Clear timeout when task encounters resumable error
+					clearTimeoutIfExists()
+					this.sendReviewTaskUpdateMessage(TaskStatus.ERROR, {
+						issues: [],
+						progress: 0,
+						error: t("common:review.tip.service_unavailable"),
+					})
+				}
+			})
+			task.on(RooCodeEventName.TaskIdle, () => {
+				if (!isCompleted) {
+					// Clear timeout when task goes idle (regardless of message count)
+					clearTimeoutIfExists()
+					this.sendReviewTaskUpdateMessage(TaskStatus.ERROR, {
+						issues: [],
+						progress: 0,
+						error: t("common:review.tip.service_unavailable"),
+					})
+				}
 			})
 			task.on(RooCodeEventName.TaskAskResponded, () => {
 				if (!isCompleted) {
@@ -215,7 +261,8 @@ export class CodeReviewService {
 				try {
 					this.logger.info("[CodeReview] Review Task completed")
 					isCompleted = true
-					console.log("TaskCompleted", task.clineMessages)
+					// Clear timeout when task completes successfully
+					clearTimeoutIfExists()
 					const message = task.clineMessages.find(
 						(msg) => msg.type === "say" && msg.text?.includes("I-AM-CODE-REVIEW-REPORT-V1"),
 					)
@@ -782,14 +829,13 @@ export class CodeReviewService {
 			"logo.svg",
 		)
 		const cwd = this.clineProvider!.cwd
-		let message = issue.message.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
 		return {
 			issueId: issue.id,
 			fileUri: vscode.Uri.file(path.resolve(cwd, issue.file_path)),
 			range: new vscode.Range(issue.start_line - 1, 0, issue.end_line - 1, Number.MAX_SAFE_INTEGER),
 			comment: new ReviewComment(
 				issue.id,
-				new vscode.MarkdownString(`${issue.title ? `### ${issue.title}\n\n` : ""}${message}`),
+				new vscode.MarkdownString(`${issue.title ? `### ${issue.title}\n\n` : ""}${issue.message}`),
 				vscode.CommentMode.Preview,
 				{ name: "CoStrict", iconPath },
 				undefined,
