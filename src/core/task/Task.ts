@@ -237,6 +237,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	private static lastGlobalApiRequestTime?: number
 	private autoApprovalHandler: AutoApprovalHandler
 
+	lastApiRequestHeaders?: Record<string, string>
+
 	/**
 	 * Reset the global API request timestamp. This should only be used for testing.
 	 * @internal
@@ -2484,14 +2486,20 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					// If there's no assistant_responses, that means we got no text
 					// or tool_use content blocks from API which we should assume is
 					// an error.
+					let requestId = null
+					if (this.lastApiRequestHeaders) {
+						requestId = this.lastApiRequestHeaders["X-Request-ID"]
+					}
 
 					// Check if we should auto-retry or prompt the user
 					const state = await this.providerRef.deref()?.getState()
 					if (state?.autoApprovalEnabled && state?.alwaysApproveResubmit) {
 						// Auto-retry with backoff - don't persist failure message when retrying
-						const errorMsg =
+						let errorMsg =
 							"Unexpected API Response: The language model did not provide any assistant messages. This may indicate an issue with the API or the model's output."
-
+						if (requestId) {
+							errorMsg += `\n\nRequestId: ${requestId}\n\n`
+						}
 						await this.backoffAndAnnounce(
 							currentItem.retryAttempt ?? 0,
 							new Error("Empty assistant response"),
@@ -2517,10 +2525,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						continue
 					} else {
 						// Prompt the user for retry decision
-						const { response } = await this.ask(
-							"api_req_failed",
-							"The model returned no assistant messages. This may indicate an issue with the API or the model's output.",
-						)
+						let errMsg = `The model returned no assistant messages. This may indicate an issue with the API or the model's output.`
+						if (requestId) {
+							errMsg += `\n\nRequestId: ${requestId}\n\n`
+						}
+
+						const { response } = await this.ask("api_req_failed", errMsg)
 
 						if (response === "yesButtonClicked") {
 							await this.say("api_req_retried")
@@ -2913,7 +2923,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.skipPrevResponseIdOnce = false
 		}
 
-		const stream = this.api.createMessage(systemPrompt, cleanConversationHistory, metadata)
+		const stream = this.api.createMessage(systemPrompt, cleanConversationHistory, {
+			...metadata,
+			onRequestHeadersReady: (headers: Record<string, string>) => {
+				this.lastApiRequestHeaders = headers
+			},
+		})
 		const iterator = stream[Symbol.asyncIterator]()
 
 		try {
