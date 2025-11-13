@@ -73,6 +73,7 @@ import { ErrorCodeManager } from "../costrict/error-code"
 import { writeCostrictAccessToken } from "../costrict/codebase-index/utils"
 import { workspaceEventMonitor } from "../costrict/codebase-index/workspace-event-monitor"
 import { fetchZgsmQuotaInfo, fetchZgsmInviteCode } from "../../api/providers/fetchers/zgsm"
+import { initNotificationService } from "../costrict/notification"
 // import { ensureProjectWikiSubtasksExists } from "../costrict/wiki/projectWikiHelpers"
 
 export const webviewMessageHandler = async (
@@ -551,6 +552,7 @@ export const webviewMessageHandler = async (
 				const isOptedIn = telemetrySetting !== "disabled"
 				TelemetryService.instance.updateTelemetryState(isOptedIn)
 			})
+			initNotificationService(provider)
 
 			provider.isViewLaunched = true
 			break
