@@ -393,8 +393,8 @@ export class ZgsmAuthService {
 		this.updateUserInfo(tokens.refresh_token)
 		vscode.window.showInformationMessage(`${this.userInfo.name} user logged in successfully`)
 		ZgsmAuthService.clineProvider?.postMessageToWebview?.({ type: "zgsmLogined" })
-		CompletionStatusBar.complete()
-		CompletionStatusBar.resetCommand()
+		// CompletionStatusBar.complete()
+		// CompletionStatusBar.resetCommand()
 	}
 
 	updateUserInfo(token: string) {
