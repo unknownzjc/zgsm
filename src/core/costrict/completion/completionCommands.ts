@@ -45,14 +45,3 @@ export const turnOffCompletion: Command = {
 	command: "zgsm-completion.disable",
 	callback: () => setExtensionStatus(false),
 }
-
-/**
- * Command for completion shortcut instructions.
- */
-export const shortKeyCut: Command = {
-	command: "zgsm-completion.shortKeyCut",
-	callback: (context: vscode.ExtensionContext) => {
-		context.workspaceState.update("shortCutKeys", true)
-		vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
-	},
-}

@@ -24,5 +24,11 @@ export class CompletionServiceManager {
 			// Code completion service
 			vscode.languages.registerInlineCompletionItemProvider({ pattern: "**" }, this.inlineCompletionProvider),
 		)
+		this.context.subscriptions.push(
+			vscode.commands.registerCommand("zgsm-completion.shortKeyCut", async () => {
+				await this.context.workspaceState.update("shortCutKeys", true)
+				await vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
+			}),
+		)
 	}
 }

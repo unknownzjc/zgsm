@@ -1,3 +1,8 @@
+/**
+ * Modified from Kilo-Org/kilocode
+ * Copyright Kilo Org, Inc.
+ * Licensed under Apache-2.0
+ */
 import { randomUUID } from "node:crypto"
 
 export class AutocompleteDebouncer {

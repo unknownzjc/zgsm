@@ -1,21 +1,20 @@
-import OpenAI from "openai"
 import { Completion } from "openai/resources/completions"
 import { ClineProvider } from "../../../webview/ClineProvider"
-import { ZgsmAuthConfig } from "../../auth/authConfig"
-import { ZgsmAuthStorage } from "../../auth/authStorage"
-import { NOT_PROVIDERED, settings } from "../../base/common/constant"
+import { settings } from "../../base/common/constant"
 import { CalculateHideScore, PromptOptions, AutocompleteOutcome } from "../types"
-import { ProviderSettings } from "@roo-code/types"
 import { COSTRICT_DEFAULT_HEADERS } from "../../../../shared/headers"
 import { getClientId } from "../../../../utils/getClientId"
 import { AutocompleteDebouncer } from "../utils/autocompleteDebouncer"
 import { AutocompleteLoggingService } from "../utils/autocompleteLoggingService"
+import { getWellKnownConfig } from "../../codebase-index/utils"
 
 export interface AutoCompleteInput {
 	completionId: string
 	languageId: string
 	promptOptions: PromptOptions
 	calculateHideScore: CalculateHideScore
+	previousCompletionId: string
+	stop: string[]
 }
 const MAX_SUGGESTIONS_HISTORY = 20
 const DEBOUNCE_DELAY_MS = 300
@@ -25,12 +24,11 @@ interface FillInAtCursorSuggestion {
 	suffix: string
 	completionId: string
 }
-interface LLMRetrievalResult {
-	suggestions: FillInAtCursorSuggestion
-	completionId: string
-	time: number
-	timestamp: string
+interface ServiceConfig {
+	protocol: string
+	port: number
 }
+export type CompletionErrorHandler = (error: unknown) => void
 /**
  * Find a matching suggestion from the history based on current prefix and suffix
  * @param prefix - The text before the cursor position
@@ -79,40 +77,20 @@ export class CompletionProvider {
 	private suggestionsHistory: FillInAtCursorSuggestion[] = []
 	private debouncer = new AutocompleteDebouncer()
 	private loggingService = new AutocompleteLoggingService()
-
-	constructor(private readonly provider: ClineProvider) {}
-
-	private async _prepareLlm() {
-		const { apiConfiguration } = await this.provider.getState()
-		if (!apiConfiguration.zgsmAccessToken) {
-			this.provider.log("Failed to get login information. Please log in again to use the completion service")
-			return undefined
-		}
-		const apiConfig = await this._getApiConfig(apiConfiguration)
-		const fullUrl = `${apiConfig.baseUrl}${apiConfig.completionUrl}`
-		if (apiConfig.apiKey === NOT_PROVIDERED) {
-			return undefined
-		}
-		return new OpenAI({
-			baseURL: fullUrl,
-			apiKey: apiConfig.apiKey,
-			defaultHeaders: {
-				...COSTRICT_DEFAULT_HEADERS,
-			},
-			timeout: 5000,
-			maxRetries: 0,
-		})
+	private serverHost: string = ""
+	private readonly onError: CompletionErrorHandler
+	constructor(
+		private readonly provider: ClineProvider,
+		onError: CompletionErrorHandler,
+	) {
+		this.onError = onError
+		this.serverHost = this._getServerHostConfig()
 	}
 
-	private async _getApiConfig(apiConfiguration: ProviderSettings) {
-		const completionUrl = "/code-completion/api/v1"
-		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
-
-		return {
-			baseUrl: apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
-			completionUrl,
-			apiKey: apiConfiguration.zgsmAccessToken || tokens?.access_token || NOT_PROVIDERED,
-		}
+	private _getServerHostConfig(defaultValue?: ServiceConfig) {
+		const { services } = getWellKnownConfig()
+		const service = services.find((item: any) => item.name === "completion-agent")
+		return `${service?.protocol || "http"}://localhost:${service?.port || defaultValue?.port}`
 	}
 
 	/**
@@ -140,11 +118,6 @@ export class CompletionProvider {
 				return undefined
 			}
 
-			const llm = await this._prepareLlm()
-			if (!llm) {
-				return undefined
-			}
-
 			// 4. Debounce
 			const shouldDebounce = await this.debouncer.delayAndShouldDebounce(DEBOUNCE_DELAY_MS, token)
 			if (shouldDebounce) {
@@ -169,7 +142,7 @@ export class CompletionProvider {
 				cacheHit = true
 			} else {
 				// 6. 发起网络请求
-				await this.fetchAndCacheSuggestions(llm, input, token)
+				await this.fetchAndCacheSuggestions(input, token)
 
 				// 7. 竞态检查
 				if (token.aborted) {
@@ -197,30 +170,13 @@ export class CompletionProvider {
 			}
 			return outcome
 		} catch (e) {
-			// 9. 错误处理：捕获 AbortError
-			if (this.isAbortError(e)) {
-				return undefined
-			}
-			throw e
+			// 9. 错误处理：调用回调并返回 undefined
+			this.onError(e)
+			return undefined
 		} finally {
 			// 10. 清理资源
 			this.loggingService.deleteAbortController(input.completionId)
 		}
-	}
-
-	/**
-	 * 判断是否为 AbortError
-	 */
-	private isAbortError(e: unknown): boolean {
-		if (e instanceof Error) {
-			return (
-				e.name === "AbortError" ||
-				e.message.includes("aborted") ||
-				e.message.includes("cancelled") ||
-				e.message.includes("canceled")
-			)
-		}
-		return false
 	}
 
 	public updateSuggestions(fillInAtCursor: FillInAtCursorSuggestion): void {
@@ -244,8 +200,8 @@ export class CompletionProvider {
 		}
 	}
 
-	private async fetchAndCacheSuggestions(llm: OpenAI, input: AutoCompleteInput, token: AbortSignal) {
-		const response = await this.getFromLLM(llm, input, token)
+	private async fetchAndCacheSuggestions(input: AutoCompleteInput, token: AbortSignal) {
+		const response = await this.getFromLLM(input, token)
 
 		// 竞态检查：更新缓存前检查是否已取消
 		if (token.aborted) {
@@ -255,7 +211,7 @@ export class CompletionProvider {
 		this.updateSuggestions(response.suggestions)
 	}
 
-	private async getFromLLM(llm: OpenAI, input: AutoCompleteInput, token: AbortSignal) {
+	private async getFromLLM(input: AutoCompleteInput, token: AbortSignal) {
 		const clientId = getClientId()
 		const headers = {
 			...COSTRICT_DEFAULT_HEADERS,
@@ -263,30 +219,29 @@ export class CompletionProvider {
 			"zgsm-client-id": clientId,
 		}
 		const { prefix, suffix } = input.promptOptions
-		const response = await llm.completions.create(
-			{
+		const response = await fetch(`${this.serverHost}/completion-agent/api/v1/completions`, {
+			method: "post",
+			headers,
+			signal: AbortSignal.any([token, AbortSignal.timeout(2000)]),
+			body: JSON.stringify({
 				model: settings.openai_model,
 				temperature: settings.temperature,
-				prompt: null,
-			},
-			{
-				headers,
-				signal: token, // 传递给 OpenAI SDK 以支持取消网络请求
-				body: {
-					model: settings.openai_model,
-					temperature: settings.temperature,
-					client_id: clientId,
-					stop: [],
-					completion_id: input.completionId,
-					language_id: input.languageId,
-					calculate_hide_score: input.calculateHideScore,
-					prompt_options: input.promptOptions,
-					parent_id: "",
-				},
-			},
-		)
-		const text = this.acquireCompletionText(response)
-		const completionId = this.acquireCompletionId(response)
+				client_id: clientId,
+				stop: input.stop,
+				completion_id: input.completionId,
+				language_id: input.languageId,
+				calculate_hide_score: input.calculateHideScore,
+				prompt_options: input.promptOptions,
+				parent_id: input.previousCompletionId,
+			}),
+		})
+		if (!response.ok) {
+			console.log(`[Completion Request]: ${response.statusText}`)
+			throw new Error(`Failed to fetch completion: ${response.statusText}`)
+		}
+		const data = await response.json()
+		const text = this.acquireCompletionText(data)
+		const completionId = this.acquireCompletionId(data)
 		return {
 			suggestions: {
 				text,
