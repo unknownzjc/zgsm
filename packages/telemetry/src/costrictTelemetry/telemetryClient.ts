@@ -6,6 +6,9 @@ import { TelemetryControlResponse } from "./types"
 import { MetricsRecorder } from "./metricsRecorder"
 import { ClineProvider } from "../../../../src/core/webview/ClineProvider"
 import { v7 as uuidv7 } from "uuid"
+import * as os from "os"
+import * as path from "path"
+import * as fs from "fs"
 
 export class CostrictTelemetryClient extends BaseTelemetryClient {
 	private endpoint: string
@@ -13,7 +16,6 @@ export class CostrictTelemetryClient extends BaseTelemetryClient {
 	private reportIntervalMinutes: number = 20
 	private reportTimer: ReturnType<typeof setInterval> | null = null
 	private metricsRecorder: MetricsRecorder
-	private supportedLanguages: string[] = []
 	private hasFetchedControlConfig: boolean = false
 
 	constructor(endpoint: string, debug = false) {
@@ -32,7 +34,7 @@ export class CostrictTelemetryClient extends BaseTelemetryClient {
 		this.endpoint = endpoint
 		this.logger = createLogger(Package.outputChannel)
 		this.metricsRecorder = new MetricsRecorder()
-		this.startReportTimer()
+		this.cleanupLegacyTelemetryDir()
 	}
 	public override async capture(event: TelemetryEvent): Promise<void> {
 		if (!this.isTelemetryEnabled() || !this.isEventCapturable(event.event)) {
@@ -106,7 +108,6 @@ export class CostrictTelemetryClient extends BaseTelemetryClient {
 		if (control.reportIntervalMinutes) {
 			this.reportIntervalMinutes = control.reportIntervalMinutes
 		}
-		this.supportedLanguages = control.supportedLanguages
 
 		if (control.enable) {
 			this.startReportTimer()
@@ -155,6 +156,19 @@ export class CostrictTelemetryClient extends BaseTelemetryClient {
 		} catch (error) {
 			this.logger.error(
 				`[CostrictTelemetryClient#reportMetrics] Error: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+	}
+	private cleanupLegacyTelemetryDir(): void {
+		try {
+			const homeDir = os.homedir()
+			const telemetryDir = path.join(homeDir, ".costrict", "telemetry")
+			if (fs.existsSync(telemetryDir)) {
+				fs.rmSync(telemetryDir, { recursive: true, force: true })
+			}
+		} catch (error) {
+			this.logger.error(
+				`[CostrictTelemetryClient#cleanupLegacyTelemetryDir] Error: ${error instanceof Error ? error.message : String(error)}`,
 			)
 		}
 	}
