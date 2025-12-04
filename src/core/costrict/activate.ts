@@ -199,7 +199,7 @@ export async function activate(
 	const tokens = await ZgsmAuthStorage.getInstance().getTokens()
 	if (tokens?.access_token) {
 		// CompletionStatusBar.initByConfig()
-		completionStatusBar.setEnableState(true)
+		completionStatusBar.setEnableState()
 	} else {
 		completionStatusBar.fail({
 			message: OPENAI_CLIENT_NOT_INITIALIZED,

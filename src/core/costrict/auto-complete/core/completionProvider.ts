@@ -7,6 +7,7 @@ import { getClientId } from "../../../../utils/getClientId"
 import { AutocompleteDebouncer } from "../utils/autocompleteDebouncer"
 import { AutocompleteLoggingService } from "../utils/autocompleteLoggingService"
 import { getWellKnownConfig } from "../../codebase-index/utils"
+import { TextAcceptanceAction } from "../utils/autocompleteLoggingService"
 
 export interface AutoCompleteInput {
 	completionId: string
@@ -15,6 +16,7 @@ export interface AutoCompleteInput {
 	calculateHideScore: CalculateHideScore
 	previousCompletionId: string
 	stop: string[]
+	filepath: string
 }
 const MAX_SUGGESTIONS_HISTORY = 20
 const DEBOUNCE_DELAY_MS = 300
@@ -167,6 +169,9 @@ export class CompletionProvider {
 				completion,
 				completionId,
 				cacheHit,
+				filepath: input.filepath,
+				numLines: completion.split("\n").length,
+				language: input.languageId,
 			}
 			return outcome
 		} catch (e) {
@@ -281,5 +286,22 @@ export class CompletionProvider {
 	 */
 	public cancel(): void {
 		this.loggingService.cancel()
+	}
+	public accept(completionId: string): void {
+		this.loggingService.accept(completionId)
+	}
+	public markDisplayed(completionId: string, outcome: AutocompleteOutcome): void {
+		this.loggingService.markDisplayed(completionId, outcome)
+	}
+	public getLastCompletedCompletion(): null | {
+		outcome: AutocompleteOutcome
+		action: TextAcceptanceAction
+		completedAt: number
+	} {
+		const lastCompletedCompletion = this.loggingService.getLastCompletedCompletion()
+		if (!lastCompletedCompletion) {
+			return null
+		}
+		return lastCompletedCompletion
 	}
 }

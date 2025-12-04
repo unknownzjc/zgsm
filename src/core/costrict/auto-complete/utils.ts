@@ -128,7 +128,8 @@ export function getDependencyImports(filePath: string, codeContent: string): str
 			break
 
 		default:
-			throw new Error(`Unsupported file extension: ${fileExtension}`)
+			console.log(`Unsupported file extension: ${fileExtension}`)
+			break
 	}
 
 	return imports

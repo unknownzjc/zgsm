@@ -11,6 +11,7 @@ interface IFailError {
 	status?: number
 	[key: string]: any
 }
+const statusBarCommand = "zgsm-statusBar.showInformationMessage"
 export class CompletionStatusBar {
 	private static _instance: CompletionStatusBar
 	private _statusBar: vscode.StatusBarItem
@@ -29,7 +30,7 @@ export class CompletionStatusBar {
 		if (!context) {
 			throw new Error("Plugin exception, completionStatusBar instance is abnormally lost")
 		}
-		const statusBarCommand = "zgsm-statusBar.showInformationMessage"
+
 		this._statusBar.command = statusBarCommand
 		const statusUpdateCallback = (callback: (...args: any[]) => any, showIcon: boolean) => async () => {
 			await callback?.()
@@ -128,11 +129,6 @@ export class CompletionStatusBar {
 	public noSuggest() {
 		this._statusBar.tooltip = t("common:completion.status.noSuggest.tooltip")
 		this._statusBar.text = t("common:completion.status.noSuggest.text")
-		this._statusBar.show()
-	}
-	public login() {
-		this._statusBar.tooltip = t("common:completion.status.login.tooltip")
-		this._statusBar.text = t("common:completion.status.login.text")
 		this._statusBar.show()
 	}
 	public get statusBar(): vscode.StatusBarItem {

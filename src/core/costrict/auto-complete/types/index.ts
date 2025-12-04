@@ -41,6 +41,9 @@ export interface AutocompleteOutcome {
 	completion: string
 	completionId: string
 	cacheHit: boolean
+	filepath: string
+	numLines: number
+	language: string
 }
 
 export type RecentlyEditedRange = RangeInFile & {
