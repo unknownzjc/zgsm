@@ -149,7 +149,6 @@ export class InlineCompletionProvider implements InlineCompletionItemProvider {
 		const recentlyVisitedRanges = this.recentlyVisitedRanges.getSnippets()
 		const recentlyEditedRanges = await this.recentlyEditedTracker.getRecentlyEditedRanges()
 		const lastCompletedCompletion = this.completionProvider.getLastCompletedCompletion()
-		const stop = workspace.getConfiguration(configCompletion).get("inlineCompletion") ? ["\n", "\r"] : []
 		const {
 			recentlyEditedRangeSnippets,
 			recentlyVisitedRangesSnippets,
@@ -177,7 +176,6 @@ export class InlineCompletionProvider implements InlineCompletionItemProvider {
 			},
 			calculateHideScore,
 			previousCompletionId: lastCompletedCompletion?.outcome.completionId ?? "",
-			stop,
 			filepath: relativePath,
 		}
 	}

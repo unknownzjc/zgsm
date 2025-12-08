@@ -15,7 +15,6 @@ export interface AutoCompleteInput {
 	promptOptions: PromptOptions
 	calculateHideScore: CalculateHideScore
 	previousCompletionId: string
-	stop: string[]
 	filepath: string
 }
 const MAX_SUGGESTIONS_HISTORY = 20
@@ -232,7 +231,6 @@ export class CompletionProvider {
 				model: settings.openai_model,
 				temperature: settings.temperature,
 				client_id: clientId,
-				stop: input.stop,
 				completion_id: input.completionId,
 				language_id: input.languageId,
 				calculate_hide_score: input.calculateHideScore,
