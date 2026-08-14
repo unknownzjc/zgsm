@@ -86,6 +86,7 @@ describe("checkContextWindowExceededError", () => {
 				"maximum context window",
 				"input tokens exceed limit",
 				"too many tokens",
+				"The input (440143 tokens) is longer than the model's context length (196608 tokens)",
 			]
 
 			patterns.forEach((pattern) => {
@@ -151,6 +152,7 @@ describe("checkContextWindowExceededError", () => {
 				"context is too long",
 				"exceeds the context window",
 				"token limit exceeded",
+				"The input is longer than the model's context length",
 			]
 
 			patterns.forEach((pattern) => {
@@ -187,37 +189,6 @@ describe("checkContextWindowExceededError", () => {
 						message: "prompt is too long",
 					},
 				},
-			}
-
-			expect(checkContextWindowExceededError(error)).toBe(false)
-		})
-	})
-
-	describe("Cerebras errors", () => {
-		it("should detect Cerebras context window error", () => {
-			const error = {
-				status: 400,
-				message: "Please reduce the length of the messages or completion",
-			}
-
-			expect(checkContextWindowExceededError(error)).toBe(true)
-		})
-
-		it("should detect Cerebras error with nested structure", () => {
-			const error = {
-				error: {
-					status: 400,
-					message: "Please reduce the length of the messages or completion",
-				},
-			}
-
-			expect(checkContextWindowExceededError(error)).toBe(true)
-		})
-
-		it("should not detect non-context Cerebras errors", () => {
-			const error = {
-				status: 400,
-				message: "Invalid request parameters",
 			}
 
 			expect(checkContextWindowExceededError(error)).toBe(false)
@@ -317,13 +288,6 @@ describe("checkContextWindowExceededError", () => {
 				},
 			}
 			expect(checkContextWindowExceededError(error2)).toBe(true)
-
-			// This error should be detected by Cerebras check
-			const error3 = {
-				status: 400,
-				message: "Please reduce the length of the messages or completion",
-			}
-			expect(checkContextWindowExceededError(error3)).toBe(true)
 		})
 	})
 })

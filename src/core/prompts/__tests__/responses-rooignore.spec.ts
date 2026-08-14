@@ -44,6 +44,16 @@ describe("RooIgnore Response Formatting", () => {
 		mockReadFile.mockResolvedValue("node_modules\n.git\nsecrets/**\n*.log")
 	})
 
+	describe("formatResponse.noToolsUsed", () => {
+		it("should explicitly require attempt_completion for simple conversational requests", () => {
+			const message = formatResponse.noToolsUsed()
+
+			expect(message).toContain("simple question, greeting, joke")
+			expect(message).toContain("MUST respond by calling the `attempt_completion` tool directly")
+			expect(message).toContain("Do not reply with plain assistant text")
+		})
+	})
+
 	describe("formatResponse.rooIgnoreError", () => {
 		/**
 		 * Tests the error message format for ignored files
@@ -51,10 +61,13 @@ describe("RooIgnore Response Formatting", () => {
 		it("should format error message for ignored files", () => {
 			const errorMessage = formatResponse.rooIgnoreError("secrets/api-keys.json")
 
-			// Verify error message format
-			expect(errorMessage).toContain("Access to secrets/api-keys.json is blocked by the .rooignore file settings")
-			expect(errorMessage).toContain("continue in the task without using this file")
-			expect(errorMessage).toContain("ask the user to update the .rooignore file")
+			// Verify error message format (JSON)
+			const parsed = JSON.parse(errorMessage) as any
+			expect(parsed.status).toBe("error")
+			expect(parsed.type).toBe("access_denied")
+			expect(parsed.path).toBe("secrets/api-keys.json")
+			expect(parsed.suggestion).toContain("continue without this file")
+			expect(parsed.suggestion).toContain("update the .rooignore file")
 		})
 
 		/**
@@ -66,7 +79,8 @@ describe("RooIgnore Response Formatting", () => {
 			// Test each path
 			for (const testPath of paths) {
 				const errorMessage = formatResponse.rooIgnoreError(testPath)
-				expect(errorMessage).toContain(`Access to ${testPath} is blocked`)
+				const parsed = JSON.parse(errorMessage) as any
+				expect(parsed.path).toBe(testPath)
 			}
 		})
 	})

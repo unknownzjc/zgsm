@@ -12,10 +12,7 @@ import {
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 import { AlertTriangle } from "lucide-react"
 
-import { CODEBASE_INDEX_DEFAULTS } from "@roo-code/types"
-
-import type { EmbedderProvider } from "@roo/embeddingModels"
-import type { IndexingStatus } from "@roo/ExtensionMessage"
+import { type IndexingStatus, type EmbedderProvider, CODEBASE_INDEX_DEFAULTS } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
@@ -599,7 +596,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		},
 	)
 
-	const portalContainer = useRooPortal("roo-portal")
+	const portalContainer = useRooPortal("costrict-portal")
 
 	return (
 		<>
@@ -849,7 +846,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 													}
 													onBlur={(e: any) => {
 														// Set default Ollama URL if field is empty
-														if (!e.target.value.trim()) {
+														if (!e.target.value?.trim()) {
 															e.target.value = DEFAULT_OLLAMA_URL
 															updateSetting(
 																"codebaseIndexEmbedderBaseUrl",
@@ -1447,7 +1444,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 											}
 											onBlur={(e: any) => {
 												// Set default Qdrant URL if field is empty
-												if (!e.target.value.trim()) {
+												if (!e.target.value?.trim()) {
 													currentSettings.codebaseIndexQdrantUrl = DEFAULT_QDRANT_URL
 													updateSetting("codebaseIndexQdrantUrl", DEFAULT_QDRANT_URL)
 												}
@@ -1595,6 +1592,58 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 							)}
 						</div>
 
+						{/* Auto-enable default */}
+						{currentSettings.codebaseIndexEnabled && (
+							<div className="flex items-center gap-2 pt-4 pb-1">
+								<input
+									type="checkbox"
+									id="auto-enable-default-toggle"
+									checked={indexingStatus.autoEnableDefault ?? true}
+									onChange={(e) =>
+										vscode.postMessage({
+											type: "setAutoEnableDefault",
+											bool: e.target.checked,
+										})
+									}
+									className="accent-vscode-focusBorder"
+								/>
+								<label
+									htmlFor="auto-enable-default-toggle"
+									className="text-xs text-vscode-foreground cursor-pointer">
+									{t("settings:codeIndex.autoEnableDefaultLabel")}
+								</label>
+							</div>
+						)}
+
+						{/* Workspace Toggle */}
+						{currentSettings.codebaseIndexEnabled && (
+							<div className="flex items-center gap-2 pt-1 pb-2">
+								<input
+									type="checkbox"
+									id="workspace-indexing-toggle"
+									checked={indexingStatus.workspaceEnabled ?? false}
+									onChange={(e) =>
+										vscode.postMessage({
+											type: "toggleWorkspaceIndexing",
+											bool: e.target.checked,
+										})
+									}
+									className="accent-vscode-focusBorder"
+								/>
+								<label
+									htmlFor="workspace-indexing-toggle"
+									className="text-xs text-vscode-foreground cursor-pointer">
+									{t("settings:codeIndex.workspaceToggleLabel")}
+								</label>
+							</div>
+						)}
+
+						{currentSettings.codebaseIndexEnabled && !indexingStatus.workspaceEnabled && (
+							<p className="text-xs text-vscode-descriptionForeground pb-2">
+								{t("settings:codeIndex.workspaceDisabledMessage")}
+							</p>
+						)}
+
 						{/* Action Buttons */}
 						<div className="flex items-center justify-between gap-2 pt-6">
 							<div className="flex gap-2">
@@ -1607,6 +1656,20 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 											{t("settings:codeIndex.startIndexingButton")}
 										</Button>
 									)}
+
+								{currentSettings.codebaseIndexEnabled && indexingStatus.systemStatus === "Indexing" && (
+									<Button
+										variant="destructive"
+										onClick={() => vscode.postMessage({ type: "stopIndexing" })}>
+										{t("settings:codeIndex.stopIndexingButton")}
+									</Button>
+								)}
+
+								{currentSettings.codebaseIndexEnabled && indexingStatus.systemStatus === "Stopping" && (
+									<Button variant="destructive" disabled>
+										{t("settings:codeIndex.stoppingButton")}
+									</Button>
+								)}
 
 								{currentSettings.codebaseIndexEnabled &&
 									(indexingStatus.systemStatus === "Indexed" ||

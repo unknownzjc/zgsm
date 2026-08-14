@@ -92,7 +92,6 @@ export interface ReviewTask {
 	isCompleted: boolean
 	/** Current progress */
 	progress: number
-	review_progress: string
 	/** Total items to process */
 	total: number
 	/** Timeout ID for cleanup */
@@ -111,7 +110,8 @@ export interface ReportIssueReuqest {
 	review_report: string
 	client_id: string
 	workspace: string
-	review_code: ReviewTarget[]
+	source: string
+	review_target: ReviewTarget
 }
 
 export interface ReportIssueResponse {
@@ -121,5 +121,7 @@ export interface ReportIssueResponse {
 		review_task_id: string
 		count: number
 		issues: ReviewIssue[]
+		title: string
+		conclusion: string
 	}
 }

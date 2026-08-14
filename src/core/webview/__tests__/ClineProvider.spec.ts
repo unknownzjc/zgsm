@@ -1,4 +1,4 @@
-// pnpm --filter roo-cline test core/webview/__tests__/ClineProvider.spec.ts
+// pnpm --filter zgsm test core/webview/__tests__/ClineProvider.spec.ts
 
 import Anthropic from "@anthropic-ai/sdk"
 import * as vscode from "vscode"
@@ -7,12 +7,13 @@ import axios from "axios"
 import {
 	type ProviderSettingsEntry,
 	type ClineMessage,
+	type ExtensionMessage,
+	type ExtensionState,
 	ORGANIZATION_ALLOW_ALL,
 	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
-import { ExtensionMessage, ExtensionState } from "../../../shared/ExtensionMessage"
 import { defaultModeSlug } from "../../../shared/modes"
 import { experimentDefault } from "../../../shared/experiments"
 import { setTtsEnabled } from "../../../utils/tts"
@@ -26,19 +27,52 @@ import { MessageManager } from "../../message-manager"
 
 // Mock setup must come before imports.
 vi.mock("../../prompts/sections/custom-instructions")
+vi.mock("../../../i18n", () => ({
+	t: vi.fn((key: string) => {
+		const map: Record<string, string> = {
+			"common:answers.yes": "Yes",
+			"common:confirmation.reset_state": "Reset state?",
+		}
+		if (map[key]) return map[key]
+		// i18next strips namespace prefix when returning fallback
+		const colonIdx = key.indexOf(":")
+		return colonIdx >= 0 ? key.substring(colonIdx + 1) : key
+	}),
+	initializeI18n: vi.fn(),
+	getCurrentLanguage: vi.fn(() => "en"),
+	changeLanguage: vi.fn(),
+}))
+
+// Mock Package module
+vi.mock("../../shared/package", () => ({
+	Package: {
+		name: "zgsm",
+		publisher: "zgsm-ai",
+		version: "1.0.0",
+		outputChannel: "CoStrict",
+		commandIDPrefix: "costrict",
+	},
+}))
 
 vi.mock("p-wait-for", () => ({
 	__esModule: true,
 	default: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock("fs/promises", () => ({
-	mkdir: vi.fn().mockResolvedValue(undefined),
-	writeFile: vi.fn().mockResolvedValue(undefined),
-	readFile: vi.fn().mockResolvedValue(""),
-	unlink: vi.fn().mockResolvedValue(undefined),
-	rmdir: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock("fs/promises", () => {
+	const mock = {
+		mkdir: vi.fn().mockResolvedValue(undefined),
+		writeFile: vi.fn().mockResolvedValue(undefined),
+		readFile: vi.fn().mockResolvedValue(""),
+		unlink: vi.fn().mockResolvedValue(undefined),
+		rmdir: vi.fn().mockResolvedValue(undefined),
+		rm: vi.fn().mockResolvedValue(undefined),
+	}
+	return {
+		...mock,
+		default: mock,
+	}
+})
 
 vi.mock("axios", () => ({
 	default: {
@@ -64,6 +98,7 @@ vi.mock("../../../utils/storage", () => ({
 	getSettingsDirectoryPath: vi.fn().mockResolvedValue("/test/settings/path"),
 	getTaskDirectoryPath: vi.fn().mockResolvedValue("/test/task/path"),
 	getGlobalStoragePath: vi.fn().mockResolvedValue("/test/storage/path"),
+	getStorageBasePath: vi.fn().mockResolvedValue("/test/storage/path"),
 }))
 
 vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
@@ -85,34 +120,6 @@ vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
 			this.name = "McpError"
 		}
 	},
-}))
-
-vi.mock("../../../services/browser/BrowserSession", () => ({
-	BrowserSession: vi.fn().mockImplementation(() => ({
-		testConnection: vi.fn().mockImplementation(async (url) => {
-			if (url === "http://localhost:9222") {
-				return {
-					success: true,
-					message: "Successfully connected to Chrome",
-					endpoint: "ws://localhost:9222/devtools/browser/123",
-				}
-			} else {
-				return {
-					success: false,
-					message: "Failed to connect to Chrome",
-					endpoint: undefined,
-				}
-			}
-		}),
-	})),
-}))
-
-vi.mock("../../../services/browser/browserDiscovery", () => ({
-	discoverChromeHostUrl: vi.fn().mockResolvedValue("http://localhost:9222"),
-	tryChromeHostUrl: vi.fn().mockImplementation(async (url) => {
-		return url === "http://localhost:9222"
-	}),
-	testBrowserConnection: vi.fn(),
 }))
 
 // Remove duplicate mock - it's already defined below.
@@ -155,7 +162,7 @@ vi.mock("vscode", async (importOriginal) => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -187,10 +194,10 @@ vi.mock("vscode", async (importOriginal) => ({
 		}),
 	},
 	workspace: {
-		getConfiguration: vi.fn().mockReturnValue({
+		getConfiguration: vi.fn().mockImplementation(() => ({
 			get: vi.fn().mockReturnValue([]),
 			update: vi.fn(),
-		}),
+		})),
 		onDidChangeConfiguration: vi.fn().mockImplementation(() => ({
 			dispose: vi.fn(),
 		})),
@@ -214,6 +221,11 @@ vi.mock("vscode", async (importOriginal) => ({
 		Production: 1,
 		Development: 2,
 		Test: 3,
+	},
+	ConfigurationTarget: {
+		Global: 1,
+		Workspace: 2,
+		WorkspaceFolder: 3,
 	},
 	RelativePattern: vi.fn().mockImplementation((base, pattern) => ({ base, pattern })),
 	version: "1.85.0",
@@ -242,6 +254,17 @@ vi.mock("../../../integrations/workspace/WorkspaceTracker", () => {
 	}
 })
 
+vi.mock("../../../services/mcp/McpServerManager", () => ({
+	McpServerManager: {
+		getInstance: vi.fn().mockResolvedValue({
+			registerClient: vi.fn(),
+			unregisterClient: vi.fn(),
+			getAllServers: vi.fn().mockReturnValue([]),
+		}),
+		unregisterProvider: vi.fn(),
+	},
+}))
+
 vi.mock("../../task/Task", () => ({
 	Task: vi.fn().mockImplementation((options: any) => ({
 		api: undefined,
@@ -257,6 +280,7 @@ vi.mock("../../task/Task", () => ({
 		setRootTask: vi.fn(),
 		taskId: options?.historyItem?.id || "test-task-id",
 		emit: vi.fn(),
+		start: vi.fn(),
 	})),
 }))
 
@@ -270,7 +294,9 @@ vi.mock("../../../integrations/misc/extract-text", () => ({
 
 vi.mock("../../../api/providers/fetchers/modelCache", () => ({
 	getModels: vi.fn().mockResolvedValue({}),
+	getModelsWithMetadata: vi.fn().mockResolvedValue({ models: {}, authoritative: false }),
 	flushModels: vi.fn(),
+	getModelsFromCache: vi.fn().mockReturnValue(undefined),
 }))
 
 vi.mock("../../../shared/modes", () => ({
@@ -279,7 +305,7 @@ vi.mock("../../../shared/modes", () => ({
 			slug: "code",
 			name: "Code Mode",
 			roleDefinition: "You are a code assistant",
-			groups: ["read", "edit", "browser"],
+			groups: ["read", "edit"],
 		},
 		{
 			slug: "architect",
@@ -298,7 +324,7 @@ vi.mock("../../../shared/modes", () => ({
 		slug: "code",
 		name: "Code Mode",
 		roleDefinition: "You are a code assistant",
-		groups: ["read", "edit", "browser"],
+		groups: ["read", "edit"],
 	}),
 	getGroupName: vi.fn().mockImplementation((group: string) => {
 		// Return appropriate group names for different tool groups
@@ -307,14 +333,16 @@ vi.mock("../../../shared/modes", () => ({
 				return "Read Tools"
 			case "edit":
 				return "Edit Tools"
-			case "browser":
-				return "Browser Tools"
 			case "mcp":
 				return "MCP Tools"
 			default:
 				return "General Tools"
 		}
 	}),
+	resolveCostrictCodeModeForMode: vi
+		.fn()
+		.mockImplementation((_mode: string, currentCostrictCodeMode = "vibe") => currentCostrictCodeMode),
+	isProviderAllowedForCostrictCodeMode: vi.fn().mockReturnValue(true),
 	defaultModeSlug: "code",
 }))
 
@@ -341,7 +369,9 @@ vi.mock("../../../integrations/misc/extract-text", () => ({
 
 vi.mock("../../../api/providers/fetchers/modelCache", () => ({
 	getModels: vi.fn().mockResolvedValue({}),
+	getModelsWithMetadata: vi.fn().mockResolvedValue({ models: {}, authoritative: false }),
 	flushModels: vi.fn(),
+	getModelsFromCache: vi.fn().mockReturnValue(undefined),
 }))
 
 vi.mock("../diff/strategies/multi-search-replace", () => ({
@@ -358,11 +388,9 @@ vi.mock("@roo-code/cloud", () => ({
 		get instance() {
 			return {
 				isAuthenticated: vi.fn().mockReturnValue(false),
+				off: vi.fn(),
 			}
 		},
-	},
-	BridgeOrchestrator: {
-		isEnabled: vi.fn().mockReturnValue(false),
 	},
 	getRooCodeApiUrl: vi.fn().mockReturnValue("https://app.roocode.com"),
 	getCostrictApiUrl: vi.fn().mockReturnValue("https://zgsm.sangfor.com"),
@@ -389,6 +417,7 @@ describe("ClineProvider", () => {
 				setRootTask: vi.fn(),
 				taskId: options?.historyItem?.id || "test-task-id",
 				emit: vi.fn(),
+				start: vi.fn(),
 			}
 
 			Object.defineProperty(task, "messageManager", {
@@ -437,6 +466,11 @@ describe("ClineProvider", () => {
 				store: vi.fn().mockImplementation((key: string, value: string | undefined) => (secrets[key] = value)),
 				delete: vi.fn().mockImplementation((key: string) => delete secrets[key]),
 			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
+				keys: vi.fn().mockReturnValue([]),
+			},
 			subscriptions: [],
 			extension: {
 				packageJSON: { version: "1.0.0" },
@@ -450,6 +484,7 @@ describe("ClineProvider", () => {
 		const mockCustomModesManager = {
 			updateCustomMode: vi.fn().mockResolvedValue(undefined),
 			getCustomModes: vi.fn().mockResolvedValue([]),
+			resetCustomModes: vi.fn().mockResolvedValue(undefined),
 			dispose: vi.fn(),
 		}
 
@@ -495,14 +530,15 @@ describe("ClineProvider", () => {
 		// @ts-ignore - Accessing private property for testing.
 		provider.customModesManager = mockCustomModesManager
 
-		// Mock getMcpHub method for generateSystemPrompt
-		provider.getMcpHub = vi.fn().mockReturnValue({
+		// Mock ensureMcpHub method for generateSystemPrompt
+		provider.ensureMcpHub = vi.fn().mockResolvedValue({
 			listTools: vi.fn().mockResolvedValue([]),
 			callTool: vi.fn().mockResolvedValue({ content: [] }),
 			listResources: vi.fn().mockResolvedValue([]),
 			readResource: vi.fn().mockResolvedValue({ contents: [] }),
 			getAllServers: vi.fn().mockReturnValue([]),
 		})
+		provider.ensureSkillsManager = vi.fn().mockResolvedValue(undefined)
 	})
 
 	test("constructor initializes correctly", () => {
@@ -562,7 +598,6 @@ describe("ClineProvider", () => {
 
 		const mockState: ExtensionState = {
 			version: "1.0.0",
-			isBrowserSessionActive: false,
 			clineMessages: [],
 			taskHistory: [],
 			shouldShowAnnouncement: false,
@@ -582,30 +617,22 @@ describe("ClineProvider", () => {
 			},
 			alwaysAllowWriteOutsideWorkspace: false,
 			alwaysAllowExecute: false,
-			alwaysAllowBrowser: false,
 			alwaysAllowMcp: false,
 			uriScheme: "vscode",
 			soundEnabled: false,
 			ttsEnabled: false,
-			diffEnabled: false,
 			enableCheckpoints: false,
 			writeDelayMs: 1000,
-			browserViewportSize: "900x600",
-			fuzzyMatchThreshold: 1.0,
 			mcpEnabled: true,
-			enableMcpServerCreation: false,
 			mode: defaultModeSlug,
 			customModes: [],
 			experiments: experimentDefault,
 			maxOpenTabsContext: 20,
 			maxWorkspaceFiles: 200,
-			browserToolEnabled: true,
-			// telemetrySetting: "disabled",
-			// showRooIgnoredFiles: true,
 			telemetrySetting: "disabled",
 			showRooIgnoredFiles: false,
+			enableSubfolderRules: false,
 			renderContext: "sidebar",
-			maxReadFileLine: 500,
 			maxImageFileSize: 5,
 			maxTotalImageSize: 20,
 			cloudUserInfo: null,
@@ -620,10 +647,9 @@ describe("ClineProvider", () => {
 			diagnosticsEnabled: true,
 			openRouterImageApiKey: undefined,
 			openRouterImageGenerationSelectedModel: undefined,
-			remoteControlEnabled: false,
 			taskSyncEnabled: false,
-			featureRoomoteControlEnabled: false,
 			errorCode: {},
+			hasClosedCodeReviewWelcomeTips: false,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 		}
 
@@ -634,6 +660,284 @@ describe("ClineProvider", () => {
 		await provider.postMessageToWebview(message)
 
 		expect(mockPostMessage).toHaveBeenCalledWith(message)
+	})
+
+	test("postMessageToWebview does not throw when webview is disposed", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+
+		// Simulate postMessage throwing after webview disposal
+		mockPostMessage.mockRejectedValueOnce(new Error("Webview is disposed"))
+
+		const message: ExtensionMessage = { type: "action", action: "chatButtonClicked" }
+
+		// Should not throw
+		await expect(provider.postMessageToWebview(message)).resolves.toBeUndefined()
+	})
+
+	test("postMessageToWebview skips postMessage after dispose", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+
+		await provider.dispose()
+		mockPostMessage.mockClear()
+
+		const message: ExtensionMessage = { type: "action", action: "chatButtonClicked" }
+		await provider.postMessageToWebview(message)
+
+		expect(mockPostMessage).not.toHaveBeenCalled()
+	})
+
+	test("postStateToWebview batches multiple calls into a single state push", async () => {
+		vi.useFakeTimers()
+		await provider.resolveWebviewView(mockWebviewView)
+
+		const getStateSpy = vi.spyOn(provider, "getStateToPostToWebview").mockResolvedValue({
+			...(await provider.getState()),
+			clineMessages: [],
+			taskHistory: [],
+		} as any)
+
+		mockPostMessage.mockClear()
+
+		const first = provider.postStateToWebview()
+		const second = provider.postStateToWebview()
+		const third = provider.postStateToWebview()
+
+		expect(getStateSpy).not.toHaveBeenCalled()
+		expect(mockPostMessage).not.toHaveBeenCalled()
+
+		await vi.advanceTimersByTimeAsync(16)
+		await Promise.all([first, second, third])
+
+		expect(getStateSpy).toHaveBeenCalledTimes(1)
+		expect(mockPostMessage).toHaveBeenCalledTimes(1)
+		expect(mockPostMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "state",
+				state: expect.objectContaining({ clineMessagesSeq: 1 }),
+			}),
+		)
+
+		vi.useRealTimers()
+	})
+
+	test("postStateToWebview force mode bypasses batching", async () => {
+		vi.useFakeTimers()
+		await provider.resolveWebviewView(mockWebviewView)
+
+		const getStateSpy = vi.spyOn(provider, "getStateToPostToWebview").mockResolvedValue({
+			...(await provider.getState()),
+			clineMessages: [],
+			taskHistory: [],
+		} as any)
+
+		mockPostMessage.mockClear()
+
+		await provider.postStateToWebview({ force: true })
+
+		expect(getStateSpy).toHaveBeenCalledTimes(1)
+		expect(mockPostMessage).toHaveBeenCalledTimes(1)
+		expect(mockPostMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "state",
+				state: expect.objectContaining({ clineMessagesSeq: 1 }),
+			}),
+		)
+
+		vi.useRealTimers()
+	})
+
+	test("dispose rejects a pending batched state push", async () => {
+		vi.useFakeTimers()
+		await provider.resolveWebviewView(mockWebviewView)
+
+		const pendingPush = provider.postStateToWebview()
+		await provider.dispose()
+
+		await expect(pendingPush).rejects.toThrow("Provider disposed")
+		expect(mockPostMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "state" }))
+
+		vi.useRealTimers()
+	})
+
+	test("postStateToWebviewWithoutTaskHistory omits taskHistory from the payload", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+
+		vi.spyOn(provider, "getStateToPostToWebview").mockResolvedValue({
+			...(await provider.getState()),
+			clineMessages: [{ ts: 1, type: "say", say: "text", text: "hello" }] as any,
+			taskHistory: [{ id: "task-1", ts: 1, task: "Task 1" }] as any,
+		} as any)
+
+		mockPostMessage.mockClear()
+		await provider.postStateToWebviewWithoutTaskHistory()
+
+		expect(mockPostMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "state",
+				state: expect.objectContaining({
+					clineMessagesSeq: 1,
+					clineMessages: expect.any(Array),
+				}),
+			}),
+		)
+		const sentState = (mockPostMessage.mock.calls as Array<[any]>).find(
+			(call: [any]) => call[0]?.type === "state",
+		)?.[0]?.state
+		expect(sentState).not.toHaveProperty("taskHistory")
+	})
+
+	test("getStateToPostToWebview can omit taskHistory for lightweight state pushes", async () => {
+		const state = await provider.getStateToPostToWebview({ includeTaskHistory: false })
+		expect(state.taskHistory).toEqual([])
+	})
+
+	test("getStateToPostToWebview can omit clineMessages for lightweight state pushes", async () => {
+		const state = await provider.getStateToPostToWebview({ includeClineMessages: false })
+		expect(state.clineMessages).toEqual([])
+	})
+
+	test("getStateToPostToWebview can omit current task details for lightweight state pushes", async () => {
+		const mockCline = new Task(defaultTaskOptions)
+		Object.defineProperty(mockCline, "taskId", { value: "lightweight-task", writable: true })
+		;(mockCline as any).todoList = [{ id: "todo-1", content: "Todo", status: "pending" }]
+		;(mockCline as any).messageQueueService = { messages: [{ role: "user", content: "queued" }] }
+		await provider.addClineToStack(mockCline)
+		await provider.updateTaskHistory(
+			{
+				id: "lightweight-task",
+				number: 1,
+				ts: Date.now(),
+				task: "Lightweight task",
+				tokensIn: 0,
+				tokensOut: 0,
+				totalCost: 0,
+			},
+			{ broadcast: false },
+		)
+
+		const state = await provider.getStateToPostToWebview({
+			includeClineMessages: false,
+			includeCurrentTaskDetails: false,
+		})
+		expect(state.currentTaskId).toBe("lightweight-task")
+		expect(state.currentTaskItem).toBeUndefined()
+		expect(state.currentTaskTodos).toEqual([])
+		expect(state.messageQueue).toBeUndefined()
+	})
+
+	test("getStateToPostToWebview returns isStreaming from current task", async () => {
+		const mockCline = new Task(defaultTaskOptions)
+		Object.defineProperty(mockCline, "taskId", { value: "streaming-task", writable: true })
+		;(mockCline as any).isStreaming = true
+		await provider.addClineToStack(mockCline)
+
+		const state = await provider.getStateToPostToWebview()
+		expect(state.isStreaming).toBe(true)
+
+		// Simulate clearTask removing the current task
+		await provider.removeClineFromStack()
+		const stateAfterClear = await provider.getStateToPostToWebview()
+		expect(stateAfterClear.isStreaming).toBe(false)
+	})
+
+	test("getStateToPostToWebview includes summarized async task records from McpHub", async () => {
+		const list = vi.fn().mockResolvedValue([
+			{ id: "r1", serverName: "ci", originalToolName: "deploy", taskId: "T1" },
+			{
+				id: "r2",
+				serverName: "ci",
+				originalToolName: "deploy",
+				taskId: "T2",
+				terminalStatus: "completed",
+				resultFetchedAt: 2,
+			},
+		])
+		;(provider as any).mcpHub = {
+			getAsyncTaskRecords: list,
+			getAllServers: vi.fn().mockReturnValue([]),
+		}
+		const state = await provider.getStateToPostToWebview()
+		expect(state.mcpAsyncTaskRecords).toHaveLength(2)
+		expect(state.mcpAsyncTaskRecords?.[0].taskId).toBe("T1")
+		expect((state.mcpAsyncTaskRecords?.[0] as any).rawSummary).toBeUndefined()
+	})
+
+	test("postStateToWebviewWithoutClineMessages still includes currentTaskTodos for todo sync", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+		vi.spyOn(provider as any, "checkMdmCompliance").mockReturnValue(true)
+		;(provider as any).mdmService = { requiresCloudAuth: vi.fn().mockReturnValue(false) }
+
+		const mockCline = new Task(defaultTaskOptions)
+		Object.defineProperty(mockCline, "taskId", { value: "todo-sync-task", writable: true })
+		;(mockCline as any).todoList = [
+			{ id: "todo-1", content: "First", status: "completed" },
+			{ id: "todo-2", content: "Last", status: "completed" },
+		]
+		await provider.addClineToStack(mockCline)
+		await provider.updateTaskHistory(
+			{
+				id: "todo-sync-task",
+				number: 1,
+				ts: Date.now(),
+				task: "Todo sync task",
+				tokensIn: 0,
+				tokensOut: 0,
+				totalCost: 0,
+			},
+			{ broadcast: false },
+		)
+
+		mockPostMessage.mockClear()
+		await provider.postStateToWebviewWithoutClineMessages()
+
+		const sentState = (mockPostMessage.mock.calls as Array<[any]>).find(
+			(call: [any]) => call[0]?.type === "state",
+		)?.[0]?.state
+		expect(sentState).toBeDefined()
+		expect(sentState).not.toHaveProperty("clineMessages")
+		expect(sentState).not.toHaveProperty("taskHistory")
+		expect(sentState.currentTaskTodos).toEqual([
+			expect.objectContaining({ id: "todo-1", status: "completed" }),
+			expect.objectContaining({ id: "todo-2", status: "completed" }),
+		])
+	})
+
+	test("postStateToWebviewWithoutClineMessages omits both clineMessages and taskHistory", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+		vi.spyOn(provider as any, "checkMdmCompliance").mockReturnValue(true)
+		;(provider as any).mdmService = { requiresCloudAuth: vi.fn().mockReturnValue(false) }
+
+		vi.spyOn(provider, "getStateToPostToWebview").mockResolvedValue({
+			...(await provider.getState()),
+			clineMessages: [{ ts: 1, type: "say", say: "text", text: "hello" }] as any,
+			taskHistory: [{ id: "task-1", ts: 1, task: "Task 1" }] as any,
+		} as any)
+
+		mockPostMessage.mockClear()
+		await provider.postStateToWebviewWithoutClineMessages()
+
+		const sentState = (mockPostMessage.mock.calls as Array<[any]>).find(
+			(call: [any]) => call[0]?.type === "state",
+		)?.[0]?.state
+		expect(sentState).toBeDefined()
+		expect(sentState).not.toHaveProperty("clineMessages")
+		expect(sentState).not.toHaveProperty("taskHistory")
+		expect(mockPostMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ type: "action", action: "cloudButtonClicked" }),
+		)
+	})
+
+	test("dispose is idempotent — second call is a no-op", async () => {
+		await provider.resolveWebviewView(mockWebviewView)
+
+		await provider.dispose()
+		await provider.dispose()
+
+		// dispose body runs only once: log "Disposing ClineProvider..." appears once
+		const disposeCalls = (mockOutputChannel.appendLine as ReturnType<typeof vi.fn>).mock.calls.filter(
+			([msg]) => typeof msg === "string" && msg.includes("Disposing ClineProvider..."),
+		)
+		expect(disposeCalls).toHaveLength(1)
 	})
 
 	test("handles webviewDidLaunch message", async () => {
@@ -789,6 +1093,263 @@ describe("ClineProvider", () => {
 		expect(provider.getCurrentTask()).toBe(mockCline2)
 	})
 
+	test("getState reuses cached custom modes between calls", async () => {
+		const customModesManager = provider.customModesManager as any
+		customModesManager.getCustomModes.mockResolvedValue([
+			{ slug: "cached-mode", name: "Cached Mode", roleDefinition: "role", groups: ["read"] },
+		])
+
+		const first = await provider.getState()
+		const second = await provider.getState()
+
+		expect(first.customModes).toHaveLength(1)
+		expect(second.customModes).toHaveLength(1)
+		expect(customModesManager.getCustomModes).toHaveBeenCalledTimes(1)
+	})
+
+	test("createTask refreshes cached custom modes when configuration provides custom modes", async () => {
+		const customModesManager = provider.customModesManager as any
+		customModesManager.getCustomModes
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([
+				{ slug: "injected-mode", name: "Injected Mode", roleDefinition: "role", groups: ["read"] },
+			])
+
+		await provider.getState()
+		await provider.createTask(
+			undefined,
+			undefined,
+			undefined,
+			{},
+			{
+				customModes: [
+					{ slug: "injected-mode", name: "Injected Mode", roleDefinition: "role", groups: ["read"] as const },
+				],
+			},
+		)
+
+		const state = await provider.getState()
+		expect(state.customModes).toEqual([expect.objectContaining({ slug: "injected-mode", name: "Injected Mode" })])
+		expect(customModesManager.updateCustomMode).toHaveBeenCalledWith(
+			"injected-mode",
+			expect.objectContaining({ slug: "injected-mode" }),
+		)
+		expect(customModesManager.getCustomModes).toHaveBeenCalledTimes(2)
+	})
+
+	test("resetState clears cached custom modes", async () => {
+		const customModesManager = provider.customModesManager as any
+		customModesManager.getCustomModes
+			.mockResolvedValueOnce([
+				{ slug: "stale-mode", name: "Stale Mode", roleDefinition: "role", groups: ["read"] },
+			])
+			.mockResolvedValueOnce([])
+
+		const first = await provider.getState()
+		expect(first.customModes).toHaveLength(1)
+
+		// resetState shows a modal confirmation; mock the user clicking "Yes"
+		;(vscode.window.showInformationMessage as any).mockResolvedValue("Yes")
+
+		await provider.resetState()
+		const second = await provider.getState()
+		expect(second.customModes).toEqual([])
+		expect(customModesManager.resetCustomModes).toHaveBeenCalled()
+		expect(customModesManager.getCustomModes).toHaveBeenCalledTimes(2)
+	})
+
+	test("getState reuses cached merged command lists between calls", async () => {
+		// Pre-cache customStoragePath so getCachedCustomStoragePath doesn't call getConfiguration
+		;(provider as any).cachedCustomStoragePath = ""
+
+		const getConfigurationMock = vi.mocked(vscode.workspace.getConfiguration)
+		const allowedGet = vi
+			.fn()
+			.mockImplementation((key: string) => (key === "allowedCommands" ? ["workspace-allow"] : []))
+		getConfigurationMock.mockImplementation(
+			() =>
+				({
+					get: allowedGet,
+					update: vi.fn(),
+				}) as any,
+		)
+
+		await provider.getStateToPostToWebview()
+		await provider.getStateToPostToWebview()
+
+		expect(allowedGet).toHaveBeenCalledWith("allowedCommands")
+		expect(allowedGet).toHaveBeenCalledWith("deniedCommands")
+		expect(allowedGet).toHaveBeenCalledTimes(2)
+		expect(getConfigurationMock).toHaveBeenCalledTimes(2)
+	})
+
+	test("createTask invalidates cached merged command lists when commands change", async () => {
+		// Pre-cache customStoragePath so getCachedCustomStoragePath doesn't call getConfiguration
+		;(provider as any).cachedCustomStoragePath = ""
+
+		const getConfigurationMock = vi.mocked(vscode.workspace.getConfiguration)
+		const configUpdate = vi.fn().mockResolvedValue(undefined)
+		const configGet = vi
+			.fn()
+			.mockImplementationOnce((key: string) => (key === "allowedCommands" ? ["workspace-allow"] : []))
+			.mockImplementationOnce((key: string) => (key === "deniedCommands" ? ["workspace-deny"] : []))
+			.mockImplementationOnce((key: string) => (key === "allowedCommands" ? ["workspace-allow-2"] : []))
+			.mockImplementationOnce((key: string) => (key === "deniedCommands" ? ["workspace-deny-2"] : []))
+		getConfigurationMock.mockImplementation(
+			() =>
+				({
+					get: configGet,
+					update: configUpdate,
+				}) as any,
+		)
+
+		await provider.getStateToPostToWebview()
+		await provider.createTask(
+			undefined,
+			undefined,
+			undefined,
+			{},
+			{
+				allowedCommands: ["global-allow"],
+				deniedCommands: ["global-deny"],
+			},
+		)
+		const state = await provider.getStateToPostToWebview()
+
+		expect(state.allowedCommands).toEqual(["global-allow", "workspace-allow-2"])
+		expect(state.deniedCommands).toEqual(["global-deny", "workspace-deny-2"])
+		expect(configUpdate).toHaveBeenCalledWith(
+			"allowedCommands",
+			["global-allow"],
+			vscode.ConfigurationTarget.Global,
+		)
+		expect(configUpdate).toHaveBeenCalledWith("deniedCommands", ["global-deny"], vscode.ConfigurationTarget.Global)
+		expect(configGet).toHaveBeenCalledTimes(4)
+	})
+
+	test("workspace configuration cache is reused until invalidated", async () => {
+		// Pre-cache customStoragePath so getCachedCustomStoragePath doesn't call getConfiguration
+		;(provider as any).cachedCustomStoragePath = ""
+
+		const getConfigurationMock = vi.mocked(vscode.workspace.getConfiguration)
+		const configGet = vi
+			.fn()
+			.mockImplementation((key: string) => (key === "allowedCommands" ? ["workspace-allow"] : []))
+		getConfigurationMock.mockImplementation(
+			() =>
+				({
+					get: configGet,
+					update: vi.fn(),
+				}) as any,
+		)
+
+		await provider.getStateToPostToWebview()
+		await provider.getStateToPostToWebview()
+
+		expect(getConfigurationMock).toHaveBeenCalledTimes(2)
+		expect(configGet).toHaveBeenCalledTimes(2)
+
+		await provider.resolveWebviewView(mockWebviewView)
+		const onDidChangeConfiguration = vi.mocked(vscode.workspace.onDidChangeConfiguration)
+		const listener = onDidChangeConfiguration.mock.calls.at(-1)?.[0]
+		configGet.mockImplementation((key: string) => (key === "allowedCommands" ? ["workspace-allow-2"] : []))
+
+		await listener?.({
+			affectsConfiguration: (section: string) => section === "costrict.allowedCommands",
+		} as any)
+
+		const state = await provider.getStateToPostToWebview()
+		expect(state.allowedCommands).toEqual(["workspace-allow-2"])
+		expect(getConfigurationMock).toHaveBeenCalledTimes(3)
+		expect(configGet).toHaveBeenCalledTimes(3)
+	})
+
+	test("workspace configuration change invalidates cached merged commands", async () => {
+		// Pre-cache customStoragePath so getCachedCustomStoragePath doesn't call getConfiguration
+		;(provider as any).cachedCustomStoragePath = ""
+
+		const getConfigurationMock = vi.mocked(vscode.workspace.getConfiguration)
+		const configGet = vi
+			.fn()
+			.mockImplementationOnce((key: string) => (key === "allowedCommands" ? ["workspace-allow"] : []))
+			.mockImplementationOnce((key: string) => (key === "deniedCommands" ? ["workspace-deny"] : []))
+			.mockImplementationOnce((key: string) => (key === "allowedCommands" ? ["workspace-allow-2"] : []))
+			.mockImplementationOnce((key: string) => (key === "deniedCommands" ? ["workspace-deny-2"] : []))
+		getConfigurationMock.mockImplementation(
+			() =>
+				({
+					get: configGet,
+					update: vi.fn(),
+				}) as any,
+		)
+
+		await provider.resolveWebviewView(mockWebviewView)
+		await provider.getStateToPostToWebview()
+
+		const onDidChangeConfiguration = vi.mocked(vscode.workspace.onDidChangeConfiguration)
+		const listener = onDidChangeConfiguration.mock.calls.at(-1)?.[0]
+		await listener?.({
+			affectsConfiguration: (section: string) => section === "costrict.allowedCommands",
+		} as any)
+
+		const state = await provider.getStateToPostToWebview()
+		expect(state.allowedCommands).toEqual(["workspace-allow-2"])
+		expect(state.deniedCommands).toEqual(["workspace-deny"])
+		expect(configGet).toHaveBeenCalledTimes(3)
+	})
+
+	test("getState derives apiConfiguration from the same state snapshot without mutating provider settings", async () => {
+		provider.contextProxy.setValue("apiProvider", "requesty" as any)
+		provider.contextProxy.setValue("requestyApiKey", "requesty-key" as any)
+		provider.contextProxy.setValue("openAiHeaders", undefined as any)
+
+		const getValuesSpy = vi.spyOn(provider.contextProxy, "getValues")
+		const getProviderSettingsSpy = vi.spyOn(provider.contextProxy, "getProviderSettings")
+
+		const state = await provider.getState()
+
+		expect(state.apiConfiguration.apiProvider).toBe("requesty")
+		expect(state.apiConfiguration.requestyApiKey).toBe("requesty-key")
+		expect(state.apiConfiguration.openAiHeaders).toEqual({})
+		expect(getValuesSpy).toHaveBeenCalledTimes(1)
+		expect(getProviderSettingsSpy).not.toHaveBeenCalled()
+
+		const secondState = await provider.getState()
+		expect(secondState.apiConfiguration.openAiHeaders).toEqual({})
+	})
+
+	test("getState reuses cached customStoragePath between calls and refreshes on configuration change", async () => {
+		const getConfigurationMock = vi.mocked(vscode.workspace.getConfiguration)
+		const configGet = vi.fn().mockReturnValue("/tmp/costrict-storage")
+		getConfigurationMock.mockImplementation(
+			() =>
+				({
+					get: configGet,
+					update: vi.fn(),
+				}) as any,
+		)
+
+		const first = await provider.getState()
+		const second = await provider.getState()
+
+		expect(first.customStoragePath).toBe("/tmp/costrict-storage")
+		expect(second.customStoragePath).toBe("/tmp/costrict-storage")
+		expect(configGet).toHaveBeenCalledTimes(1)
+
+		await provider.resolveWebviewView(mockWebviewView)
+		const onDidChangeConfiguration = vi.mocked(vscode.workspace.onDidChangeConfiguration)
+		const listener = onDidChangeConfiguration.mock.calls.at(-1)?.[0]
+		configGet.mockReturnValue("/tmp/costrict-storage-2")
+
+		await listener?.({
+			affectsConfiguration: (section: string) => section === "costrict.customStoragePath",
+		} as any)
+
+		const third = await provider.getState()
+		expect(third.customStoragePath).toBe("/tmp/costrict-storage-2")
+		expect(configGet).toHaveBeenCalledTimes(2)
+	})
+
 	test("getState returns correct initial state", async () => {
 		const state = await provider.getState()
 
@@ -798,11 +1359,9 @@ describe("ClineProvider", () => {
 		expect(state).toHaveProperty("alwaysAllowReadOnly")
 		expect(state).toHaveProperty("alwaysAllowWrite")
 		expect(state).toHaveProperty("alwaysAllowExecute")
-		expect(state).toHaveProperty("alwaysAllowBrowser")
 		expect(state).toHaveProperty("taskHistory")
 		expect(state).toHaveProperty("soundEnabled")
 		expect(state).toHaveProperty("ttsEnabled")
-		expect(state).toHaveProperty("diffEnabled")
 		expect(state).toHaveProperty("writeDelayMs")
 	})
 
@@ -815,15 +1374,6 @@ describe("ClineProvider", () => {
 		expect(state.language).toBe("pt-BR")
 		;(vscode.env as any).language = "en"
 		resetLanguageCache()
-	})
-
-	test("diffEnabled defaults to true when not set", async () => {
-		// Mock globalState.get to return undefined for diffEnabled
-		;(mockContext.globalState.get as any).mockReturnValue(undefined)
-
-		const state = await provider.getState()
-
-		expect(state.diffEnabled).toBe(true)
 	})
 
 	test("writeDelayMs defaults to 1000ms", async () => {
@@ -927,6 +1477,7 @@ describe("ClineProvider", () => {
 			listConfig: vi.fn().mockResolvedValue([profile]),
 			activateProfile: vi.fn().mockResolvedValue(profile),
 			setModeConfig: vi.fn(),
+			getProfile: vi.fn().mockResolvedValue(profile),
 		} as any
 
 		// Switch to architect mode
@@ -970,6 +1521,7 @@ describe("ClineProvider", () => {
 			listConfig: vi.fn().mockResolvedValue([profile]),
 			setModeConfig: vi.fn(),
 			getModeConfigId: vi.fn().mockResolvedValue(undefined),
+			getProfile: vi.fn().mockResolvedValue(profile),
 		} as any
 
 		// First set the mode
@@ -997,6 +1549,7 @@ describe("ClineProvider", () => {
 			listConfig: vi.fn().mockResolvedValue([profile]),
 			setModeConfig: vi.fn(),
 			getModeConfigId: vi.fn().mockResolvedValue(undefined),
+			getProfile: vi.fn().mockResolvedValue(profile),
 		} as any
 
 		// First set the mode
@@ -1010,21 +1563,6 @@ describe("ClineProvider", () => {
 
 		// Ensure the `activateProfile` method was called with the correct ID
 		expect(provider.providerSettingsManager.activateProfile).toHaveBeenCalledWith({ id: "config-id-123" })
-	})
-
-	test("handles browserToolEnabled setting", async () => {
-		await provider.resolveWebviewView(mockWebviewView)
-		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
-
-		// Test browserToolEnabled
-		await messageHandler({ type: "updateSettings", updatedSettings: { browserToolEnabled: true } })
-		expect(mockContext.globalState.update).toHaveBeenCalledWith("browserToolEnabled", true)
-		expect(mockPostMessage).toHaveBeenCalled()
-
-		// Verify state includes browserToolEnabled
-		const state = await provider.getState()
-		expect(state).toHaveProperty("browserToolEnabled")
-		expect(state.browserToolEnabled).toBe(true) // Default value should be true
 	})
 
 	test("handles showRooIgnoredFiles setting", async () => {
@@ -1211,7 +1749,7 @@ describe("ClineProvider", () => {
 				{ ts: 1000, type: "say", say: "user_feedback" }, // User message 1
 				{ ts: 2000, type: "say", say: "tool" }, // Tool message
 				{ ts: 3000, type: "say", say: "text" }, // Message before delete
-				{ ts: 4000, type: "say", say: "browser_action" }, // Message to delete
+				{ ts: 4000, type: "say", say: "tool" }, // Message to delete
 				{ ts: 5000, type: "say", say: "user_feedback" }, // Next user message
 				{ ts: 6000, type: "say", say: "user_feedback" }, // Final message
 			] as ClineMessage[]
@@ -1299,7 +1837,7 @@ describe("ClineProvider", () => {
 				{ ts: 1000, type: "say", say: "user_feedback" }, // User message 1
 				{ ts: 2000, type: "say", say: "tool" }, // Tool message
 				{ ts: 3000, type: "say", say: "text" }, // Message before edit
-				{ ts: 4000, type: "say", say: "browser_action" }, // Message to edit
+				{ ts: 4000, type: "say", say: "tool" }, // Message to edit
 				{ ts: 5000, type: "say", say: "user_feedback" }, // Next user message
 				{ ts: 6000, type: "say", say: "user_feedback" }, // Final message
 			] as ClineMessage[]
@@ -1399,7 +1937,6 @@ describe("ClineProvider", () => {
 					apiProvider: "openrouter" as const,
 				},
 				mcpEnabled: true,
-				enableMcpServerCreation: false,
 				mode: "code" as const,
 				experiments: experimentDefault,
 			} as any)
@@ -1424,7 +1961,6 @@ describe("ClineProvider", () => {
 					apiProvider: "openrouter" as const,
 				},
 				mcpEnabled: false,
-				enableMcpServerCreation: false,
 				mode: "code" as const,
 				experiments: experimentDefault,
 			} as any)
@@ -1481,74 +2017,6 @@ describe("ClineProvider", () => {
 			)
 		})
 
-		test("generates system prompt with diff enabled", async () => {
-			await provider.resolveWebviewView(mockWebviewView)
-
-			// Mock getState to return diffEnabled: true
-			vi.spyOn(provider, "getState").mockResolvedValue({
-				apiConfiguration: {
-					apiProvider: "openrouter",
-					apiModelId: "test-model",
-				},
-				customModePrompts: {},
-				mode: "code",
-				enableMcpServerCreation: true,
-				mcpEnabled: false,
-				browserViewportSize: "900x600",
-				diffEnabled: true,
-				fuzzyMatchThreshold: 0.8,
-				experiments: experimentDefault,
-				browserToolEnabled: true,
-			} as any)
-
-			// Trigger getSystemPrompt
-			const handler = getMessageHandler()
-			await handler({ type: "getSystemPrompt", mode: "code" })
-
-			// Verify system prompt was generated and sent
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "systemPrompt",
-					text: expect.any(String),
-					mode: "code",
-				}),
-			)
-		})
-
-		test("generates system prompt with diff disabled", async () => {
-			await provider.resolveWebviewView(mockWebviewView)
-
-			// Mock getState to return diffEnabled: false
-			vi.spyOn(provider, "getState").mockResolvedValue({
-				apiConfiguration: {
-					apiProvider: "openrouter",
-					apiModelId: "test-model",
-				},
-				customModePrompts: {},
-				mode: "code",
-				mcpEnabled: false,
-				browserViewportSize: "900x600",
-				diffEnabled: false,
-				fuzzyMatchThreshold: 0.8,
-				experiments: experimentDefault,
-				enableMcpServerCreation: true,
-				browserToolEnabled: false,
-			} as any)
-
-			// Trigger getSystemPrompt
-			const handler = getMessageHandler()
-			await handler({ type: "getSystemPrompt", mode: "code" })
-
-			// Verify system prompt was generated and sent
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "systemPrompt",
-					text: expect.any(String),
-					mode: "code",
-				}),
-			)
-		})
-
 		test("uses correct mode-specific instructions when mode is specified", async () => {
 			await provider.resolveWebviewView(mockWebviewView)
 
@@ -1561,9 +2029,7 @@ describe("ClineProvider", () => {
 					architect: { customInstructions: "Architect mode instructions" },
 				},
 				mode: "architect",
-				enableMcpServerCreation: false,
 				mcpEnabled: false,
-				browserViewportSize: "900x600",
 				experiments: experimentDefault,
 			} as any)
 
@@ -1577,54 +2043,6 @@ describe("ClineProvider", () => {
 					type: "systemPrompt",
 					text: expect.any(String),
 					mode: "architect",
-				}),
-			)
-		})
-
-		// Tests for browser tool support - simplified to focus on behavior
-		test("generates system prompt with different browser tool configurations", async () => {
-			await provider.resolveWebviewView(mockWebviewView)
-			const handler = getMessageHandler()
-
-			// Test 1: Browser tools enabled with compatible model and mode
-			vi.spyOn(provider, "getState").mockResolvedValueOnce({
-				apiConfiguration: {
-					apiProvider: "openrouter",
-				},
-				browserToolEnabled: true,
-				mode: "code", // code mode includes browser tool group
-				experiments: experimentDefault,
-			} as any)
-
-			await handler({ type: "getSystemPrompt", mode: "code" })
-
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "systemPrompt",
-					text: expect.any(String),
-					mode: "code",
-				}),
-			)
-
-			mockPostMessage.mockClear()
-
-			// Test 2: Browser tools disabled
-			vi.spyOn(provider, "getState").mockResolvedValueOnce({
-				apiConfiguration: {
-					apiProvider: "openrouter",
-				},
-				browserToolEnabled: false,
-				mode: "code",
-				experiments: experimentDefault,
-			} as any)
-
-			await handler({ type: "getSystemPrompt", mode: "code" })
-
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "systemPrompt",
-					text: expect.any(String),
-					mode: "code",
 				}),
 			)
 		})
@@ -1648,6 +2066,7 @@ describe("ClineProvider", () => {
 				listConfig: vi.fn().mockResolvedValue([profile]),
 				activateProfile: vi.fn().mockResolvedValue(profile),
 				setModeConfig: vi.fn(),
+				getProfile: vi.fn().mockResolvedValue(profile),
 			} as any
 
 			// Switch to architect mode
@@ -1722,7 +2141,7 @@ describe("ClineProvider", () => {
 					slug: "code",
 					name: "Code Mode",
 					roleDefinition: "You are a code assistant",
-					groups: ["read", "edit", "browser"],
+					groups: ["read", "edit"],
 				}) // Subsequent calls return default mode
 
 			// Mock provider settings manager
@@ -1921,7 +2340,7 @@ describe("ClineProvider", () => {
 				slug: "code",
 				name: "Code Mode",
 				roleDefinition: "You are a code assistant",
-				groups: ["read", "edit", "browser"],
+				groups: ["read", "edit"],
 			})
 
 			// Mock provider settings manager to throw error
@@ -1976,6 +2395,9 @@ describe("ClineProvider", () => {
 				]),
 				dispose: vi.fn(),
 			} as any
+
+			// Clear cached custom modes so the new mock is used
+			;(provider as any).cachedCustomModes = undefined
 
 			// Test updating a custom mode
 			await messageHandler({
@@ -2172,77 +2594,6 @@ describe("ClineProvider", () => {
 			])
 		})
 	})
-
-	describe("browser connection features", () => {
-		beforeEach(async () => {
-			// Reset mocks
-			vi.clearAllMocks()
-			await provider.resolveWebviewView(mockWebviewView)
-		})
-
-		// These mocks are already defined at the top of the file
-
-		test("handles testBrowserConnection with provided URL", async () => {
-			// Get the message handler
-			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
-
-			// Test with valid URL
-			await messageHandler({
-				type: "testBrowserConnection",
-				text: "http://localhost:9222",
-			})
-
-			// Verify postMessage was called with success result
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "browserConnectionResult",
-					success: true,
-					text: expect.stringContaining("Successfully connected to Chrome"),
-				}),
-			)
-
-			// Reset mock
-			mockPostMessage.mockClear()
-
-			// Test with invalid URL
-			await messageHandler({
-				type: "testBrowserConnection",
-				text: "http://inlocalhost:9222",
-			})
-
-			// Verify postMessage was called with failure result
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "browserConnectionResult",
-					success: false,
-					text: expect.stringContaining("Failed to connect to Chrome"),
-				}),
-			)
-		})
-
-		test("handles testBrowserConnection with auto-discovery", async () => {
-			// Get the message handler
-			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
-
-			// Test auto-discovery (no URL provided)
-			await messageHandler({
-				type: "testBrowserConnection",
-			})
-
-			// Verify discoverChromeHostUrl was called
-			const { discoverChromeHostUrl } = await import("../../../services/browser/browserDiscovery")
-			expect(discoverChromeHostUrl).toHaveBeenCalled()
-
-			// Verify postMessage was called with success result
-			expect(mockPostMessage).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "browserConnectionResult",
-					success: true,
-					text: expect.stringContaining("Auto-discovered and tested connection to Chrome"),
-				}),
-			)
-		})
-	})
 })
 
 describe("Project MCP Settings", () => {
@@ -2267,6 +2618,11 @@ describe("Project MCP Settings", () => {
 				get: vi.fn(),
 				store: vi.fn(),
 				delete: vi.fn(),
+			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
+				keys: vi.fn().mockReturnValue([]),
 			},
 			subscriptions: [],
 			extension: {
@@ -2398,6 +2754,11 @@ describe.skip("ContextProxy integration", () => {
 				update: vi.fn(),
 				keys: vi.fn().mockReturnValue([]),
 			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
+				keys: vi.fn().mockReturnValue([]),
+			},
 			secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() },
 			extensionUri: {} as vscode.Uri,
 			globalStorageUri: { fsPath: "/test/path" },
@@ -2461,6 +2822,11 @@ describe("getTelemetryProperties", () => {
 					return undefined
 				}),
 				update: vi.fn(),
+				keys: vi.fn().mockReturnValue([]),
+			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
 				keys: vi.fn().mockReturnValue([]),
 			},
 			secrets: { get: vi.fn(), store: vi.fn(), delete: vi.fn() },
@@ -2527,7 +2893,9 @@ describe("getTelemetryProperties", () => {
 
 			const properties = await provider.getTelemetryProperties()
 
-			expect(properties).toHaveProperty("cloudIsAuthenticated", true)
+			// Note: getCloudProperties() is currently commented out in getTelemetryProperties()
+			// so cloudIsAuthenticated will not be present
+			expect(properties).not.toHaveProperty("cloudIsAuthenticated")
 		})
 
 		test("includes cloud authentication property when user is not authenticated", async () => {
@@ -2545,7 +2913,9 @@ describe("getTelemetryProperties", () => {
 
 			const properties = await provider.getTelemetryProperties()
 
-			expect(properties).toHaveProperty("cloudIsAuthenticated", false)
+			// Note: getCloudProperties() is currently commented out in getTelemetryProperties()
+			// so cloudIsAuthenticated will not be present
+			expect(properties).not.toHaveProperty("cloudIsAuthenticated")
 		})
 
 		test("handles CloudService errors gracefully", async () => {
@@ -2565,8 +2935,9 @@ describe("getTelemetryProperties", () => {
 			expect(properties).toHaveProperty("platform")
 			expect(properties).toHaveProperty("appVersion", "1.0.0")
 
-			// Cloud property should be undefined when CloudService is not available
-			expect(properties).toHaveProperty("cloudIsAuthenticated", undefined)
+			// Note: getCloudProperties() is currently commented out in getTelemetryProperties()
+			// so cloudIsAuthenticated will not be present
+			expect(properties).not.toHaveProperty("cloudIsAuthenticated")
 		})
 
 		test("handles CloudService method errors gracefully", async () => {
@@ -2591,8 +2962,9 @@ describe("getTelemetryProperties", () => {
 			expect(properties).toHaveProperty("platform")
 			expect(properties).toHaveProperty("appVersion", "1.0.0")
 
-			// Property that errored should be undefined
-			expect(properties).toHaveProperty("cloudIsAuthenticated", undefined)
+			// Note: getCloudProperties() is currently commented out in getTelemetryProperties()
+			// so cloudIsAuthenticated will not be present
+			expect(properties).not.toHaveProperty("cloudIsAuthenticated")
 		})
 	})
 })
@@ -2624,6 +2996,11 @@ describe("ClineProvider - Router Models", () => {
 				get: vi.fn().mockImplementation((key: string) => secrets[key]),
 				store: vi.fn().mockImplementation((key: string, value: string | undefined) => (secrets[key] = value)),
 				delete: vi.fn().mockImplementation((key: string) => delete secrets[key]),
+			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
+				keys: vi.fn().mockReturnValue([]),
 			},
 			subscriptions: [],
 			extension: {
@@ -2673,7 +3050,6 @@ describe("ClineProvider - Router Models", () => {
 			apiConfiguration: {
 				openRouterApiKey: "openrouter-key",
 				requestyApiKey: "requesty-key",
-				unboundApiKey: "unbound-key",
 				litellmApiKey: "litellm-key",
 				litellmBaseUrl: "http://localhost:4000",
 			},
@@ -2694,54 +3070,46 @@ describe("ClineProvider - Router Models", () => {
 			},
 		}
 
-		const { getModels } = await import("../../../api/providers/fetchers/modelCache")
+		const { getModels, getModelsWithMetadata } = await import("../../../api/providers/fetchers/modelCache")
 		vi.mocked(getModels).mockResolvedValue(mockModels)
+		vi.mocked(getModelsWithMetadata).mockResolvedValue({ models: mockModels, authoritative: false })
 
 		await messageHandler({ type: "requestRouterModels" })
 
 		// Verify getModels was called for each provider with correct options
+		// Provider order: costrict (first), openrouter, requesty, vercel-ai-gateway, litellm (conditional)
 		expect(getModels).toHaveBeenCalledWith({ provider: "openrouter" })
 		expect(getModels).toHaveBeenCalledWith({ provider: "requesty", apiKey: "requesty-key" })
-		expect(getModels).toHaveBeenCalledWith({ provider: "unbound", apiKey: "unbound-key" })
+		expect(getModels).toHaveBeenCalledWith({ provider: "unbound" })
 		expect(getModels).toHaveBeenCalledWith({ provider: "vercel-ai-gateway" })
-		expect(getModels).toHaveBeenCalledWith({ provider: "deepinfra" })
-		// expect(getModels).toHaveBeenCalledWith(
-		// 	expect.objectContaining({
-		// 		provider: "roo",
-		// 		baseUrl: expect.any(String),
-		// 	}),
-		// )
 		expect(getModels).toHaveBeenCalledWith({
 			provider: "litellm",
 			apiKey: "litellm-key",
 			baseUrl: "http://localhost:4000",
 		})
-		expect(getModels).toHaveBeenCalledWith({ provider: "chutes" })
 
 		// Verify ZGSM models message is sent first
 		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "zgsmModels",
+			type: "costrictModels",
 			openAiModels: ["model-1", "model-2"],
 			fullResponseData: [mockModels["model-1"], mockModels["model-2"]],
+			modelListAuthoritative: false,
 		})
 
 		// Verify response was sent
 		expect(mockPostMessage).toHaveBeenCalledWith({
 			type: "routerModels",
 			routerModels: {
-				zgsm: mockModels,
-				deepinfra: mockModels,
+				costrict: mockModels,
 				openrouter: mockModels,
 				requesty: mockModels,
 				unbound: mockModels,
 				// roo: mockModels,
-				chutes: mockModels,
 				litellm: mockModels,
 				ollama: {},
 				lmstudio: {},
 				"vercel-ai-gateway": mockModels,
-				huggingface: {},
-				"io-intelligence": {},
+				poe: {},
 			},
 			values: undefined,
 		})
@@ -2755,7 +3123,6 @@ describe("ClineProvider - Router Models", () => {
 			apiConfiguration: {
 				openRouterApiKey: "openrouter-key",
 				requestyApiKey: "requesty-key",
-				unboundApiKey: "unbound-key",
 				litellmApiKey: "litellm-key",
 				litellmBaseUrl: "http://localhost:4000",
 			},
@@ -2764,46 +3131,42 @@ describe("ClineProvider - Router Models", () => {
 		const mockModels = {
 			"model-1": { maxTokens: 4096, contextWindow: 8192, description: "Test model", supportsPromptCache: false },
 		}
-		const { getModels } = await import("../../../api/providers/fetchers/modelCache")
+		const { getModels, getModelsWithMetadata } = await import("../../../api/providers/fetchers/modelCache")
+		vi.mocked(getModelsWithMetadata).mockResolvedValue({ models: mockModels, authoritative: false })
 
 		// Mock some providers to succeed and others to fail
+		// Costrict uses getModelsWithMetadata; remaining providers use getModels.
 		vi.mocked(getModels)
-			.mockResolvedValueOnce(mockModels) // zgsm success (first call)
 			.mockResolvedValueOnce(mockModels) // openrouter success
 			.mockRejectedValueOnce(new Error("Requesty API error")) // requesty fail
-			.mockRejectedValueOnce(new Error("Unbound API error")) // unbound fail
+			.mockResolvedValueOnce(mockModels) // unbound success
 			.mockResolvedValueOnce(mockModels) // vercel-ai-gateway success
-			.mockResolvedValueOnce(mockModels) // deepinfra success
-			// .mockResolvedValueOnce(mockModels) // roo success
-			.mockRejectedValueOnce(new Error("Chutes API error")) // chutes fail
 			.mockRejectedValueOnce(new Error("LiteLLM connection failed")) // litellm fail
 
 		await messageHandler({ type: "requestRouterModels" })
 
 		// Verify ZGSM models message is sent first
 		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "zgsmModels",
+			type: "costrictModels",
 			openAiModels: ["model-1"],
 			fullResponseData: [mockModels["model-1"]],
+			modelListAuthoritative: false,
 		})
 
 		// Verify main response includes successful providers and empty objects for failed ones
 		expect(mockPostMessage).toHaveBeenCalledWith({
 			type: "routerModels",
 			routerModels: {
-				zgsm: mockModels,
-				deepinfra: mockModels,
+				costrict: mockModels,
 				openrouter: mockModels,
 				requesty: {},
-				unbound: {},
+				unbound: mockModels,
 				// roo: mockModels,
-				chutes: {},
 				ollama: {},
 				lmstudio: {},
 				litellm: {},
 				"vercel-ai-gateway": mockModels,
-				huggingface: {},
-				"io-intelligence": {},
+				poe: {},
 			},
 			values: undefined,
 		})
@@ -2814,27 +3177,6 @@ describe("ClineProvider - Router Models", () => {
 			success: false,
 			error: "Requesty API error",
 			values: { provider: "requesty" },
-		})
-
-		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "singleRouterModelFetchResponse",
-			success: false,
-			error: "Unbound API error",
-			values: { provider: "unbound" },
-		})
-
-		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "singleRouterModelFetchResponse",
-			success: false,
-			error: "Unbound API error",
-			values: { provider: "unbound" },
-		})
-
-		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "singleRouterModelFetchResponse",
-			success: false,
-			error: "Chutes API error",
-			values: { provider: "chutes" },
 		})
 
 		expect(mockPostMessage).toHaveBeenCalledWith({
@@ -2854,7 +3196,6 @@ describe("ClineProvider - Router Models", () => {
 			apiConfiguration: {
 				openRouterApiKey: "openrouter-key",
 				requestyApiKey: "requesty-key",
-				unboundApiKey: "unbound-key",
 				// No litellm config
 			},
 		} as any)
@@ -2862,8 +3203,9 @@ describe("ClineProvider - Router Models", () => {
 		const mockModels = {
 			"model-1": { maxTokens: 4096, contextWindow: 8192, description: "Test model", supportsPromptCache: false },
 		}
-		const { getModels } = await import("../../../api/providers/fetchers/modelCache")
+		const { getModels, getModelsWithMetadata } = await import("../../../api/providers/fetchers/modelCache")
 		vi.mocked(getModels).mockResolvedValue(mockModels)
+		vi.mocked(getModelsWithMetadata).mockResolvedValue({ models: mockModels, authoritative: false })
 
 		await messageHandler({
 			type: "requestRouterModels",
@@ -2889,7 +3231,6 @@ describe("ClineProvider - Router Models", () => {
 			apiConfiguration: {
 				openRouterApiKey: "openrouter-key",
 				requestyApiKey: "requesty-key",
-				unboundApiKey: "unbound-key",
 				// No litellm config
 			},
 		} as any)
@@ -2897,10 +3238,9 @@ describe("ClineProvider - Router Models", () => {
 		const mockModels = {
 			"model-1": { maxTokens: 4096, contextWindow: 8192, description: "Test model", supportsPromptCache: false },
 		}
-		const { getModels } = await import("../../../api/providers/fetchers/modelCache")
-		vi.mocked(getModels)
-			.mockResolvedValueOnce(mockModels) // zgsm success (first call)
-			.mockResolvedValue(mockModels) // other providers success
+		const { getModels, getModelsWithMetadata } = await import("../../../api/providers/fetchers/modelCache")
+		vi.mocked(getModels).mockResolvedValue(mockModels)
+		vi.mocked(getModelsWithMetadata).mockResolvedValue({ models: mockModels, authoritative: false })
 
 		await messageHandler({ type: "requestRouterModels" })
 
@@ -2913,28 +3253,26 @@ describe("ClineProvider - Router Models", () => {
 
 		// Verify ZGSM models message is sent first
 		expect(mockPostMessage).toHaveBeenCalledWith({
-			type: "zgsmModels",
+			type: "costrictModels",
 			openAiModels: ["model-1"],
 			fullResponseData: [mockModels["model-1"]],
+			modelListAuthoritative: false,
 		})
 
 		// Verify response includes empty object for LiteLLM
 		expect(mockPostMessage).toHaveBeenCalledWith({
 			type: "routerModels",
 			routerModels: {
-				zgsm: mockModels,
-				deepinfra: mockModels,
+				costrict: mockModels,
 				openrouter: mockModels,
 				requesty: mockModels,
 				unbound: mockModels,
 				// roo: mockModels,
-				chutes: mockModels,
 				litellm: {},
 				ollama: {},
 				lmstudio: {},
 				"vercel-ai-gateway": mockModels,
-				huggingface: {},
-				"io-intelligence": {},
+				poe: {},
 			},
 			values: undefined,
 		})
@@ -3005,6 +3343,11 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				store: vi.fn().mockImplementation((key: string, value: string | undefined) => (secrets[key] = value)),
 				delete: vi.fn().mockImplementation((key: string) => delete secrets[key]),
 			},
+			workspaceState: {
+				get: vi.fn().mockReturnValue(undefined),
+				update: vi.fn().mockResolvedValue(undefined),
+				keys: vi.fn().mockReturnValue([]),
+			},
 			subscriptions: [],
 			extension: {
 				packageJSON: { version: "1.0.0" },
@@ -3047,14 +3390,15 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			},
 		}
 
-		// Mock getMcpHub method
-		provider.getMcpHub = vi.fn().mockReturnValue({
+		// Mock ensureMcpHub method
+		provider.ensureMcpHub = vi.fn().mockResolvedValue({
 			listTools: vi.fn().mockResolvedValue([]),
 			callTool: vi.fn().mockResolvedValue({ content: [] }),
 			listResources: vi.fn().mockResolvedValue([]),
 			readResource: vi.fn().mockResolvedValue({ contents: [] }),
 			getAllServers: vi.fn().mockReturnValue([]),
 		})
+		provider.ensureSkillsManager = vi.fn().mockResolvedValue(undefined)
 	})
 
 	describe("Edit Messages with Images and Attachments", () => {
@@ -3117,7 +3461,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			expect(mockCline.overwriteClineMessages).toHaveBeenCalledWith([mockMessages[0]])
 			expect(mockCline.overwriteApiConversationHistory).toHaveBeenCalledWith([{ ts: 1000 }])
 			// Verify submitUserMessage was called with the edited content
-			expect(mockCline.submitUserMessage).toHaveBeenCalledWith("Edited message with preserved images", undefined)
+			expect(mockCline.submitUserMessage).toHaveBeenCalledWith("Edited message with preserved images", [])
 		})
 
 		test("handles editing messages with file attachments", async () => {
@@ -3170,7 +3514,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			})
 
 			expect(mockCline.overwriteClineMessages).toHaveBeenCalled()
-			expect(mockCline.submitUserMessage).toHaveBeenCalledWith("Edited message with file attachment", undefined)
+			expect(mockCline.submitUserMessage).toHaveBeenCalledWith("Edited message with file attachment", [])
 		})
 	})
 
@@ -3701,7 +4045,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				await messageHandler({ type: "editMessageConfirm", messageTs: 2000, text: largeEditedContent })
 
 				expect(mockCline.overwriteClineMessages).toHaveBeenCalled()
-				expect(mockCline.submitUserMessage).toHaveBeenCalledWith(largeEditedContent, undefined)
+				expect(mockCline.submitUserMessage).toHaveBeenCalledWith(largeEditedContent, [])
 			})
 
 			test("handles deleting messages with large payloads", async () => {
@@ -3916,6 +4260,55 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				expect(mockCline.overwriteClineMessages).toHaveBeenCalled()
 				expect(mockCline.submitUserMessage).toHaveBeenCalled()
 			})
+		})
+	})
+
+	describe("getTaskWithId", () => {
+		it("returns empty apiConversationHistory when file is missing", async () => {
+			const historyItem = { id: "missing-api-file-task", task: "test task", ts: Date.now() }
+			vi.mocked(mockContext.globalState.get).mockImplementation((key: string) => {
+				if (key === "taskHistory") {
+					return [historyItem]
+				}
+				return undefined
+			})
+
+			const deleteTaskSpy = vi.spyOn(provider, "deleteTaskFromState")
+
+			const result = await (provider as any).getTaskWithId("missing-api-file-task")
+
+			expect(result.historyItem).toEqual(historyItem)
+			expect(result.apiConversationHistory).toEqual([])
+			expect(deleteTaskSpy).not.toHaveBeenCalled()
+		})
+
+		it("returns empty apiConversationHistory when file contains invalid JSON", async () => {
+			const historyItem = { id: "corrupt-api-task", task: "test task", ts: Date.now() }
+			vi.mocked(mockContext.globalState.get).mockImplementation((key: string) => {
+				if (key === "taskHistory") {
+					return [historyItem]
+				}
+				return undefined
+			})
+
+			// Make fileExistsAtPath return true so the read path is exercised
+			const fsUtils = await import("../../../utils/fs")
+			vi.spyOn(fsUtils, "fileExistsAtPath").mockResolvedValue(true)
+
+			// Make readFile return corrupted JSON
+			const fsp = await import("fs/promises")
+			vi.mocked(fsp.readFile).mockResolvedValueOnce("{not valid json!!!" as never)
+
+			const deleteTaskSpy = vi.spyOn(provider, "deleteTaskFromState")
+
+			const result = await (provider as any).getTaskWithId("corrupt-api-task")
+
+			expect(result.historyItem).toEqual(historyItem)
+			expect(result.apiConversationHistory).toEqual([])
+			expect(deleteTaskSpy).not.toHaveBeenCalled()
+
+			// Restore the spy
+			vi.mocked(fsUtils.fileExistsAtPath).mockRestore()
 		})
 	})
 })

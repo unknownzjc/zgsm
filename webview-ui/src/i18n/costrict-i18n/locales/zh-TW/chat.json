@@ -1,11 +1,25 @@
 {
+	"reasoning": {
+		"thinking": "思考",
+		"seconds": "{{count}} 秒",
+		"thinkingMessages": [
+			"正在思考...",
+			"建構思緒中...",
+			"分析問題中...",
+			"整理資訊...",
+			"思考中...",
+			"正在推理...",
+			"構思中..."
+		]
+	},
 	"greeting": "CoStrict 可以為您做些什麼？",
 	"aboutMe": "得益於最新的代理編碼能力突破，我可以逐步處理複雜的軟件開發任務。通過允許我創建和編輯文件、探索複雜項目、使用瀏覽器以及執行終端命令（在您授予權限後）的工具，我可以以超越代碼補全或技術支持的方式協助您。我甚至可以使用MCP創建新工具並擴展自己的能力。",
 	"instructions": {
 		"wantsToFetch": "CoStrict 想要獲取詳細指令以協助當前任務"
 	},
 	"about": "企業嚴肅開發的AI智慧夥伴",
-	"error": "CoStrict 將自動修復",
+	"error": "CoStrict 將自動規劃下一步處理",
+	"emptyCompletionResult": "📝 CoStrict 正在自動規劃下一步...",
 	"text": {
 		"rooSaid": "CoStrict 說"
 	},
@@ -101,7 +115,7 @@
 		"description": "在雲端執行 CoStrict 遠端代理、隨時隨地存取您的工作、與他人協作等等。"
 	},
 	"copy": {
-		"errorDetail": "複製錯誤詳情，聯絡管理員"
+		"errorDetail": "點我複製錯誤詳情，聯絡管理員"
 	},
 	"slashCommand": {
 		"wantsToRun": "CoStrict 想要執行斜線指令",
@@ -131,7 +145,9 @@
 	},
 	"autoMode": {
 		"selectedLLM": "Auto 模型：{{selectedLLM}}",
-		"selectReason": "選擇原因：{{selectReason}}"
+		"selectReason": "選擇原因：{{selectReason}}",
+		"fallbackModel": "{{originModelId}} → {{fallbackModelId}}",
+		"fallbackModelTooltip": "備選模型已激活"
 	},
 	"multipleChoice": {
 		"confirm": "確認",
@@ -144,7 +160,17 @@
 		"headerTitle": "CoStrict 有以下問題需要您解答：",
 		"userSkipped": "已跳過",
 		"userConfirmed": "已確認",
-		"skipHint": "如果選項都不滿足您的需求，<code>可以在下方輸入框直接說明您的需求</code>；<code>點擊\"跳過\"，將跳過此問卷</code>",
-		"loading": "準備問題中..."
-	}
+		"skipHint": "如果選項都不滿足您的需求，<code>可以在下方輸入框直接說明您的需求；</code><code>點擊\"跳過\"，將跳過此問卷</code>",
+		"loading": "準備問題中...",
+		"autoSelectCountdown": "{{countdown}}秒後自動選擇推薦選項…",
+		"recommended": "推薦",
+		"customAnswer": "輸入自訂答案",
+		"customAnswerPlaceholder": "請輸入你的答案",
+		"customAnswerRequired": "請先輸入自訂答案再確認"
+	},
+	"markdown": {
+		"expandPrompt": "點擊展開",
+		"collapsePrompt": "點擊收起"
+	},
+	"aiContentWarning": "內容由AI生成，請仔細甄別！"
 }

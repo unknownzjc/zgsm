@@ -6,14 +6,15 @@ import { type ModelInfo, openAiModelInfoSaneDefaults, LMSTUDIO_DEFAULT_TEMPERATU
 
 import type { ApiHandlerOptions } from "../../shared/api"
 
-import { XmlMatcher } from "../../utils/xml-matcher"
+import { NativeToolCallParser } from "../../core/assistant-message/NativeToolCallParser"
+import { TagMatcher } from "../../utils/tag-matcher"
 
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { ApiStream } from "../transform/stream"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
-import { getModels, getModelsFromCache } from "./fetchers/modelCache"
+import { getModelsFromCache } from "./fetchers/modelCache"
 import { getApiRequestTimeout } from "./utils/timeout-config"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 
@@ -87,6 +88,9 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				messages: openAiMessages,
 				temperature: this.options.modelTemperature ?? LMSTUDIO_DEFAULT_TEMPERATURE,
 				stream: true,
+				tools: this.convertToolsForOpenAI(metadata?.tools),
+				tool_choice: metadata?.tool_choice,
+				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 			}
 
 			if (this.options.lmStudioSpeculativeDecodingEnabled && this.options.lmStudioDraftModelId) {
@@ -100,7 +104,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 				throw handleOpenAIError(error, this.providerName)
 			}
 
-			const matcher = new XmlMatcher(
+			const matcher = new TagMatcher(
 				"think",
 				(chunk) =>
 					({
@@ -111,11 +115,33 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 
 			for await (const chunk of results) {
 				const delta = chunk.choices[0]?.delta
+				const finishReason = chunk.choices[0]?.finish_reason
 
 				if (delta?.content) {
 					assistantText += delta.content
 					for (const processedChunk of matcher.update(delta.content)) {
 						yield processedChunk
+					}
+				}
+
+				// Handle tool calls in stream - emit partial chunks for NativeToolCallParser
+				if (delta?.tool_calls) {
+					for (const toolCall of delta.tool_calls) {
+						yield {
+							type: "tool_call_partial",
+							index: toolCall.index,
+							id: toolCall.id,
+							name: toolCall.function?.name,
+							arguments: toolCall.function?.arguments,
+						}
+					}
+				}
+
+				// Process finish_reason to emit tool_call_end events
+				if (finishReason) {
+					const endEvents = NativeToolCallParser.processFinishReason(finishReason)
+					for (const event of endEvents) {
+						yield event
 					}
 				}
 			}
@@ -159,7 +185,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		}
 	}
 
-	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any): Promise<string> {
+	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any) {
 		try {
 			// Create params object with optional draft model
 			const params: any = {
@@ -176,7 +202,9 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 
 			let response
 			try {
-				response = await this.client.chat.completions.create(params, { signal: metadata?.signal })
+				response = await this.client.chat.completions.create(params, {
+					signal: metadata?.signal,
+				})
 			} catch (error) {
 				throw handleOpenAIError(error, this.providerName)
 			}

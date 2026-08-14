@@ -2,37 +2,64 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { useEvent } from "react-use"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
-import { ExtensionMessage } from "@roo/ExtensionMessage"
+import { type ExtensionMessage, TelemetryEventName } from "@roo-code/types"
+
+import { ReviewTaskStatus } from "@roo/codeReview"
 import TranslationProvider from "./i18n/TranslationContext"
 // import { MarketplaceViewStateManager } from "./components/marketplace/MarketplaceViewStateManager"
 
 import { vscode } from "./utils/vscode"
 import { telemetryClient } from "./utils/TelemetryClient"
-import { TelemetryEventName } from "@roo-code/types"
 import { initializeSourceMaps, exposeSourceMapsForDebugging } from "./utils/sourceMapInitializer"
 import { ExtensionStateContextProvider, useExtensionState } from "./context/ExtensionStateContext"
 import ChatView, { ChatViewRef } from "./components/chat/ChatView"
-import HistoryView from "./components/history/HistoryView"
-import SettingsView, { SettingsViewRef } from "./components/settings/SettingsView"
-import CodeReviewPage from "./components/code-review"
-import WelcomeView from "./components/welcome/WelcomeViewProvider"
+import LoadingView from "./components/LoadingView"
 import { HumanRelayDialog } from "./components/human-relay/HumanRelayDialog"
 import { CheckpointRestoreDialog } from "./components/chat/CheckpointRestoreDialog"
 import { DeleteMessageDialog, EditMessageDialog } from "./components/chat/MessageModificationConfirmationDialog"
 import ErrorBoundary from "./components/ErrorBoundary"
+import type { SettingsViewRef } from "./components/settings/SettingsView"
+
+const LazyHistoryView = React.lazy(() => import("./components/history/HistoryView"))
+const LazySettingsView = React.lazy(() => import("./components/settings/SettingsView"))
+const LazyCodeReviewPage = React.lazy(() => import("./components/code-review"))
+const LazyCodeReviewHistoryView = React.lazy(() => import("./components/code-review/CodeReviewHistoryView"))
+const LazyWelcomeView = React.lazy(() => import("./components/welcome/WelcomeViewProvider"))
+const LazyCostrictAccountView = React.lazy(() =>
+	import("./components/cloud/CostrictAccountView").then((m) => ({ default: m.CostrictAccountView })),
+)
+// import { WorktreesView } from "./components/worktrees"
 // import { CloudView } from "./components/cloud/CloudView"
 import { useAddNonInteractiveClickListener } from "./components/ui/hooks/useNonInteractiveClick"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { STANDARD_TOOLTIP_DELAY, StandardTooltip } from "./components/ui/standard-tooltip"
-import { ZgsmAccountView } from "./components/cloud/ZgsmAccountView"
-import { TabContent, TabList, TabTrigger } from "./components/common/Tab"
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "./components/ui/alert-dialog"
+import { Trans } from "react-i18next"
 import { cn } from "./lib/utils"
+import { TabContent, TabList, TabTrigger } from "./components/common/Tab"
 import { ReauthConfirmationDialog } from "./components/chat/ReauthConfirmationDialog"
-import { ZgsmCodebaseDisableConfirmDialog } from "./components/settings/ZgsmCodebaseDisableConfirmDialog"
 import { useTranslation } from "react-i18next"
+import { EXPERIMENT_IDS } from "@roo/experiments"
 
-// type Tab = "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "cloud" | "zgsm-account" | "codeReview"
-type Tab = "settings" | "history" | "chat" | "marketplace" | "cloud" | "zgsm-account" | "codeReview"
+type Tab =
+	| "settings"
+	| "history"
+	| "chat"
+	| "marketplace"
+	| "cloud"
+	| "costrict-account"
+	| "codeReview"
+	// | "worktrees"
+	| "codeReviewHistory"
 
 interface HumanRelayDialogState {
 	isOpen: boolean
@@ -44,7 +71,6 @@ interface ReauthConfirmationDialogState {
 	isOpen: boolean
 	messageTs: number
 }
-
 interface DeleteMessageDialogState {
 	isOpen: boolean
 	messageTs: number
@@ -59,17 +85,12 @@ interface EditMessageDialogState {
 	images?: string[]
 }
 
-interface ZgsmCodebaseDisableConfirmDialogState {
-	isOpen: boolean
-}
-
 // Memoize dialog components to prevent unnecessary re-renders
 const MemoizedDeleteMessageDialog = React.memo(DeleteMessageDialog)
 const MemoizedEditMessageDialog = React.memo(EditMessageDialog)
 const MemoizedReauthConfirmationDialog = React.memo(ReauthConfirmationDialog)
 const MemoizedCheckpointRestoreDialog = React.memo(CheckpointRestoreDialog)
 const MemoizedHumanRelayDialog = React.memo(HumanRelayDialog)
-const MemoizedZgsmCodebaseDisableConfirmDialog = React.memo(ZgsmCodebaseDisableConfirmDialog)
 
 const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]>, Tab>> = {
 	chatButtonClicked: "chat",
@@ -77,7 +98,7 @@ const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]
 	historyButtonClicked: "history",
 	// marketplaceButtonClicked: "marketplace",
 	cloudButtonClicked: "cloud",
-	zgsmAccountButtonClicked: "zgsm-account",
+	costrictAccountButtonClicked: "costrict-account",
 	codeReviewButtonClicked: "codeReview",
 }
 
@@ -89,6 +110,7 @@ const App = () => {
 		telemetrySetting,
 		telemetryKey,
 		machineId,
+		experiments,
 		// cloudUserInfo,
 		// cloudIsAuthenticated,
 		// cloudApiUrl,
@@ -96,6 +118,11 @@ const App = () => {
 		renderContext,
 		mdmCompliant,
 		apiConfiguration,
+		hasClosedCodeReviewWelcomeTips,
+		reviewTask,
+		setReviewTask,
+		// didHydrateCliState,
+		// setDidHydrateSClitate,
 	} = useExtensionState()
 	const { t } = useTranslation()
 
@@ -131,66 +158,88 @@ const App = () => {
 		images: [],
 	})
 
-	const [zgsmCodebaseDisableConfirmDialogState, setZgsmCodebaseDisableConfirmDialogState] =
-		useState<ZgsmCodebaseDisableConfirmDialogState>({
-			isOpen: false,
-		})
+	const [cloudSwitchDialogOpen, setCloudSwitchDialogOpen] = useState(false)
 
 	const settingsRef = useRef<SettingsViewRef>(null)
 	const chatViewRef = useRef<ChatViewRef>(null)
+	const codeReviewNavigateRef = useRef<(() => void) | null>(null)
 
 	const switchTab = useCallback(
 		(newTab: Tab) => {
 			// Only check MDM compliance if mdmCompliant is explicitly false (meaning there's an MDM policy and user is non-compliant)
 			// If mdmCompliant is undefined or true, allow tab switching
-			if (mdmCompliant === false && newTab !== "cloud" && newTab !== "zgsm-account") {
+			if (mdmCompliant === false && newTab !== "cloud" && newTab !== "costrict-account") {
 				// Notify the user that authentication is required by their organization
 				// vscode.postMessage({ type: "showMdmAuthRequiredNotification" })
 				return
 			}
 
 			setCurrentSection(undefined)
-			setCurrentMarketplaceTab(undefined)
-
+			// setCurrentMarketplaceTab(undefined)
+			// Notify backend of active tab change so it can hibernate/wake non-CLI features
 			if (settingsRef.current?.checkUnsaveChanges) {
-				settingsRef.current.checkUnsaveChanges(() => setTab(newTab))
+				settingsRef.current.checkUnsaveChanges(() => {
+					setTab(newTab)
+					vscode.postMessage({ type: "switchTab", tab: newTab })
+				})
 			} else {
 				setTab(newTab)
+				vscode.postMessage({ type: "switchTab", tab: newTab })
 			}
 		},
 		[mdmCompliant],
 	)
 
+	const toggleCodeReviewTips = useCallback(() => {
+		vscode.postMessage({
+			type: "setCodeReviewWelcomeTips",
+			payload: { value: !hasClosedCodeReviewWelcomeTips },
+		})
+	}, [hasClosedCodeReviewWelcomeTips])
+
 	const [currentSection, setCurrentSection] = useState<string | undefined>(undefined)
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const [currentMarketplaceTab, setCurrentMarketplaceTab] = useState<string | undefined>(undefined)
+	// // eslint-disable-next-line @typescript-eslint/no-unused-vars
+	// const [currentMarketplaceTab, setCurrentMarketplaceTab] = useState<string | undefined>(undefined)
 
 	const onMessage = useCallback(
 		(e: MessageEvent) => {
 			const message: ExtensionMessage = e.data
 
+			// When CLI tab is active, route invoke messages to the terminal via bracketed paste
+			// 	const text = message.text ?? ""
+			// 	if (text) {
+			// 		const PASTE_START = "\x1b[200~"
+			// 		const PASTE_END = "\x1b[201~"
+			// 	}
+			// 	return
+			// }
+
 			if (message.type === "action" && message.action) {
 				// Handle switchTab action with tab parameter
 				if (message.action === "switchTab" && message.tab) {
 					const targetTab = message.tab as Tab
-					switchTab(targetTab)
+					// Use setTab directly instead of switchTab to avoid re-posting
+					// to the backend (which would echo back and cause an infinite loop).
+					// 	setDidHydrateSClitate(true)
+					// }
+					setTab(targetTab)
 					// Extract targetSection from values if provided
 					const targetSection = message.values?.section as string | undefined
 					setCurrentSection(targetSection)
-					setCurrentMarketplaceTab(undefined)
+					// setCurrentMarketplaceTab(undefined)
 				} else {
 					// Handle other actions using the mapping
 					const newTab =
 						tabsByMessageAction[
-							message.action === "cloudButtonClicked" ? "zgsmAccountButtonClicked" : message.action
+							message.action === "cloudButtonClicked" ? "costrictAccountButtonClicked" : message.action
 						]
 					const section = message.values?.section as string | undefined
-					const marketplaceTab = message.values?.marketplaceTab as string | undefined
+					// const marketplaceTab = message.values?.marketplaceTab as string | undefined
 
 					if (newTab) {
 						switchTab(newTab)
 						setCurrentSection(section)
-						setCurrentMarketplaceTab(marketplaceTab)
+						// setCurrentMarketplaceTab(marketplaceTab)
 					}
 				}
 			}
@@ -222,10 +271,6 @@ const App = () => {
 				})
 			}
 
-			if (message.type === "showZgsmCodebaseDisableConfirmDialog") {
-				setZgsmCodebaseDisableConfirmDialogState({ isOpen: true })
-			}
-
 			if (message.type === "acceptInput") {
 				chatViewRef.current?.acceptInput()
 			}
@@ -250,7 +295,11 @@ const App = () => {
 
 	// Tell the extension that we are ready to receive messages.
 	useEffect(() => vscode.postMessage({ type: "webviewDidLaunch" }), [])
-
+	useEffect(() => {
+		if (experiments[EXPERIMENT_IDS.CUSTOM_TOOLS] ?? false) {
+			vscode.postMessage({ type: "refreshCustomTools" })
+		}
+	}, [experiments])
 	// Initialize source map support for better error reporting
 	useEffect(() => {
 		// Initialize source maps for better error reporting in production
@@ -284,20 +333,23 @@ const App = () => {
 	const tabs = useMemo(() => {
 		const baseTabs = [
 			{
-				label: "AGENT",
+				label: t("common:costrictCli.tabs.agent"),
 				value: "chat",
+				icon: "codicon-hubot",
 			},
 		]
 
-		if (apiConfiguration?.apiProvider === "zgsm") {
+		if (apiConfiguration?.apiProvider === "costrict") {
 			baseTabs.push({
-				label: "CODE REVIEW",
+				label: t("common:costrictCli.tabs.codeReview"),
 				value: "codeReview",
+				icon: "codicon-code-review",
+				// icon: "codicon-search",
 			})
 		}
 
 		return baseTabs
-	}, [apiConfiguration?.apiProvider])
+	}, [apiConfiguration?.apiProvider, t])
 
 	const resetTabs = useCallback(() => {
 		setTab("chat")
@@ -310,20 +362,40 @@ const App = () => {
 	const onTaskCancel = useCallback(() => {
 		vscode.postMessage({ type: "cancelReviewTask" })
 	}, [])
+	const onNavigateBack = useCallback(() => {
+		if (reviewTask.status !== ReviewTaskStatus.RUNNING && codeReviewNavigateRef.current) {
+			setReviewTask({
+				status: ReviewTaskStatus.INITIAL,
+				data: {
+					issues: [],
+					progress: 0,
+				},
+			})
+			codeReviewNavigateRef.current()
+		}
+	}, [reviewTask.status, setReviewTask])
 
 	if (!didHydrateState) {
-		return null
+		return <LoadingView />
 	}
 
 	// Do not conditionally load ChatView, it's expensive and there's state we
 	// don't want to lose (user input, disableInput, askResponse promise, etc.)
 	return showWelcome ? (
-		<WelcomeView />
+		<React.Suspense fallback={<LoadingView />}>
+			<LazyWelcomeView />
+		</React.Suspense>
 	) : (
 		<>
-			{tab === "history" && <HistoryView onDone={() => switchTab("chat")} />}
+			{tab === "history" && (
+				<React.Suspense fallback={<LoadingView />}>
+					<LazyHistoryView onDone={() => switchTab("chat")} />
+				</React.Suspense>
+			)}
 			{tab === "settings" && (
-				<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
+				<React.Suspense fallback={<LoadingView />}>
+					<LazySettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
+				</React.Suspense>
 			)}
 			{/* {tab === "marketplace" && (
 				<MarketplaceView
@@ -340,35 +412,61 @@ const App = () => {
 					organizations={cloudOrganizations}
 				/>
 			)} */}
-			{tab === "zgsm-account" && (
-				<ZgsmAccountView apiConfiguration={apiConfiguration} onDone={() => switchTab("chat")} />
+			{tab === "costrict-account" && (
+				<React.Suspense fallback={<LoadingView />}>
+					<LazyCostrictAccountView apiConfiguration={apiConfiguration} onDone={() => switchTab("chat")} />
+				</React.Suspense>
+			)}
+			{tab === "codeReviewHistory" && (
+				<React.Suspense fallback={<LoadingView />}>
+					<LazyCodeReviewHistoryView onDone={() => switchTab("codeReview")} />
+				</React.Suspense>
 			)}
 			<div className={`${isChatTab ? "fixed inset-0 flex flex-col" : "hidden"}`}>
 				<div className={`header flex items-center justify-between px-5 ${isChatTab ? "" : "hidden"}`}>
 					<TabList value={tab} onValueChange={(val) => switchTab(val as Tab)} className="header-left h-7">
-						{tabs.map(({ label, value }) => {
+						{tabs.map(({ label, value, icon }) => {
 							const isSelected = tab === value
-							const activeTabClass = isSelected ? "border-b border-gray-200" : ""
 
 							return (
 								<TabTrigger
 									key={value}
 									value={value}
 									isSelected={isSelected}
-									className={cn(activeTabClass, "mr-4", "cursor-pointer")}
+									className={cn(
+										"mr-4",
+										"cursor-pointer",
+										"border-none",
+										"outline-none",
+										"shadow-none",
+										"bg-transparent",
+										"no-underline",
+										isSelected && "text-vscode-focusBorder",
+									)}
 									focusNeedRing={false}>
-									{label}
+									<span className="flex items-center gap-1">
+										{icon && <i className={cn("codicon", icon)} style={{ fontSize: "14px" }}></i>}
+										{label}
+									</span>
 								</TabTrigger>
 							)
 						})}
 					</TabList>
 
 					{tab === "chat" && (
-						<div className="header-right flex absolute right-3">
+						<div className="header-right flex absolute right-3 gap-1">
 							<StandardTooltip content={t("chat:startNewTask.title")}>
+								<i className="codicon codicon-add cursor-pointer p-0.5" onClick={() => resetTabs()}></i>
+							</StandardTooltip>
+							{/* <StandardTooltip content={t("worktrees:title")}>
 								<i
-									className="codicon codicon-add mr-1 cursor-pointer p-0.5"
-									onClick={() => resetTabs()}></i>
+									className="codicon codicon-git-branch-create cursor-pointer p-0.5"
+									onClick={() => switchTab("worktrees")}></i>
+							</StandardTooltip> */}
+							<StandardTooltip content={t("cloud:switchDialog.title")}>
+								<i
+									className="codicon codicon-cloud cursor-pointer p-0.5"
+									onClick={() => setCloudSwitchDialogOpen(true)}></i>
 							</StandardTooltip>
 							<StandardTooltip content={t("history:history")}>
 								<i
@@ -377,8 +475,35 @@ const App = () => {
 							</StandardTooltip>
 						</div>
 					)}
+					{tab === "codeReview" && (
+						<div className="header-right flex absolute right-3">
+							{reviewTask?.status !== ReviewTaskStatus.INITIAL && (
+								<StandardTooltip content={t("chat:startNewTask.title")}>
+									<i
+										className={`codicon codicon-arrow-left mr-1 p-0.5 ${
+											reviewTask?.status !== ReviewTaskStatus.RUNNING
+												? "cursor-pointer"
+												: "cursor-not-allowed opacity-50"
+										}`}
+										onClick={onNavigateBack}></i>
+								</StandardTooltip>
+							)}
+							{reviewTask.status === ReviewTaskStatus.INITIAL && (
+								<StandardTooltip content={t("codeReview:codeReview")}>
+									<i
+										className="codicon codicon-question cursor-pointer mr-1 p-0.5"
+										onClick={() => toggleCodeReviewTips()}></i>
+								</StandardTooltip>
+							)}
+							<StandardTooltip content={t("history:history")}>
+								<i
+									className="codicon codicon-history cursor-pointer p-0.5"
+									onClick={() => switchTab("codeReviewHistory")}></i>
+							</StandardTooltip>
+						</div>
+					)}
 				</div>
-				<TabContent>
+				<TabContent className={tab === "codeReview" ? "p-0" : ""}>
 					<ChatView
 						ref={chatViewRef}
 						isHidden={tab !== "chat"}
@@ -386,12 +511,21 @@ const App = () => {
 						hideAnnouncement={() => setShowAnnouncement(false)}
 					/>
 					{tab === "codeReview" && (
-						<CodeReviewPage
-							isHidden={tab !== "codeReview"}
-							onIssueClick={onIssueClick}
-							onTaskCancel={onTaskCancel}
-						/>
+						<React.Suspense fallback={<LoadingView />}>
+							<LazyCodeReviewPage
+								isHidden={tab !== "codeReview"}
+								onIssueClick={onIssueClick}
+								onTaskCancel={onTaskCancel}
+								onNavigateToWelcome={(fn: () => void) => {
+									codeReviewNavigateRef.current = fn
+								}}
+							/>
+						</React.Suspense>
 					)}
+					{/* {apiConfiguration.apiProvider === "costrict" && didHydrateCliState && (
+						<React.Suspense fallback={<LoadingView />}>
+						</React.Suspense>
+					)} */}
 				</TabContent>
 			</div>
 			<MemoizedHumanRelayDialog
@@ -465,18 +599,41 @@ const App = () => {
 				open={reauthConfirmationDialogState.isOpen}
 				onOpenChange={(open) => setReauthConfirmationDialogState((prev) => ({ ...prev, isOpen: open }))}
 				onConfirm={() => {
-					vscode.postMessage({ type: "zgsmLogin", apiConfiguration })
+					vscode.postMessage({ type: "costrictLogin", apiConfiguration })
 					setReauthConfirmationDialogState((prev) => ({ ...prev, isOpen: false }))
 				}}
 			/>
-			<MemoizedZgsmCodebaseDisableConfirmDialog
-				open={zgsmCodebaseDisableConfirmDialogState.isOpen}
-				onOpenChange={(open) => setZgsmCodebaseDisableConfirmDialogState((prev) => ({ ...prev, isOpen: open }))}
-				onConfirm={() => {
-					vscode.postMessage({ type: "zgsmCodebaseIndexEnabled", bool: false })
-					setZgsmCodebaseDisableConfirmDialogState((prev) => ({ ...prev, isOpen: false }))
-				}}
-			/>
+			<AlertDialog open={cloudSwitchDialogOpen} onOpenChange={setCloudSwitchDialogOpen}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							<i className="codicon codicon-cloud"></i>
+							{t("cloud:switchDialog.title")}
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							<div className="flex flex-col gap-3">
+								<Trans
+									i18nKey="cloud:switchDialog.description"
+									components={{ bold: <strong /> }}
+								/>
+								<div className="bg-vscode-textBlockQuote-background p-3 rounded-sm text-sm">
+									<p className="font-medium mb-1">{t("cloud:switchDialog.steps")}</p>
+									<ol className="list-decimal list-inside space-y-1">
+										<li>{t("cloud:switchDialog.stepInstall")}</li>
+										<li>{t("cloud:switchDialog.stepStart")}</li>
+									</ol>
+								</div>
+							</div>
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>{t("cloud:switchDialog.cancel")}</AlertDialogCancel>
+						<AlertDialogAction onClick={() => vscode.postMessage({ type: "switchUiMode" })}>
+							{t("cloud:switchDialog.confirm")}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
 	)
 }

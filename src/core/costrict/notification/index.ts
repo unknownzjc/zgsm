@@ -11,4 +11,3 @@ export async function initNotificationService(provider: ClineProvider) {
 }
 
 export { NotificationService }
-export type { INotice, INoticesResponse } from "./notificationService"

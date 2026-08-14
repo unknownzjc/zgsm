@@ -1000,7 +1000,7 @@ export class CustomModesManager {
 		}
 	}
 
-	private clearCache(): void {
+	public clearCache(): void {
 		this.cachedModes = null
 		this.cachedAt = 0
 	}

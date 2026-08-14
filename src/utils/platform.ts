@@ -9,3 +9,7 @@ export function isJetbrainsPlatform(): boolean {
 
 	return isJetbrains
 }
+
+export function isCliPatform(): boolean {
+	return vscode.env.appName.includes("cli")
+}

@@ -1,4 +1,4 @@
-// pnpm --filter roo-cline test api/providers/__tests__/openrouter.spec.ts
+// pnpm --filter zgsm test api/providers/__tests__/openrouter.spec.ts
 
 // Mock vscode first to avoid import errors
 vitest.mock("vscode", () => ({
@@ -40,12 +40,14 @@ import { Package } from "../../../shared/package"
 
 vitest.mock("openai")
 vitest.mock("delay", () => ({ default: vitest.fn(() => Promise.resolve()) }))
-vitest.mock("os", () => ({
+vitest.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	tmpdir: vitest.fn(() => "/tmp"),
 	homedir: vitest.fn(() => "/home/user"),
 }))
 
-vitest.mock("path", () => ({
+vitest.mock("path", async (importOriginal) => ({
+	...(await importOriginal()),
 	join: vitest.fn((...paths) => paths.join("/")),
 	sep: "/",
 }))
@@ -80,7 +82,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 200000,
 				supportsImages: true,
 				supportsPromptCache: true,
-				supportsNativeTools: true,
 				inputPrice: 3,
 				outputPrice: 15,
 				cacheWritesPrice: 3.75,
@@ -104,7 +105,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 128000,
 				supportsImages: true,
 				supportsPromptCache: false,
-				supportsNativeTools: true,
 				inputPrice: 2.5,
 				outputPrice: 10,
 				description: "GPT-4o",
@@ -114,7 +114,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 200000,
 				supportsImages: true,
 				supportsPromptCache: false,
-				supportsNativeTools: true,
 				inputPrice: 15,
 				outputPrice: 60,
 				description: "OpenAI o1",
@@ -141,8 +140,9 @@ describe("OpenRouterHandler", () => {
 			baseURL: "https://openrouter.ai/api/v1",
 			apiKey: mockOptions.openRouterApiKey,
 			defaultHeaders: {
-				"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
-				"X-Title": "Costrict",
+				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+				"X-Title": "Roo Code",
+				"User-Agent": expect.any(String),
 				"X-Costrict-Version": `${Package.version}`,
 			},
 		})
@@ -167,7 +167,6 @@ describe("OpenRouterHandler", () => {
 			const result = await handler.fetchModel()
 			expect(result.id).toBe("anthropic/claude-sonnet-4.5")
 			expect(result.info.supportsPromptCache).toBe(true)
-			expect(result.info.supportsNativeTools).toBe(true)
 		})
 
 		it("honors custom maxTokens for thinking models", async () => {
@@ -306,36 +305,9 @@ describe("OpenRouterHandler", () => {
 					stream_options: { include_usage: true },
 					temperature: 0,
 					top_p: undefined,
-					transforms: ["middle-out"],
 				}),
 				{ headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" } },
 			)
-		})
-
-		it("supports the middle-out transform", async () => {
-			const handler = new OpenRouterHandler({
-				...mockOptions,
-				openRouterUseMiddleOutTransform: true,
-			})
-			const mockStream = {
-				async *[Symbol.asyncIterator]() {
-					yield {
-						id: "test-id",
-						choices: [{ delta: { content: "test response" } }],
-					}
-				},
-			}
-
-			const mockCreate = vitest.fn().mockResolvedValue(mockStream)
-			;(OpenAI as any).prototype.chat = {
-				completions: { create: mockCreate },
-			} as any
-
-			await handler.createMessage("test", []).next()
-
-			expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ transforms: ["middle-out"] }), {
-				headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" },
-			})
 		})
 
 		it("adds cache control for supported models", async () => {
@@ -618,7 +590,7 @@ describe("OpenRouterHandler", () => {
 					messages: [{ role: "user", content: "test prompt" }],
 					stream: false,
 				},
-				{ headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" }, signal: undefined },
+				{ headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" } },
 			)
 		})
 

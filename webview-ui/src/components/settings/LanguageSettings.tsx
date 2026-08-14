@@ -1,10 +1,9 @@
 import { HTMLAttributes } from "react"
 import { useAppTranslation } from "@/i18n/TranslationContext"
-import { Globe } from "lucide-react"
 
 import type { Language } from "@roo-code/types"
 
-import { ZGSM_LANGUAGES as LANGUAGES } from "@roo/language"
+import { COSTRICT_LANGUAGES as LANGUAGES } from "@roo/language"
 
 import { cn } from "@src/lib/utils"
 import {
@@ -14,6 +13,7 @@ import {
 import { SetCachedStateField } from "./types"
 import { SectionHeader } from "./SectionHeader"
 import { Section } from "./Section"
+import { SearchableSetting } from "./SearchableSetting"
 
 type LanguageSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	language: string
@@ -25,25 +25,25 @@ export const LanguageSettings = ({ language, setCachedStateField, className, ...
 
 	return (
 		<div className={cn("flex flex-col gap-2", className)} {...props}>
-			<SectionHeader>
-				<div className="flex items-center gap-2">
-					<Globe className="w-4" />
-					<div>{t("settings:sections.language")}</div>
-				</div>
-			</SectionHeader>
+			<SectionHeader>{t("settings:sections.language")}</SectionHeader>
 
 			<Section>
-				<SearchableSelect
-					value={language}
-					onValueChange={(value) => setCachedStateField("language", value as Language)}
-					options={Object.entries(LANGUAGES).map(([code, name]) => ({ value: code, label: name }))}
-					placeholder={t("settings:common.select")}
-					searchPlaceholder={""}
-					emptyMessage={""}
-					disabledSearch
-					className="w-full"
-					data-testid="provider-select"
-				/>
+				<SearchableSetting
+					settingId="language-select"
+					section="language"
+					label={t("settings:sections.language")}>
+					<SearchableSelect
+						value={language}
+						onValueChange={(value) => setCachedStateField("language", value as Language)}
+						options={Object.entries(LANGUAGES).map(([code, name]) => ({ value: code, label: name }))}
+						placeholder={t("settings:common.select")}
+						searchPlaceholder={""}
+						emptyMessage={""}
+						disabledSearch
+						className="w-full"
+						data-testid="provider-select"
+					/>
+				</SearchableSetting>
 			</Section>
 		</div>
 	)

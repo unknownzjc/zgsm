@@ -2,6 +2,7 @@ import os from "os"
 import * as path from "path"
 import fs from "fs/promises"
 import EventEmitter from "events"
+import { AutoCleanupService } from "./autoCleanup"
 
 import { Anthropic } from "@anthropic-ai/sdk"
 import delay from "delay"
@@ -35,27 +36,38 @@ import {
 	type CreateTaskOptions,
 	type TokenUsage,
 	type ToolUsage,
+	type ExtensionMessage,
+	type ExtensionState,
+	type MarketplaceInstalledMetadata,
 	RooCodeEventName,
 	requestyDefaultModelId,
 	openRouterDefaultModelId,
-	DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 	DEFAULT_WRITE_DELAY_MS,
 	ORGANIZATION_ALLOW_ALL,
 	DEFAULT_MODES,
-	DEFAULT_FILE_READ_CHARACTER_LIMIT,
+	// DEFAULT_FILE_READ_CHARACTER_LIMIT,
 	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 	getModelId,
 	MAX_WORKSPACE_FILES,
+	DEFAULT_AUTO_CLEANUP_SETTINGS,
+	isRetiredProvider,
 } from "@roo-code/types"
+import { aggregateTaskCostsRecursive, type AggregatedCosts } from "./aggregateTaskCosts"
 import { TelemetryService } from "@roo-code/telemetry"
-import { CloudService, BridgeOrchestrator } from "@roo-code/cloud"
+import { CloudService, getRooCodeApiUrl } from "@roo-code/cloud"
 
 import { Package } from "../../shared/package"
 import { findLast } from "../../shared/array"
 import { supportPrompt, type SupportPromptType } from "../../shared/support-prompt"
 import { GlobalFileNames } from "../../shared/globalFileNames"
-import type { ExtensionMessage, ExtensionState, MarketplaceInstalledMetadata } from "../../shared/ExtensionMessage"
-import { Mode, defaultModeSlug, getModeBySlug, ZgsmCodeMode } from "../../shared/modes"
+import {
+	Mode,
+	defaultModeSlug,
+	getModeBySlug,
+	CostrictCodeMode,
+	isProviderAllowedForCostrictCodeMode,
+	resolveCostrictCodeModeForMode,
+} from "../../shared/modes"
 import { experimentDefault } from "../../shared/experiments"
 import { formatLanguage } from "../../shared/language"
 import { WebviewMessage } from "../../shared/WebviewMessage"
@@ -63,17 +75,20 @@ import { EMBEDDING_MODEL_PROFILES } from "../../shared/embeddingModels"
 import { ProfileValidator } from "../../shared/ProfileValidator"
 
 import { Terminal } from "../../integrations/terminal/Terminal"
-import { downloadTask } from "../../integrations/misc/export-markdown"
+import { downloadTask, getTaskFileName } from "../../integrations/misc/export-markdown"
+import { resolveDefaultSaveUri, saveLastExportPath } from "../../utils/export"
 import { getTheme } from "../../integrations/theme/getTheme"
 import WorkspaceTracker from "../../integrations/workspace/WorkspaceTracker"
 
 import { McpHub } from "../../services/mcp/McpHub"
 import { McpServerManager } from "../../services/mcp/McpServerManager"
+import { McpAsyncTaskStoreCleaner } from "../../services/mcp/asyncPolling/McpAsyncTaskStoreCleaner"
 import { MarketplaceManager } from "../../services/marketplace"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
 import { MdmService } from "../../services/mdm/MdmService"
+import { SkillsManager } from "../../services/skills/SkillsManager"
 
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
@@ -83,32 +98,39 @@ import { OrganizationAllowListViolationError } from "../../utils/errors"
 
 import { setPanel } from "../../activate/registerCommands"
 
+import { getConfiguredUiMode } from "../../shared/uiMode"
+import type { AssistantUIContextMessage } from "../cs-cloud/extension/types"
+import { sendContextToCloudWithFocus } from "../cs-cloud/extension/contextBridge"
+
 import { t } from "../../i18n"
 
-import { buildApiHandler } from "../../api"
+// import { buildApiHandler } from "../../api"
 import { forceFullModelDetailsLoad, hasLoadedFullDetails } from "../../api/providers/fetchers/lmstudio"
 
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
 import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
-import { getSystemPromptFilePath } from "../prompts/sections/custom-system-prompt"
 
 import { webviewMessageHandler } from "./webviewMessageHandler"
-// import type { ClineMessage } from "@roo-code/types"
-// import { readApiMessages, saveApiMessages, saveTaskMessages } from "../task-persistence"
 import type { ClineMessage, TodoItem } from "@roo-code/types"
-import { readApiMessages, saveApiMessages, saveTaskMessages } from "../task-persistence"
+import {
+	createTasksBackup,
+	readApiMessages,
+	restoreTasksBackup,
+	type RestoreResult,
+	saveApiMessages,
+	saveTaskMessages,
+	TaskHistoryStore,
+} from "../task-persistence"
 import { readTaskMessages } from "../task-persistence/taskMessages"
 import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
-import { ZgsmAuthCommands } from "../costrict/auth"
+import { CostrictAuthCommands, CostrictAuthConfig } from "../costrict/auth"
 import { generateNewSessionClientId, getClientId } from "../../utils/getClientId"
 import { defaultCodebaseIndexEnabled } from "../../services/code-index/constants"
 import { CodeReviewService, ReviewTargetType } from "../costrict/code-review"
 import { defaultLang } from "../../utils/language"
-import ZgsmCodebaseIndexManager from "../costrict/codebase-index"
-import { sendZgsmCloseWindow } from "../costrict/auth/ipc"
 import { REQUESTY_BASE_URL } from "../../shared/utils/requesty"
 import { isJetbrainsPlatform } from "../../utils/platform"
 import { getAppName } from "../../utils/getAppName"
@@ -140,8 +162,8 @@ export class ClineProvider
 	// Used in package.json as the view's id. This value cannot be changed due
 	// to how VSCode caches views based on their id, and updating the id would
 	// break existing instances of the extension.
-	public static readonly sideBarId = `${Package.name}.SidebarProvider`
-	public static readonly tabPanelId = `${Package.name}.TabPanelProvider`
+	public static readonly sideBarId = `${Package?.commandIDPrefix || "costrict"}.SidebarProvider`
+	public static readonly tabPanelId = `${Package?.commandIDPrefix || "costrict"}.TabPanelProvider`
 	private static activeInstances: Set<ClineProvider> = new Set()
 	private disposables: vscode.Disposable[] = []
 	private webviewDisposables: vscode.Disposable[] = []
@@ -151,14 +173,32 @@ export class ClineProvider
 	private codeIndexManager?: CodeIndexManager
 	private _workspaceTracker?: WorkspaceTracker // workSpaceTracker read-only for access outside this class
 	protected mcpHub?: McpHub // Change from private to protected
+	protected skillsManager?: SkillsManager
 	private marketplaceManager: MarketplaceManager
 	private mdmService?: MdmService
-	private zgsmAuthCommands?: ZgsmAuthCommands
+	private costrictAuthCommands?: CostrictAuthCommands
+	private autoCleanupService?: AutoCleanupService
 	private taskCreationCallback: (task: Task) => void
 	private taskEventListeners: WeakMap<Task, Array<() => void>> = new WeakMap()
 	private currentWorkspacePath: string | undefined
+	private _disposed = false
+	// Tracks which tab is currently active in the Webview.
+	private _activeTab: string = "chat"
 
 	private recentTasksCache?: string[]
+	private cachedCustomModes?: Awaited<ReturnType<CustomModesManager["getCustomModes"]>>
+	private cachedWorkspaceCommandLists?: Partial<Record<"allowedCommands" | "deniedCommands", string[]>>
+	private cachedMergedCommands?: Partial<
+		Record<
+			"allowedCommands" | "deniedCommands",
+			{ globalStateCommands: string[]; workspaceCommands: string[]; mergedCommands: string[] }
+		>
+	>
+	private cachedCustomStoragePath?: string
+	public readonly taskHistoryStore: TaskHistoryStore
+	private taskHistoryStoreInitialized = false
+	private globalStateWriteThroughTimer: ReturnType<typeof setTimeout> | null = null
+	private static readonly GLOBAL_STATE_WRITE_THROUGH_DEBOUNCE_MS = 5000 // 5 seconds
 	private pendingOperations: Map<string, PendingEditOperation> = new Map()
 	private static readonly PENDING_OPERATION_TIMEOUT_MS = 30000 // 30 seconds
 
@@ -166,9 +206,32 @@ export class ClineProvider
 	// private cloudOrganizationsCacheTimestamp: number | null = null
 	// private static readonly CLOUD_ORGANIZATIONS_CACHE_DURATION_MS = 5 * 1000 // 5 seconds
 
+	/**
+	 * Monotonically increasing sequence number for clineMessages state pushes.
+	 * Used by the frontend to reject stale state that arrives out-of-order.
+	 */
+	private clineMessagesSeq = 0
+
+	/**
+	 * Batching mechanism for postStateToWebview to reduce serialization overhead
+	 * during streaming. Multiple calls within 16ms are batched into a single state push.
+	 */
+	private pendingStatePush: { resolve: (() => void) | null; reject: ((reason?: any) => void) | null } | null = null
+	private statePushFrameId: ReturnType<typeof setTimeout> | null = null
+	private static readonly STATE_PUSH_BATCH_MS = 16 // 1 frame at 60fps
+
+	private pendingStatePushWithoutHistory: boolean = false
+	private statePushWithoutHistoryFrameId: ReturnType<typeof setTimeout> | null = null
+
+	private authCache: {
+		claudeCode?: { value: boolean; ts: number }
+		openAiCodex?: { value: boolean; ts: number }
+	} = {}
+	private static readonly AUTH_CACHE_TTL_MS = 30_000
+
 	public isViewLaunched = false
 	public settingsImportedAt?: number
-	public readonly latestAnnouncementId = "dec-2025-v3.36.0-context-rewind-roo-provider" // v3.36.0 Context Rewind & Roo Provider Improvements
+	public readonly latestAnnouncementId = "apr-2026-v3.53.0-community-handoff-gpt55-opus47" // v3.53.0 Community handoff, GPT-5.5, Claude Opus 4.7, checkpoint navigation
 	public readonly providerSettingsManager: ProviderSettingsManager
 	public readonly customModesManager: CustomModesManager
 
@@ -187,6 +250,18 @@ export class ClineProvider
 		this.mdmService = mdmService
 		this.updateGlobalState("codebaseIndexModels", EMBEDDING_MODEL_PROFILES)
 
+		// Initialize the per-task file-based history store.
+		// The globalState write-through is debounced separately (not on every mutation)
+		// since per-task files are authoritative and globalState is only for downgrade compat.
+		this.taskHistoryStore = new TaskHistoryStore(this.contextProxy.globalStorageUri.fsPath, {
+			onWrite: async () => {
+				this.scheduleGlobalStateWriteThrough()
+			},
+		})
+		this.initializeTaskHistoryStore().catch((error) => {
+			this.log(`Failed to initialize TaskHistoryStore: ${error}`)
+		})
+
 		// Start configuration loading (which might trigger indexing) in the background.
 		// Don't await, allowing activation to continue immediately.
 
@@ -194,25 +269,18 @@ export class ClineProvider
 		// properties like mode and provider.
 		TelemetryService.instance.setProvider(this)
 
-		this._workspaceTracker = new WorkspaceTracker(this)
-
 		this.providerSettingsManager = new ProviderSettingsManager(this.context)
 
 		this.customModesManager = new CustomModesManager(this.context, async () => {
-			await this.postStateToWebview()
+			await this.postStateToWebviewWithoutClineMessages()
 		})
 
-		// Initialize MCP Hub through the singleton manager
-		McpServerManager.getInstance(this.context, this)
-			.then((hub) => {
-				this.mcpHub = hub
-				this.mcpHub.registerClient()
-			})
-			.catch((error) => {
-				this.log(`Failed to initialize MCP Hub: ${error}`)
-			})
-
 		this.marketplaceManager = new MarketplaceManager(this.context, this.customModesManager)
+
+		// Initialize auto cleanup service
+		if (this.context?.globalStorageUri?.fsPath) {
+			this.autoCleanupService = new AutoCleanupService(this.context.globalStorageUri.fsPath)
+		}
 
 		// Forward <most> task events to the provider.
 		// We do something fairly similar for the IPC-based API.
@@ -311,6 +379,88 @@ export class ClineProvider
 	}
 
 	/**
+	 * Perform automatic cleanup of task history based on configured settings
+	 */
+	async performAutoCleanup() {
+		if (!this.autoCleanupService) {
+			return
+		}
+
+		try {
+			const { DEFAULT_AUTO_CLEANUP_SETTINGS } = await import("@roo-code/types")
+			const settings = this.getGlobalState("autoCleanup") ?? DEFAULT_AUTO_CLEANUP_SETTINGS
+
+			// Only run cleanup if enabled
+			if (!settings.enabled) {
+				this.log("Auto cleanup is disabled, skipping")
+				return
+			}
+
+			const currentTask = this.getCurrentTask()
+			const taskHistory = this.getGlobalState("taskHistory") ?? []
+
+			// Perform cleanup
+			const result = await this.autoCleanupService.performCleanup(taskHistory, settings, currentTask?.taskId)
+
+			if (result.tasksRemoved > 0) {
+				this.log(
+					`Auto cleanup removed ${result.tasksRemoved} tasks, freed ${AutoCleanupService.formatBytes(result.spaceFreed)}`,
+				)
+
+				// Delete task files for each removed task
+				for (const taskId of result.removedTaskIds) {
+					try {
+						await this.deleteTaskWithId(taskId)
+					} catch (error) {
+						this.log(`Failed to delete task ${taskId}: ${error}`)
+					}
+				}
+
+				// Show notification to user
+				vscode.window.showInformationMessage(
+					t("common:autoCleanup.completed", {
+						count: result.tasksRemoved,
+						space: AutoCleanupService.formatBytes(result.spaceFreed),
+					}),
+				)
+			} else {
+				this.log("Auto cleanup no tasks to remove")
+			}
+		} catch (error) {
+			this.log(`Auto cleanup failed: ${error instanceof Error ? error.message : String(error)}`)
+		}
+	}
+
+	/**
+	 * Initialize the TaskHistoryStore and migrate from globalState if needed.
+	 */
+	private async initializeTaskHistoryStore(): Promise<void> {
+		try {
+			await this.taskHistoryStore.initialize()
+
+			// Migration: backfill per-task files from globalState on first run
+			const migrationKey = "taskHistoryMigratedToFiles"
+			const alreadyMigrated = this.context.globalState.get<boolean>(migrationKey)
+
+			if (!alreadyMigrated) {
+				const legacyHistory = this.context.globalState.get<HistoryItem[]>("taskHistory") ?? []
+
+				if (legacyHistory.length > 0) {
+					this.log(`[initializeTaskHistoryStore] Migrating ${legacyHistory.length} entries from globalState`)
+					await this.taskHistoryStore.migrateFromGlobalState(legacyHistory)
+				}
+
+				await this.context.globalState.update(migrationKey, true)
+				this.log("[initializeTaskHistoryStore] Migration complete")
+			}
+
+			this.taskHistoryStoreInitialized = true
+		} catch (error) {
+			this.log(`[initializeTaskHistoryStore] Error: ${error instanceof Error ? error.message : String(error)}`)
+		}
+	}
+
+	/**
 	 * Override EventEmitter's on method to match TaskProviderLike interface
 	 */
 	override on<K extends keyof TaskProviderEvents>(
@@ -330,24 +480,24 @@ export class ClineProvider
 		return super.off(event, listener as any)
 	}
 
-	/**
-	 * Initialize cloud profile synchronization
-	 */
-	private async initializeCloudProfileSync() {
-		try {
-			// Check if authenticated and sync profiles
-			if (CloudService.hasInstance() && CloudService.instance.isAuthenticated()) {
-				await this.syncCloudProfiles()
-			}
+	// /**
+	//  * Initialize cloud profile synchronization
+	//  */
+	// private async initializeCloudProfileSync() {
+	// 	try {
+	// 		// Check if authenticated and sync profiles
+	// 		if (CloudService.hasInstance() && CloudService.instance.isAuthenticated()) {
+	// 			await this.syncCloudProfiles()
+	// 		}
 
-			// Set up listener for future updates
-			if (CloudService.hasInstance()) {
-				CloudService.instance.on("settings-updated", this.handleCloudSettingsUpdate)
-			}
-		} catch (error) {
-			this.log(`Error in initializeCloudProfileSync: ${error}`)
-		}
-	}
+	// 		// Set up listener for future updates
+	// 		if (CloudService.hasInstance()) {
+	// 			CloudService.instance.on("settings-updated", this.handleCloudSettingsUpdate)
+	// 		}
+	// 	} catch (error) {
+	// 		this.log(`Error in initializeCloudProfileSync: ${error}`)
+	// 	}
+	// }
 
 	/**
 	 * Handle cloud settings updates
@@ -390,7 +540,7 @@ export class ClineProvider
 					await this.activateProviderProfile({ name: profile.name })
 				}
 
-				await this.postStateToWebview()
+				await this.postStateToWebviewWithoutClineMessages()
 			}
 		} catch (error) {
 			this.log(`Error syncing cloud profiles: ${error}`)
@@ -450,14 +600,14 @@ export class ClineProvider
 				}
 			} catch (error) {
 				this.log(`Failed to load full model details for LM Studio: ${error}`)
-				vscode.window.showErrorMessage(error.message)
+				vscode.window.showErrorMessage(error?.message)
 			}
 		}
 	}
 
 	// Removes and destroys the top Cline instance (the current finished task),
 	// activating the previous one (resuming the parent task).
-	async removeClineFromStack() {
+	async removeClineFromStack(options?: { skipDelegationRepair?: boolean }) {
 		if (this.clineStack.length === 0) {
 			return
 		}
@@ -466,6 +616,11 @@ export class ClineProvider
 		let task = this.clineStack.pop()
 
 		if (task) {
+			// Capture delegation metadata before abort/dispose, since abortTask(true)
+			// is async and the task reference is cleared afterwards.
+			const childTaskId = task.taskId
+			const parentTaskId = task.parentTaskId
+
 			task.emit(RooCodeEventName.TaskUnfocused)
 
 			try {
@@ -474,7 +629,7 @@ export class ClineProvider
 				await task.abortTask(true)
 			} catch (e) {
 				this.log(
-					`[ClineProvider#removeClineFromStack] abortTask() failed ${task.taskId}.${task.instanceId}: ${e.message}`,
+					`[ClineProvider#removeClineFromStack] abortTask() failed ${task.taskId}.${task.instanceId}: ${e?.message}`,
 				)
 			}
 
@@ -489,6 +644,37 @@ export class ClineProvider
 			// Make sure no reference kept, once promises end it will be
 			// garbage collected.
 			task = undefined
+
+			// Delegation-aware parent metadata repair:
+			// If the popped task was a delegated child, repair the parent's metadata
+			// so it transitions from "delegated" back to "active" and becomes resumable
+			// from the task history list.
+			// Skip when called from delegateParentAndOpenChild() during nested delegation
+			// transitions (A→B→C), where the caller intentionally replaces the active
+			// child and will update the parent to point at the new child.
+			if (parentTaskId && childTaskId && !options?.skipDelegationRepair) {
+				try {
+					const { historyItem: parentHistory } = await this.getTaskWithId(parentTaskId)
+
+					if (parentHistory.status === "delegated" && parentHistory.awaitingChildId === childTaskId) {
+						await this.updateTaskHistory({
+							...parentHistory,
+							status: "active",
+							awaitingChildId: undefined,
+						})
+						this.log(
+							`[ClineProvider#removeClineFromStack] Repaired parent ${parentTaskId} metadata: delegated → active (child ${childTaskId} removed)`,
+						)
+					}
+				} catch (err) {
+					// Non-fatal: log but do not block the pop operation.
+					this.log(
+						`[ClineProvider#removeClineFromStack] Failed to repair parent metadata for ${parentTaskId} (non-fatal): ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+					)
+				}
+			}
 		}
 	}
 
@@ -559,7 +745,7 @@ export class ClineProvider
 	 * Clears all pending edit operations
 	 */
 	private clearAllPendingEditOperations(): void {
-		for (const [operationId, operation] of this.pendingOperations) {
+		for (const [_, operation] of this.pendingOperations) {
 			clearTimeout(operation.timeoutId)
 		}
 		this.pendingOperations.clear()
@@ -580,7 +766,75 @@ export class ClineProvider
 		}
 	}
 
+	private registerWebviewResources(webviewView: vscode.WebviewView | vscode.WebviewPanel) {
+		this.setWebviewMessageListener(webviewView.webview)
+		this.updateCodeIndexStatusSubscription()
+
+		const activeEditorSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
+			this.updateCodeIndexStatusSubscription()
+		})
+		this.webviewDisposables.push(activeEditorSubscription)
+
+		if ("onDidChangeViewState" in webviewView) {
+			const viewStateDisposable = webviewView.onDidChangeViewState(() => {
+				if (this.view?.visible) {
+					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
+				}
+			})
+
+			this.webviewDisposables.push(viewStateDisposable)
+		} else if ("onDidChangeVisibility" in webviewView) {
+			const visibilityDisposable = webviewView.onDidChangeVisibility(() => {
+				if (this.view?.visible) {
+					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
+				}
+			})
+
+			this.webviewDisposables.push(visibilityDisposable)
+		}
+
+		const configDisposable = vscode.workspace.onDidChangeConfiguration(async (e) => {
+			if (e?.affectsConfiguration(`${Package.commandIDPrefix}.allowedCommands`)) {
+				delete this.cachedMergedCommands?.allowedCommands
+				delete this.cachedWorkspaceCommandLists?.allowedCommands
+			}
+			if (e?.affectsConfiguration(`${Package.commandIDPrefix}.deniedCommands`)) {
+				delete this.cachedMergedCommands?.deniedCommands
+				delete this.cachedWorkspaceCommandLists?.deniedCommands
+			}
+			if (e?.affectsConfiguration(`${Package.commandIDPrefix}.customStoragePath`)) {
+				this.cachedCustomStoragePath = undefined
+			}
+			if (e?.affectsConfiguration("workbench.colorTheme")) {
+				await this.postMessageToWebview({ type: "theme", text: JSON.stringify(await getTheme()) })
+			}
+		})
+		this.webviewDisposables.push(configDisposable)
+	}
+
+	public async reloadWebview() {
+		if (!this.view) {
+			return
+		}
+
+		const webviewView = this.view
+
+		this.clearWebviewResources()
+		this.isViewLaunched = false
+		webviewView.webview.html =
+			this.contextProxy.extensionMode === vscode.ExtensionMode.Development
+				? await this.getHMRHtmlContent(webviewView.webview)
+				: await this.getHtmlContent(webviewView.webview)
+		this.registerWebviewResources(webviewView)
+		await this.postStateToWebview({ force: true })
+	}
+
 	async dispose() {
+		if (this._disposed) {
+			return
+		}
+
+		this._disposed = true
 		this.log("Disposing ClineProvider...")
 
 		// Clear all tasks from the stack.
@@ -601,10 +855,10 @@ export class ClineProvider
 
 		this.clearWebviewResources()
 
-		// Clean up cloud service event listener
-		if (CloudService.hasInstance()) {
-			CloudService.instance.off("settings-updated", this.handleCloudSettingsUpdate)
-		}
+		// // Clean up cloud service event listener
+		// if (CloudService.hasInstance()) {
+		// 	CloudService.instance.off("settings-updated", this.handleCloudSettingsUpdate)
+		// }
 
 		while (this.disposables.length) {
 			const x = this.disposables.pop()
@@ -618,8 +872,23 @@ export class ClineProvider
 		this._workspaceTracker = undefined
 		await this.mcpHub?.unregisterClient()
 		this.mcpHub = undefined
+		await this.skillsManager?.dispose()
+		this.skillsManager = undefined
 		this.marketplaceManager?.cleanup()
 		this.customModesManager?.dispose()
+		this.taskHistoryStore.dispose()
+		this.flushGlobalStateWriteThrough()
+
+		// Clear any pending state push to prevent memory leaks
+		if (this.statePushFrameId) {
+			clearTimeout(this.statePushFrameId)
+			this.statePushFrameId = null
+		}
+		if (this.pendingStatePush) {
+			this.pendingStatePush.reject?.(new Error("Provider disposed"))
+			this.pendingStatePush = null
+		}
+
 		this.log("Disposed all disposables")
 		ClineProvider.activeInstances.delete(this)
 
@@ -632,6 +901,8 @@ export class ClineProvider
 	public static getVisibleInstance(): ClineProvider | undefined {
 		return findLast(Array.from(this.activeInstances), (instance) => instance.view?.visible === true)
 	}
+
+	// Task Stack Management
 	public static getAllInstance(): ClineProvider | undefined {
 		return Array.from(this.activeInstances)[0]
 	}
@@ -641,7 +912,7 @@ export class ClineProvider
 
 		// If no visible provider, try to show the sidebar view
 		if (!visibleProvider) {
-			await vscode.commands.executeCommand(`${Package.name}.SidebarProvider.focus`)
+			await vscode.commands.executeCommand(`${Package.commandIDPrefix}.SidebarProvider.focus`)
 			// Wait briefly for the view to become visible
 			await delay(100)
 			visibleProvider = ClineProvider.getVisibleInstance()
@@ -678,6 +949,44 @@ export class ClineProvider
 		// Capture telemetry for code action usage
 		TelemetryService.instance.captureCodeActionUsed(promptType)
 
+		// Cloud 模式：不依赖 ClineProvider，提前分流
+		if (getConfiguredUiMode() === "cloud") {
+			if (command === "addToContext") {
+				const { pathOnly, selectedText } = supportPrompt.createPathWithSelectedText(
+					promptType as SupportPromptType,
+					params,
+					{},
+				)
+				const message: AssistantUIContextMessage = {
+					type: "assistantUIContext",
+					text: pathOnly.length > 0 ? `${pathOnly} ` : "",
+					previewText: selectedText,
+					focus: true,
+				}
+				await sendContextToCloudWithFocus(message)
+				return
+			}
+
+			// explainCode / fixCode / improveCode: cloud has no createTask
+			// equivalent, so send the built prompt as an auto-sent message in a
+			// new thread (same pattern as cloud code review).
+			if (command === "explainCode" || command === "fixCode" || command === "improveCode") {
+				const prompt = supportPrompt.create(promptType as SupportPromptType, params, {})
+				const message: AssistantUIContextMessage = {
+					type: "assistantUIContext",
+					text: prompt,
+					focus: true,
+					newThread: true,
+					autoSend: true,
+				}
+				await sendContextToCloudWithFocus(message)
+				return
+			}
+			// 其他 code action：目前 Cloud 不处理
+			return
+		}
+
+		// Classic 模式：现有逻辑不变
 		const visibleProvider = await ClineProvider.getInstance()
 
 		if (!visibleProvider) {
@@ -696,15 +1005,17 @@ export class ClineProvider
 				filePath,
 				startLine: Number(params.startLine) + 1 + "",
 				endLine: Number(params.endLine) + 1 + "",
-				selectedText: params.selectedText,
+				selectedText: params.selectedText ?? "",
 			})
-			reviewInstance.createReviewTask(chatMessage, [
-				{
-					type: ReviewTargetType.CODE,
-					file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),
-					line_range: [Number(params.startLine), Number(params.endLine)],
-				},
-			])
+			reviewInstance.createReviewTask(chatMessage, {
+				type: ReviewTargetType.CODE,
+				data: [
+					{
+						file_path: toRelativePath(params.filePath as string, visibleProvider.cwd),
+						line_range: [Number(params.startLine), Number(params.endLine)],
+					},
+				],
+			})
 			return
 		}
 
@@ -738,6 +1049,23 @@ export class ClineProvider
 	): Promise<void> {
 		TelemetryService.instance.captureCodeActionUsed(promptType)
 
+		// Cloud 模式：不依赖 ClineProvider，提前分流
+		if (getConfiguredUiMode() === "cloud") {
+			if (command === "terminalAddToContext") {
+				const prompt = supportPrompt.create(promptType, params)
+				const message: AssistantUIContextMessage = {
+					type: "assistantUIContext",
+					text: `${prompt}\n\n`,
+					focus: true,
+				}
+				await sendContextToCloudWithFocus(message)
+				return
+			}
+			// 其他 terminal action：目前 Cloud 不处理
+			return
+		}
+
+		// Classic 模式：现有逻辑不变
 		const visibleProvider = await ClineProvider.getInstance()
 
 		if (!visibleProvider) {
@@ -788,7 +1116,10 @@ export class ClineProvider
 		await visibleProvider.setMode(mode)
 
 		try {
-			await visibleProvider.createTask(prompt, undefined, undefined, { zgsmWorkflowMode: mode })
+			await visibleProvider.createTask(prompt, undefined, undefined, {
+				costrictWorkflowMode: mode,
+				costrictWorkflowSpecScope: typeof params.scope === "string" ? params.scope : "",
+			})
 		} catch (error) {
 			if (error instanceof OrganizationAllowListViolationError) {
 				// Errors from terminal commands seem to get swallowed / ignored.
@@ -803,6 +1134,10 @@ export class ClineProvider
 		this.view = webviewView
 		const inTabMode = "onDidChangeViewState" in webviewView
 
+		if (!this._workspaceTracker) {
+			this._workspaceTracker = new WorkspaceTracker(this)
+		}
+
 		if (inTabMode) {
 			setPanel(webviewView, "tab")
 		} else if ("onDidChangeVisibility" in webviewView) {
@@ -815,12 +1150,14 @@ export class ClineProvider
 			({
 				terminalShellIntegrationTimeout = Terminal.defaultShellIntegrationTimeout,
 				terminalShellIntegrationDisabled = false,
-				terminalCommandDelay = 150,
+				terminalCommandDelay = 100,
 				terminalZshClearEolMark = true,
 				terminalZshOhMy = false,
 				terminalZshP10k = false,
 				terminalPowershellCounter = false,
 				terminalZdotdir = false,
+				ttsEnabled,
+				ttsSpeed,
 			}) => {
 				Terminal.setShellIntegrationTimeout(terminalShellIntegrationTimeout)
 				Terminal.setShellIntegrationDisabled(terminalShellIntegrationDisabled)
@@ -830,16 +1167,10 @@ export class ClineProvider
 				Terminal.setTerminalZshP10k(terminalZshP10k)
 				Terminal.setPowershellCounter(terminalPowershellCounter)
 				Terminal.setTerminalZdotdir(terminalZdotdir)
+				setTtsEnabled(ttsEnabled ?? false)
+				setTtsSpeed(ttsSpeed ?? 1)
 			},
 		)
-
-		this.getState().then(({ ttsEnabled }) => {
-			setTtsEnabled(ttsEnabled ?? false)
-		})
-
-		this.getState().then(({ ttsSpeed }) => {
-			setTtsSpeed(ttsSpeed ?? 1)
-		})
 
 		// Set up webview options with proper resource roots
 		const resourceRoots = [this.contextProxy.extensionUri]
@@ -859,43 +1190,7 @@ export class ClineProvider
 				? await this.getHMRHtmlContent(webviewView.webview)
 				: await this.getHtmlContent(webviewView.webview)
 
-		// Sets up an event listener to listen for messages passed from the webview view context
-		// and executes code based on the message that is received.
-		this.setWebviewMessageListener(webviewView.webview)
-
-		// Initialize code index status subscription for the current workspace.
-		this.updateCodeIndexStatusSubscription()
-
-		// Listen for active editor changes to update code index status for the
-		// current workspace.
-		const activeEditorSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
-			// Update subscription when workspace might have changed.
-			this.updateCodeIndexStatusSubscription()
-		})
-		this.webviewDisposables.push(activeEditorSubscription)
-
-		// Listen for when the panel becomes visible.
-		// https://github.com/microsoft/vscode-discussions/discussions/840
-		if ("onDidChangeViewState" in webviewView) {
-			// WebviewView and WebviewPanel have all the same properties except
-			// for this visibility listener panel.
-			const viewStateDisposable = webviewView.onDidChangeViewState(() => {
-				if (this.view?.visible) {
-					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
-				}
-			})
-
-			this.webviewDisposables.push(viewStateDisposable)
-		} else if ("onDidChangeVisibility" in webviewView) {
-			// sidebar
-			const visibilityDisposable = webviewView.onDidChangeVisibility(() => {
-				if (this.view?.visible) {
-					this.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
-				}
-			})
-
-			this.webviewDisposables.push(visibilityDisposable)
-		}
+		this.registerWebviewResources(webviewView)
 
 		// Listen for when the view is disposed
 		// This happens when the user closes the view or when the view is closed programmatically
@@ -915,23 +1210,26 @@ export class ClineProvider
 			this.disposables,
 		)
 
-		// Listen for when color changes
-		const configDisposable = vscode.workspace.onDidChangeConfiguration(async (e) => {
-			if (e && e.affectsConfiguration("workbench.colorTheme")) {
-				// Sends latest theme name to webview
-				await this.postMessageToWebview({ type: "theme", text: JSON.stringify(await getTheme()) })
-			}
-		})
-		this.webviewDisposables.push(configDisposable)
-
 		// If the extension is starting a new session, clear previous task state.
-		await this.removeClineFromStack()
+		// But don't clear if there's already an active task (e.g., resumed via IPC/bridge).
+		const currentTask = this.getCurrentTask()
+		if (!currentTask || currentTask.abandoned || currentTask.abort) {
+			await this.removeClineFromStack()
+		}
 	}
 
 	public async createTaskWithHistoryItem(
 		historyItem: HistoryItem & { rootTask?: Task; parentTask?: Task },
 		options?: { startTask?: boolean },
+		workflowOptions?: any,
 	) {
+		const isCliRuntime = process.env.ROO_CLI_RUNTIME === "1"
+		const stateBeforeRestore = await this.getState()
+		// CLI injects runtime provider settings from command flags/env at startup.
+		// Restoring provider profiles from task history can overwrite those
+		// runtime settings with stale/incomplete persisted profiles.
+		const skipProfileRestoreFromHistory = isCliRuntime
+
 		// Check if we're rehydrating the current task to avoid flicker
 		const currentTask = this.getCurrentTask()
 		const isRehydratingCurrentTask = currentTask && currentTask.taskId === historyItem.id
@@ -957,64 +1255,131 @@ export class ClineProvider
 			await this.updateGlobalState("mode", historyItem.mode)
 
 			// Load the saved API config for the restored mode if it exists.
-			const savedConfigId = await this.providerSettingsManager.getModeConfigId(historyItem.mode)
-			const listApiConfig = await this.providerSettingsManager.listConfig()
+			// Skip mode-based profile activation if historyItem.apiConfigName exists,
+			// since the task's specific provider profile will override it anyway.
+			const lockApiConfigAcrossModes = this.context.workspaceState.get("lockApiConfigAcrossModes", true)
 
-			// Update listApiConfigMeta first to ensure UI has latest data.
-			await this.updateGlobalState("listApiConfigMeta", listApiConfig)
+			if (!historyItem.apiConfigName && !lockApiConfigAcrossModes && !skipProfileRestoreFromHistory) {
+				const savedConfigId = await this.providerSettingsManager.getModeConfigId(historyItem.mode)
+				const listApiConfig = await this.providerSettingsManager.listConfig()
 
-			// If this mode has a saved config, use it.
-			if (savedConfigId) {
-				const profile = listApiConfig.find(({ id }) => id === savedConfigId)
+				// Update listApiConfigMeta first to ensure UI has latest data.
+				await this.updateGlobalState("listApiConfigMeta", listApiConfig)
 
-				if (profile?.name) {
-					try {
-						await this.activateProviderProfile({ name: profile.name })
-					} catch (error) {
-						// Log the error but continue with task restoration.
-						this.log(
-							`Failed to restore API configuration for mode '${historyItem.mode}': ${
-								error instanceof Error ? error.message : String(error)
-							}. Continuing with default configuration.`,
-						)
-						// The task will continue with the current/default configuration.
+				// If this mode has a saved config, use it.
+				if (savedConfigId) {
+					const profile = listApiConfig.find(({ id }) => id === savedConfigId)
+
+					if (profile?.name) {
+						try {
+							// Check if the profile has actual API configuration (not just an id).
+							// In CLI mode, the ProviderSettingsManager may return empty default profiles
+							// that only contain 'id' and 'name' fields. Activating such a profile would
+							// overwrite the CLI's working API configuration with empty settings.
+							const fullProfile = await this.providerSettingsManager.getProfile({ name: profile.name })
+							const hasActualSettings = !!fullProfile.apiProvider
+
+							if (hasActualSettings) {
+								await this.activateProviderProfile(
+									{ name: profile.name },
+									{
+										costrictCodeModeOverride: resolveCostrictCodeModeForMode(
+											historyItem.mode,
+											stateBeforeRestore.costrictCodeMode,
+											stateBeforeRestore.customModes,
+										),
+									},
+								)
+							} else {
+								// The task will continue with the current/default configuration.
+							}
+						} catch (error) {
+							// Log the error but continue with task restoration.
+							this.log(
+								`Failed to restore API configuration for mode '${historyItem.mode}': ${
+									error instanceof Error ? error.message : String(error)
+								}. Continuing with default configuration.`,
+							)
+							// The task will continue with the current/default configuration.
+						}
 					}
 				}
 			}
 		}
 
+		// If the history item has a saved API config name (provider profile), restore it.
+		// This overrides any mode-based config restoration above, because the task's
+		// specific provider profile takes precedence over mode defaults.
+		if (historyItem.apiConfigName && !skipProfileRestoreFromHistory) {
+			const listApiConfig = await this.providerSettingsManager.listConfig()
+			// Keep global state/UI in sync with latest profiles for parity with mode restoration above.
+			await this.updateGlobalState("listApiConfigMeta", listApiConfig)
+			const profile = listApiConfig.find(({ name }) => name === historyItem.apiConfigName)
+
+			if (profile?.name) {
+				try {
+					await this.activateProviderProfile(
+						{ name: profile.name },
+						{
+							persistModeConfig: false,
+							persistTaskHistory: false,
+							costrictCodeModeOverride: resolveCostrictCodeModeForMode(
+								historyItem.mode ?? stateBeforeRestore.mode,
+								stateBeforeRestore.costrictCodeMode,
+								stateBeforeRestore.customModes,
+							),
+						},
+					)
+				} catch (error) {
+					// Log the error but continue with task restoration.
+					this.log(
+						`Failed to restore API configuration '${historyItem.apiConfigName}' for task: ${
+							error instanceof Error ? error.message : String(error)
+						}. Continuing with current configuration.`,
+					)
+				}
+			} else {
+				// Profile no longer exists, log warning but continue
+				this.log(
+					`Provider profile '${historyItem.apiConfigName}' from history no longer exists. Using current configuration.`,
+				)
+			}
+		} else if (historyItem.apiConfigName && skipProfileRestoreFromHistory) {
+			this.log(
+				`Skipping restore of provider profile '${historyItem.apiConfigName}' for task ${historyItem.id} in CLI runtime.`,
+			)
+		}
+
 		const {
 			apiConfiguration,
-			diffEnabled: enableDiff,
 			enableCheckpoints,
-			useZgsmCustomConfig,
 			checkpointTimeout,
-			fuzzyMatchThreshold,
 			experiments,
-			// cloudUserInfo,
-			// taskSyncEnabled,
+			experimentSettings,
+			useCostrictCustomConfig,
+			cloudUserInfo,
+			taskSyncEnabled,
 		} = await this.getState()
 
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
-			enableDiff,
 			enableCheckpoints,
-			useZgsmCustomConfig,
+			useCostrictCustomConfig,
 			checkpointTimeout,
-			fuzzyMatchThreshold,
 			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			historyItem,
 			experiments,
+			experimentSettings,
 			rootTask: historyItem.rootTask,
 			parentTask: historyItem.parentTask,
 			taskNumber: historyItem.number,
 			workspacePath: historyItem.workspace,
 			onCreated: this.taskCreationCallback,
 			startTask: options?.startTask ?? true,
-			enableBridge: false,
 			// Preserve the status from the history item to avoid overwriting it when the task saves messages
 			initialStatus: historyItem.status,
+			...workflowOptions,
 		})
 
 		if (isRehydratingCurrentTask) {
@@ -1029,7 +1394,7 @@ export class ClineProvider
 				await oldTask.abortTask(true)
 			} catch (e) {
 				this.log(
-					`[createTaskWithHistoryItem] abortTask() failed for old task ${oldTask.taskId}.${oldTask.instanceId}: ${e.message}`,
+					`[createTaskWithHistoryItem] abortTask() failed for old task ${oldTask.taskId}.${oldTask.instanceId}: ${e?.message}`,
 				)
 			}
 
@@ -1105,7 +1470,15 @@ export class ClineProvider
 	}
 
 	public async postMessageToWebview(message: ExtensionMessage) {
-		await this.view?.webview.postMessage(message)
+		if (this._disposed) {
+			return
+		}
+
+		try {
+			await this.view?.webview.postMessage(message)
+		} catch {
+			// View disposed, drop message silently
+		}
 	}
 
 	private async getHMRHtmlContent(webview: vscode.Webview): Promise<string> {
@@ -1141,11 +1514,12 @@ export class ClineProvider
 		const nonce = getNonce()
 
 		// Get the OpenRouter base URL from configuration
-		const { apiConfiguration } = await this.getState()
+		const { apiConfiguration, language } = await this.getState()
 		const openRouterBaseUrl = apiConfiguration.openRouterBaseUrl || "https://openrouter.ai"
 		// Extract the domain for CSP
 		const openRouterDomain = openRouterBaseUrl.match(/^(https?:\/\/[^\/]+)/)?.[1] || "https://openrouter.ai"
-
+		// Determine platform information
+		const platform = isJetbrainsPlatform() ? "jetbrains" : ""
 		const stylesUri = getUri(webview, this.contextProxy.extensionUri, [
 			"webview-ui",
 			"build",
@@ -1174,8 +1548,11 @@ export class ClineProvider
 				window.$RefreshSig$ = () => (type) => type
 				window.__vite_plugin_react_preamble_installed__ = true
 				Object.assign(window, {
+					isJetbrainsPlatform: ${isJetbrainsPlatform()},
 					"ANTHROPIC_MODEL": "${process.env.ANTHROPIC_MODEL}",
 					"ANTHROPIC_BASE_URL": "${process.env.ANTHROPIC_BASE_URL}",
+					"COSTRICT_BASE_URL": "${apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()}",
+					"defaultLanguage": "${language}",
 				})
 			</script>
 		`
@@ -1184,7 +1561,7 @@ export class ClineProvider
 			"default-src 'none'",
 			`font-src ${webview.cspSource} data:`,
 			`style-src ${webview.cspSource} 'unsafe-inline' https://* http://${localServerUrl} http://0.0.0.0:${localPort}`,
-			`img-src ${webview.cspSource} https://storage.googleapis.com https://img.clerk.com data:`,
+			`img-src ${webview.cspSource} https://storage.googleapis.com https://img.clerk.com https://*.githubusercontent.com data: blob:`,
 			`media-src ${webview.cspSource}`,
 			`script-src 'unsafe-eval' ${webview.cspSource} https://* https://*.posthog.com http://${localServerUrl} http://0.0.0.0:${localPort} 'nonce-${nonce}'`,
 			`connect-src ${webview.cspSource} ${openRouterDomain} https://* https://*.posthog.com ws://${localServerUrl} ws://0.0.0.0:${localPort} http://${localServerUrl} http://0.0.0.0:${localPort}`,
@@ -1207,7 +1584,7 @@ export class ClineProvider
 					</script>
 					<title>CoStrict</title>
 				</head>
-				<body>
+				<body data-platform="${platform}">
 					<div id="root"></div>
 					${reactRefresh}
 					<script type="module" src="${scriptUri}"></script>
@@ -1249,6 +1626,7 @@ export class ClineProvider
 		])
 		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "images"])
 		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "audio"])
+		const webviewBuildUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "build"])
 
 		// Use a nonce to only allow a specific script to be run.
 		/*
@@ -1264,11 +1642,12 @@ export class ClineProvider
 		const nonce = getNonce()
 
 		// Get the OpenRouter base URL from configuration
-		const { apiConfiguration } = await this.getState()
+		const { apiConfiguration, language } = await this.getState()
 		const openRouterBaseUrl = apiConfiguration.openRouterBaseUrl || "https://openrouter.ai"
 		// Extract the domain for CSP
 		const openRouterDomain = openRouterBaseUrl.match(/^(https?:\/\/[^\/]+)/)?.[1] || "https://openrouter.ai"
-
+		// Determine platform information
+		const platform = isJetbrainsPlatform() ? "jetbrains" : ""
 		// Tip: Install the es6-string-html VS Code extension to enable code highlighting below
 		return /*html*/ `
         <!DOCTYPE html>
@@ -1277,7 +1656,8 @@ export class ClineProvider
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
             <meta name="theme-color" content="#000000">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https://storage.googleapis.com https://img.clerk.com data:; media-src ${webview.cspSource}; script-src ${webview.cspSource} 'wasm-unsafe-eval' 'nonce-${nonce}' https://us-assets.i.posthog.com 'strict-dynamic'; connect-src ${webview.cspSource} ${openRouterDomain} https://avatars.githubusercontent.com https://openrouter.ai https://api.requesty.ai https://us.i.posthog.com https://us-assets.i.posthog.com;">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} https://storage.googleapis.com https://img.clerk.com data: blob:; media-src ${webview.cspSource}; script-src ${webview.cspSource} 'wasm-unsafe-eval' 'nonce-${nonce}' https://us-assets.i.posthog.com; connect-src ${webview.cspSource} ${openRouterDomain} https://avatars.githubusercontent.com https://openrouter.ai https://api.requesty.ai https://us.i.posthog.com https://us-assets.i.posthog.com;">
+            <base href="${webviewBuildUri}/">
             <link rel="stylesheet" type="text/css" href="${stylesUri}">
 			<link href="${codiconsUri}" rel="stylesheet" />
 			<script nonce="${nonce}">
@@ -1286,13 +1666,16 @@ export class ClineProvider
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 				Object.assign(window, {
+					isJetbrainsPlatform: ${isJetbrainsPlatform()},
 					"ANTHROPIC_MODEL": "${process.env.ANTHROPIC_MODEL}",
 					"ANTHROPIC_BASE_URL": "${process.env.ANTHROPIC_BASE_URL}",
+					"COSTRICT_BASE_URL": "${apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()}",
+					"defaultLanguage": "${language}",
 				})
 			</script>
             <title>CoStrict</title>
           </head>
-          <body>
+          <body data-platform="${platform}">
             <noscript>You need to enable JavaScript to run this app.</noscript>
             <div id="root"></div>
             <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
@@ -1328,12 +1711,12 @@ export class ClineProvider
 
 			try {
 				// Update the task history with the new mode first.
-				const history = this.getGlobalState("taskHistory") ?? []
-				const taskHistoryItem = history.find((item) => item.id === task.taskId)
+				const taskHistoryItem =
+					this.taskHistoryStore.get(task.taskId) ??
+					(this.getGlobalState("taskHistory") ?? []).find((item) => item.id === task.taskId)
 
 				if (taskHistoryItem) {
-					taskHistoryItem.mode = newMode
-					await this.updateTaskHistory(taskHistoryItem)
+					await this.updateTaskHistory({ ...taskHistoryItem, mode: newMode })
 				}
 
 				// Only update the task's mode after successful persistence.
@@ -1350,9 +1733,26 @@ export class ClineProvider
 			}
 		}
 
+		const stateBeforeSwitch = await this.getState()
+		const currentProviderAllowed = await this.shouldAllowProviderForMode(
+			newMode,
+			stateBeforeSwitch.apiConfiguration?.apiProvider,
+		)
+		if (!currentProviderAllowed) {
+			await this.postStateToWebview()
+			return
+		}
+
 		await this.updateGlobalState("mode", newMode)
 
 		this.emit(RooCodeEventName.ModeChanged, newMode)
+
+		// If workspace lock is on, keep the current API config — don't load mode-specific config
+		const lockApiConfigAcrossModes = this.context.workspaceState.get("lockApiConfigAcrossModes", true)
+		if (lockApiConfigAcrossModes) {
+			await this.postStateToWebview()
+			return
+		}
 
 		// Load the saved API config for the new mode if it exists.
 		const savedConfigId = await this.providerSettingsManager.getModeConfigId(newMode)
@@ -1366,16 +1766,32 @@ export class ClineProvider
 			const profile = listApiConfig.find(({ id }) => id === savedConfigId)
 
 			if (profile?.name) {
-				await this.activateProviderProfile({ name: profile.name })
+				// Check if the profile has actual API configuration (not just an id).
+				// In CLI mode, the ProviderSettingsManager may return empty default profiles
+				// that only contain 'id' and 'name' fields. Activating such a profile would
+				// overwrite the CLI's working API configuration with empty settings.
+				// Skip activation if the profile has no apiProvider set - this indicates
+				// an unconfigured/empty profile.
+				const fullProfile = await this.providerSettingsManager.getProfile({ name: profile.name })
+				const hasActualSettings = !!fullProfile.apiProvider
+
+				if (hasActualSettings) {
+					await this.activateProviderProfile({ name: profile.name })
+				} else {
+					// The task will continue with the current/default configuration.
+				}
+			} else {
+				// The task will continue with the current/default configuration.
 			}
 		} else {
 			// If no saved config for this mode, save current config as default.
-			const currentApiConfigName = this.getGlobalState("currentApiConfigName")
+			const currentApiConfigNameAfter = this.getGlobalState("currentApiConfigName")
 
-			if (currentApiConfigName) {
-				const config = listApiConfig.find((c) => c.name === currentApiConfigName)
+			if (currentApiConfigNameAfter) {
+				const config = listApiConfig.find((c) => c.name === currentApiConfigNameAfter)
+				const isAllowedCurrentConfig = await this.shouldAllowProviderForMode(newMode, config?.apiProvider)
 
-				if (config?.id) {
+				if (config?.id && isAllowedCurrentConfig) {
 					await this.providerSettingsManager.setModeConfig(newMode, config.id)
 				}
 			}
@@ -1408,21 +1824,13 @@ export class ClineProvider
 		const prevConfig = task.apiConfiguration
 		const prevProvider = prevConfig?.apiProvider
 		const prevModelId = prevConfig ? getModelId(prevConfig) : undefined
-		const prevToolProtocol = prevConfig?.toolProtocol
 		const newProvider = providerSettings.apiProvider
 		const newModelId = getModelId(providerSettings)
-		const newToolProtocol = providerSettings.toolProtocol
 
-		const needsRebuild =
-			forceRebuild ||
-			prevProvider !== newProvider ||
-			prevModelId !== newModelId ||
-			prevToolProtocol !== newToolProtocol
+		const needsRebuild = forceRebuild || prevProvider !== newProvider || prevModelId !== newModelId
 
 		if (needsRebuild) {
 			// Use updateApiConfiguration which handles both API handler rebuild and parser sync.
-			// This is important when toolProtocol changes - the assistantMessageParser needs to be
-			// created/destroyed to match the new protocol (XML vs native).
 			// Note: updateApiConfiguration is declared async but has no actual async operations,
 			// so we can safely call it without awaiting.
 			task.updateApiConfiguration(providerSettings)
@@ -1480,6 +1888,9 @@ export class ClineProvider
 				// Change the provider for the current task.
 				// TODO: We should rename `buildApiHandler` for clarity (e.g. `getProviderClient`).
 				this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
+
+				// Keep the current task's sticky provider profile in sync with the newly-activated profile.
+				await this.persistStickyProviderProfileToCurrentTask(name)
 			} else {
 				await this.updateGlobalState("listApiConfigMeta", await this.providerSettingsManager.listConfig())
 			}
@@ -1519,8 +1930,96 @@ export class ClineProvider
 		await this.postStateToWebview()
 	}
 
-	async activateProviderProfile(args: { name: string } | { id: string }) {
+	private async persistStickyProviderProfileToCurrentTask(apiConfigName: string): Promise<void> {
+		const task = this.getCurrentTask()
+		if (!task) {
+			return
+		}
+
+		try {
+			// Update in-memory state immediately so sticky behavior works even before the task has
+			// been persisted into taskHistory (it will be captured on the next save).
+			task.setTaskApiConfigName(apiConfigName)
+
+			const taskHistoryItem =
+				this.taskHistoryStore.get(task.taskId) ??
+				(this.getGlobalState("taskHistory") ?? []).find((item) => item.id === task.taskId)
+
+			if (taskHistoryItem) {
+				await this.updateTaskHistory({ ...taskHistoryItem, apiConfigName })
+			}
+		} catch (error) {
+			// If persistence fails, log the error but don't fail the profile switch.
+			this.log(
+				`Failed to persist provider profile switch for task ${task.taskId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			)
+		}
+	}
+
+	async renameStickyProviderProfileInTaskHistory(oldName: string, newName: string): Promise<void> {
+		const historyItems = this.taskHistoryStore.getAll()
+		const updates = historyItems.filter((item) => item.apiConfigName === oldName)
+
+		for (const item of updates) {
+			await this.updateTaskHistory({ ...item, apiConfigName: newName }, { broadcast: false })
+		}
+	}
+
+	async clearDeletedProviderProfileFromTaskHistory(name: string): Promise<void> {
+		const historyItems = this.taskHistoryStore.getAll()
+		const updates = historyItems.filter((item) => item.apiConfigName === name)
+
+		for (const item of updates) {
+			await this.updateTaskHistory({ ...item, apiConfigName: undefined }, { broadcast: false })
+		}
+	}
+
+	private async getCurrentCostrictCodeModeForMode(
+		mode: Mode,
+		costrictCodeModeOverride?: CostrictCodeMode,
+	): Promise<CostrictCodeMode> {
+		const state = await this.getState()
+		return resolveCostrictCodeModeForMode(
+			mode,
+			costrictCodeModeOverride ?? state.costrictCodeMode,
+			state.customModes,
+		)
+	}
+
+	private async shouldAllowProviderForMode(
+		mode: Mode,
+		apiProvider: string | undefined,
+		costrictCodeModeOverride?: CostrictCodeMode,
+	): Promise<boolean> {
+		const targetCostrictCodeMode = await this.getCurrentCostrictCodeModeForMode(mode, costrictCodeModeOverride)
+		return isProviderAllowedForCostrictCodeMode(targetCostrictCodeMode, apiProvider)
+	}
+
+	async activateProviderProfile(
+		args: { name: string } | { id: string },
+		options?: {
+			persistModeConfig?: boolean
+			persistTaskHistory?: boolean
+			costrictCodeModeOverride?: CostrictCodeMode
+		},
+	) {
 		const { name, id, ...providerSettings } = await this.providerSettingsManager.activateProfile(args)
+
+		const persistModeConfig = options?.persistModeConfig ?? true
+		const persistTaskHistory = options?.persistTaskHistory ?? true
+		const { mode } = await this.getState()
+		const isAllowedForMode = await this.shouldAllowProviderForMode(
+			mode,
+			providerSettings.apiProvider,
+			options?.costrictCodeModeOverride,
+		)
+
+		if (!isAllowedForMode) {
+			await this.postStateToWebview()
+			return
+		}
 
 		// See `upsertProviderProfile` for a description of what this is doing.
 		await Promise.all([
@@ -1529,13 +2028,18 @@ export class ClineProvider
 			this.contextProxy.setProviderSettings(providerSettings),
 		])
 
-		const { mode } = await this.getState()
-
-		if (id) {
+		if (id && persistModeConfig) {
 			await this.providerSettingsManager.setModeConfig(mode, id)
 		}
+
 		// Change the provider for the current task.
 		this.updateTaskApiHandlerIfNeeded(providerSettings, { forceRebuild: true })
+
+		// Update the current task's sticky provider profile, unless this activation is
+		// being used purely as a non-persisting restoration (e.g., reopening a task from history).
+		if (persistTaskHistory) {
+			await this.persistStickyProviderProfileToCurrentTask(name)
+		}
 
 		await this.postStateToWebview()
 
@@ -1650,34 +2154,57 @@ export class ClineProvider
 		uiMessagesFilePath: string
 		apiConversationHistory: Anthropic.MessageParam[]
 	}> {
-		const history = this.getGlobalState("taskHistory") ?? []
-		const historyItem = history.find((item) => item.id === id)
+		const historyItem =
+			this.taskHistoryStore.get(id) ?? (this.getGlobalState("taskHistory") ?? []).find((item) => item.id === id)
 
-		if (historyItem) {
-			const { getTaskDirectoryPath } = await import("../../utils/storage")
-			const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
-			const taskDirPath = await getTaskDirectoryPath(globalStoragePath, id)
-			const apiConversationHistoryFilePath = path.join(taskDirPath, GlobalFileNames.apiConversationHistory)
-			const uiMessagesFilePath = path.join(taskDirPath, GlobalFileNames.uiMessages)
-			const fileExists = await fileExistsAtPath(apiConversationHistoryFilePath)
-
-			if (fileExists) {
-				const apiConversationHistory = JSON.parse(await fs.readFile(apiConversationHistoryFilePath, "utf8"))
-
-				return {
-					historyItem,
-					taskDirPath,
-					apiConversationHistoryFilePath,
-					uiMessagesFilePath,
-					apiConversationHistory,
-				}
-			}
+		if (!historyItem) {
+			throw new Error("Task not found")
 		}
 
-		// if we tried to get a task that doesn't exist, remove it from state
-		// FIXME: this seems to happen sometimes when the json file doesnt save to disk for some reason
-		await this.deleteTaskFromState(id)
-		throw new Error("Task not found")
+		const { getTaskDirectoryPath } = await import("../../utils/storage")
+		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
+		const taskDirPath = await getTaskDirectoryPath(globalStoragePath, id)
+		const apiConversationHistoryFilePath = path.join(taskDirPath, GlobalFileNames.apiConversationHistory)
+		const uiMessagesFilePath = path.join(taskDirPath, GlobalFileNames.uiMessages)
+		const fileExists = await fileExistsAtPath(apiConversationHistoryFilePath)
+
+		let apiConversationHistory: Anthropic.MessageParam[] = []
+
+		if (fileExists) {
+			try {
+				apiConversationHistory = JSON.parse(await fs.readFile(apiConversationHistoryFilePath, "utf8"))
+			} catch (error) {
+				console.warn(
+					`[getTaskWithId] api_conversation_history.json corrupted for task ${id}, returning empty history: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+		} else {
+			console.warn(
+				`[getTaskWithId] api_conversation_history.json missing for task ${id}, returning empty history`,
+			)
+		}
+
+		return {
+			historyItem,
+			taskDirPath,
+			apiConversationHistoryFilePath,
+			uiMessagesFilePath,
+			apiConversationHistory,
+		}
+	}
+
+	async getTaskWithAggregatedCosts(taskId: string): Promise<{
+		historyItem: HistoryItem
+		aggregatedCosts: AggregatedCosts
+	}> {
+		const { historyItem } = await this.getTaskWithId(taskId)
+
+		const aggregatedCosts = await aggregateTaskCostsRecursive(taskId, async (id: string) => {
+			const result = await this.getTaskWithId(id)
+			return result.historyItem
+		})
+
+		return { historyItem, aggregatedCosts }
 	}
 
 	async showTaskWithId(id: string) {
@@ -1695,19 +2222,131 @@ export class ClineProvider
 			return this.showTaskWithId(id)
 		}
 
-		await vscode.commands.executeCommand("zgsm.openInNewTab", id)
+		await vscode.commands.executeCommand(`${Package.commandIDPrefix}.openInNewTab`, id)
 	}
 
 	async exportTaskWithId(id: string) {
 		const { historyItem, apiConversationHistory } = await this.getTaskWithId(id)
-		await downloadTask(historyItem.ts, apiConversationHistory)
+		const fileName = getTaskFileName(historyItem.ts)
+		const defaultUri = await resolveDefaultSaveUri(this.contextProxy, "lastTaskExportPath", fileName, {
+			useWorkspace: false,
+			fallbackDir: path.join(os.homedir(), "Downloads"),
+		})
+		const saveUri = await downloadTask(historyItem.ts, apiConversationHistory, defaultUri)
+
+		if (saveUri) {
+			await saveLastExportPath(this.contextProxy, "lastTaskExportPath", saveUri)
+		}
+	}
+
+	/**
+	 * Opens a save-file dialog and creates a .tar.gz backup of the entire tasks directory.
+	 */
+	async backupTaskHistory(): Promise<void> {
+		const { getStorageBasePath } = await import("../../utils/storage.js")
+		const basePath = await getStorageBasePath(this.contextProxy.globalStorageUri.fsPath)
+
+		const defaultUri = await resolveDefaultSaveUri(
+			this.contextProxy,
+			"lastTaskBackupPath",
+			`costrict-tasks-backup-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.tar.gz`,
+			{ useWorkspace: false, fallbackDir: path.join(os.homedir(), "Downloads") },
+		)
+
+		const saveUri = await vscode.window.showSaveDialog({
+			defaultUri,
+			filters: { "Gzip Archive": ["tar.gz", "tgz"] },
+			title: "Save Task History Backup",
+		})
+
+		if (!saveUri) {
+			return // User cancelled
+		}
+
+		try {
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t("common:history.backingUpTasks"),
+					cancellable: false,
+				},
+				async () => {
+					await createTasksBackup(basePath, saveUri.fsPath)
+				},
+			)
+			await saveLastExportPath(this.contextProxy, "lastTaskBackupPath", saveUri)
+			vscode.window.showInformationMessage(`Task history backup saved to: ${saveUri.fsPath}`)
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err)
+			vscode.window.showErrorMessage(`Failed to create task history backup: ${msg}`)
+		}
+	}
+
+	/**
+	 * Opens an open-file dialog and restores tasks from a .tar.gz backup, merging with existing data.
+	 */
+	async restoreTaskHistory(conflict: "skip" | "overwrite" = "skip"): Promise<void> {
+		const { getStorageBasePath } = await import("../../utils/storage.js")
+		const basePath = await getStorageBasePath(this.contextProxy.globalStorageUri.fsPath)
+
+		const openUris = await vscode.window.showOpenDialog({
+			canSelectFiles: true,
+			canSelectFolders: false,
+			canSelectMany: false,
+			filters: { "Gzip Archive": ["tar.gz", "tgz", "gz"] },
+			title: "Select Task History Backup",
+		})
+
+		if (!openUris || openUris.length === 0) {
+			return // User cancelled
+		}
+
+		const srcPath = openUris[0]!.fsPath
+
+		try {
+			const result: RestoreResult = await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t("common:history.restoringTasks"),
+					cancellable: false,
+				},
+				async () => {
+					const res = await restoreTasksBackup(basePath, srcPath, { conflict })
+
+					// Reconcile in-memory cache with the newly written index
+					await this.taskHistoryStore.reconcile()
+
+					// Refresh the webview
+					await this.postStateToWebview()
+
+					return res
+				},
+			)
+
+			const parts: string[] = []
+			if (result.imported > 0) parts.push(`${result.imported} imported`)
+			if (result.skipped > 0) parts.push(`${result.skipped} skipped`)
+			if (result.overwritten > 0) parts.push(`${result.overwritten} overwritten`)
+			const summary = parts.length > 0 ? parts.join(", ") : "no changes"
+
+			if (result.errors.length > 0) {
+				vscode.window.showWarningMessage(
+					`Task history restored (${summary}). ${result.errors.length} error(s): ${result.errors.slice(0, 3).join("; ")}`,
+				)
+			} else {
+				vscode.window.showInformationMessage(`Task history restored: ${summary}.`)
+			}
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err)
+			vscode.window.showErrorMessage(`Failed to restore task history: ${msg}`)
+		}
 	}
 
 	/* Condenses a task's message history to use fewer tokens. */
 	async condenseTaskContext(taskId: string) {
 		let task: Task | undefined
 		for (let i = this.clineStack.length - 1; i >= 0; i--) {
-			if (this.clineStack[i].taskId === taskId) {
+			if (this.clineStack[i]?.taskId === taskId) {
 				task = this.clineStack[i]
 				break
 			}
@@ -1719,43 +2358,78 @@ export class ClineProvider
 		await this.postMessageToWebview({ type: "condenseTaskContextResponse", text: taskId })
 	}
 
-	// this function deletes a task from task hidtory, and deletes it's checkpoints and delete the task folder
-	async deleteTaskWithId(id: string) {
+	// this function deletes a task from task history, and deletes its checkpoints and delete the task folder
+	// If the task has subtasks (childIds), they will also be deleted recursively
+	async deleteTaskWithId(id: string, cascadeSubtasks: boolean = true) {
 		try {
-			// get the task directory full path
-			const { taskDirPath } = await this.getTaskWithId(id)
+			// get the task directory full path and history item
+			// const { taskDirPath, historyItem } = await this.getTaskWithId(id)
 
-			// remove task from stack if it's the current task
-			if (id === this.getCurrentTask()?.taskId) {
-				// Close the current task instance; delegation flows will be handled via metadata if applicable.
-				await this.removeClineFromStack()
+			// Collect all task IDs to delete (parent + all subtasks)
+			const allIdsToDelete: string[] = [id]
+
+			if (cascadeSubtasks) {
+				// Recursively collect all child IDs
+				const collectChildIds = async (taskId: string): Promise<void> => {
+					try {
+						const { historyItem: item } = await this.getTaskWithId(taskId)
+						if (item.childIds && item.childIds.length > 0) {
+							for (const childId of item.childIds) {
+								allIdsToDelete.push(childId)
+								await collectChildIds(childId)
+							}
+						}
+					} catch (error) {
+						// Child task may already be deleted or not found, continue
+						console.log(`[deleteTaskWithId] child task ${taskId} not found, skipping`)
+					}
+				}
+
+				await collectChildIds(id)
 			}
 
-			// delete task from the task history state
-			await this.deleteTaskFromState(id)
+			// Remove from stack if any of the tasks to delete are in the current task stack
+			for (const taskId of allIdsToDelete) {
+				if (taskId === this.getCurrentTask()?.taskId) {
+					// Close the current task instance; delegation flows will be handled via metadata if applicable.
+					await this.removeClineFromStack()
+					break
+				}
+			}
 
-			// Delete associated shadow repository or branch.
-			// TODO: Store `workspaceDir` in the `HistoryItem` object.
+			// Delete all tasks from state in one batch
+			await this.taskHistoryStore.deleteMany(allIdsToDelete)
+			this.recentTasksCache = undefined
+
+			// Delete associated shadow repositories or branches and task directories
 			const globalStorageDir = this.contextProxy.globalStorageUri.fsPath
 			const workspaceDir = this.cwd
+			const { getTaskDirectoryPath } = await import("../../utils/storage")
+			const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
 
-			try {
-				await ShadowCheckpointService.deleteTask({ taskId: id, globalStorageDir, workspaceDir })
-			} catch (error) {
-				console.error(
-					`[deleteTaskWithId${id}] failed to delete associated shadow repository or branch: ${error instanceof Error ? error.message : String(error)}`,
-				)
+			for (const taskId of allIdsToDelete) {
+				try {
+					await ShadowCheckpointService.deleteTask({ taskId, globalStorageDir, workspaceDir })
+				} catch (error) {
+					console.error(
+						`[deleteTaskWithId${taskId}] failed to delete associated shadow repository or branch: ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+
+				// Delete the task directory
+				try {
+					// Don't create directory if it doesn't exist (createIfNotExists: false)
+					const dirPath = await getTaskDirectoryPath(globalStoragePath, taskId, false)
+					await fs.rm(dirPath, { recursive: true, force: true })
+					console.log(`[deleteTaskWithId${taskId}] removed task directory`)
+				} catch (error) {
+					console.error(
+						`[deleteTaskWithId${taskId}] failed to remove task directory: ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
 			}
 
-			// delete the entire task directory including checkpoints and all content
-			try {
-				await fs.rm(taskDirPath, { recursive: true, force: true })
-				console.log(`[deleteTaskWithId${id}] removed task directory`)
-			} catch (error) {
-				console.error(
-					`[deleteTaskWithId${id}] failed to remove task directory: ${error instanceof Error ? error.message : String(error)}`,
-				)
-			}
+			await this.postStateToWebview()
 		} catch (error) {
 			// If task is not found, just remove it from state
 			if (error instanceof Error && error.message === "Task not found") {
@@ -1767,10 +2441,9 @@ export class ClineProvider
 	}
 
 	async deleteTaskFromState(id: string) {
-		const taskHistory = this.getGlobalState("taskHistory") ?? []
-		const updatedTaskHistory = taskHistory.filter((task) => task.id !== id)
-		await this.updateGlobalState("taskHistory", updatedTaskHistory)
+		await this.taskHistoryStore.delete(id)
 		this.recentTasksCache = undefined
+
 		await this.postStateToWebview()
 	}
 
@@ -1779,15 +2452,168 @@ export class ClineProvider
 		await this.postStateToWebview()
 	}
 
-	async postStateToWebview() {
-		const state = await this.getStateToPostToWebview()
+	/** Called by the webview message handler when the user switches tabs. */
+	public setActiveTab(tab: string): void {
+		if (this._activeTab === tab) return
+		this._activeTab = tab
+	}
+
+	public get activeTab(): string {
+		return this._activeTab
+	}
+
+	async postStateToWebview(options?: { force?: boolean }): Promise<void> {
+		// If force is true, execute immediately without batching
+		if (options?.force) {
+			const state = await this.getStateToPostToWebview()
+			this.clineMessagesSeq++
+			state.clineMessagesSeq = this.clineMessagesSeq
+			this.postMessageToWebview({ type: "state", state })
+			return
+		}
+
+		// Batching: if there's already a pending state push, just return
+		// The pending timeout will execute the state push soon
+		if (this.pendingStatePush) {
+			return
+		}
+
+		// Create a new pending state push with a timeout
+		return new Promise((resolve, reject) => {
+			this.pendingStatePush = { resolve, reject }
+
+			this.statePushFrameId = setTimeout(async () => {
+				this.statePushFrameId = null
+				const pending = this.pendingStatePush
+				this.pendingStatePush = null
+
+				try {
+					const state = await this.getStateToPostToWebview()
+					this.clineMessagesSeq++
+					state.clineMessagesSeq = this.clineMessagesSeq
+					await this.postMessageToWebview({ type: "state", state })
+					pending?.resolve?.()
+				} catch (error) {
+					pending?.reject?.(error)
+				}
+			}, ClineProvider.STATE_PUSH_BATCH_MS)
+		})
+	}
+
+	/**
+	 * Like postStateToWebview but intentionally omits taskHistory.
+	 *
+	 * Rationale:
+	 * - taskHistory can be large and was being resent on every chat message update.
+	 * - The webview maintains taskHistory in-memory and receives updates via
+	 *   `taskHistoryUpdated` / `taskHistoryItemUpdated`.
+	 */
+	async postStateToWebviewWithoutTaskHistory(): Promise<void> {
+		if (this.pendingStatePushWithoutHistory) {
+			return
+		}
+
+		this.pendingStatePushWithoutHistory = true
+
+		return new Promise((resolve, reject) => {
+			this.statePushWithoutHistoryFrameId = setTimeout(async () => {
+				this.statePushWithoutHistoryFrameId = null
+
+				try {
+					const state = await this.buildStateForWebview({ includeTaskHistory: false })
+					this.clineMessagesSeq++
+					state.clineMessagesSeq = this.clineMessagesSeq
+					this.postMessageToWebview({ type: "state", state })
+					resolve()
+				} catch (error) {
+					reject(error)
+				} finally {
+					this.pendingStatePushWithoutHistory = false
+				}
+			}, ClineProvider.STATE_PUSH_BATCH_MS)
+		})
+	}
+
+	/**
+	 * Like postStateToWebview but intentionally omits both clineMessages and taskHistory.
+	 *
+	 * Rationale:
+	 * - Cloud event handlers (auth, settings, user-info) and mode changes trigger state pushes
+	 *   that have nothing to do with chat messages. Including clineMessages in these pushes
+	 *   creates race conditions where a stale snapshot of clineMessages (captured during async
+	 *   getStateToPostToWebview) overwrites newer messages the task has streamed in the meantime.
+	 * - This method ensures cloud/mode events only push the state fields they actually affect
+	 *   (cloud auth, org settings, profiles, etc.) without interfering with task message streaming.
+	 */
+	async postStateToWebviewWithoutClineMessages(): Promise<void> {
+		const state = await this.buildStateForWebview({ includeClineMessages: false, includeTaskHistory: false })
 		this.postMessageToWebview({ type: "state", state })
 
-		// // Check MDM compliance and send user to account tab if not compliant
-		// // Only redirect if there's an actual MDM policy requiring authentication
-		// if (this.mdmService?.requiresCloudAuth() && !this.checkMdmCompliance()) {
-		// 	await this.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
-		// }
+		// Preserve existing MDM redirect behavior
+		if (this.mdmService?.requiresCloudAuth() && !this.checkMdmCompliance()) {
+			await this.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
+		}
+	}
+
+	private async buildStateForWebview(options?: {
+		includeTaskHistory?: boolean
+		includeClineMessages?: boolean
+	}): Promise<Partial<ExtensionState> & Pick<ExtensionState, "version">> {
+		const { includeTaskHistory = true, includeClineMessages = true } = options ?? {}
+		const state = await this.getStateToPostToWebview({
+			includeTaskHistory,
+			includeClineMessages,
+			includeCurrentTaskDetails: includeClineMessages,
+			includeCurrentTaskTodos: true,
+		})
+
+		if (includeTaskHistory && includeClineMessages) {
+			return state
+		}
+
+		const nextState: Partial<ExtensionState> & Pick<ExtensionState, "version"> = { ...state }
+		if (!includeTaskHistory) {
+			delete nextState.taskHistory
+		}
+		if (!includeClineMessages) {
+			delete nextState.clineMessages
+		}
+		return nextState
+	}
+
+	private async getCachedCustomModes(
+		forceRefresh = false,
+	): Promise<Awaited<ReturnType<CustomModesManager["getCustomModes"]>>> {
+		if (!forceRefresh && this.cachedCustomModes) {
+			return this.cachedCustomModes
+		}
+
+		const customModes = await this.customModesManager.getCustomModes()
+		this.cachedCustomModes = customModes
+		return this.cachedCustomModes
+	}
+
+	private getCachedWorkspaceCommandList(configKey: "allowedCommands" | "deniedCommands"): string[] {
+		const cachedWorkspaceCommands = this.cachedWorkspaceCommandLists?.[configKey]
+		if (cachedWorkspaceCommands) {
+			return cachedWorkspaceCommands
+		}
+
+		const workspaceCommands =
+			vscode.workspace.getConfiguration(Package.commandIDPrefix).get<string[]>(configKey) || []
+		this.cachedWorkspaceCommandLists ??= {}
+		this.cachedWorkspaceCommandLists[configKey] = workspaceCommands
+		return workspaceCommands
+	}
+
+	private getCachedCustomStoragePath(): string {
+		if (this.cachedCustomStoragePath !== undefined) {
+			return this.cachedCustomStoragePath
+		}
+
+		this.cachedCustomStoragePath =
+			vscode.workspace.getConfiguration(Package.commandIDPrefix)?.get<string>("customStoragePath", "") ?? ""
+		return this.cachedCustomStoragePath
 	}
 
 	/**
@@ -1836,14 +2662,6 @@ export class ClineProvider
 	}
 
 	/**
-	 * Checks if there is a file-based system prompt override for the given mode
-	 */
-	async hasFileBasedSystemPromptOverride(mode: Mode): Promise<boolean> {
-		const promptFilePath = getSystemPromptFilePath(this.cwd, mode)
-		return await fileExistsAtPath(promptFilePath)
-	}
-
-	/**
 	 * Merges allowed commands from global state and workspace configuration
 	 * with proper validation and deduplication
 	 */
@@ -1874,32 +2692,48 @@ export class ClineProvider
 		globalStateCommands?: string[],
 	): string[] {
 		try {
-			// Validate and sanitize global state commands
-			const validGlobalCommands = Array.isArray(globalStateCommands)
-				? globalStateCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0)
-				: []
+			const sanitizeCommands = (commands: unknown): string[] =>
+				Array.isArray(commands)
+					? commands.filter((cmd): cmd is string => typeof cmd === "string" && cmd.trim().length > 0)
+					: []
+			const hasSameCommands = (left: string[], right: string[]) =>
+				left.length === right.length && left.every((value, index) => value === right[index])
 
-			// Get workspace configuration commands
-			const workspaceCommands = vscode.workspace.getConfiguration(Package.name).get<string[]>(configKey) || []
+			const validGlobalCommands = sanitizeCommands(globalStateCommands)
+			const validWorkspaceCommands = sanitizeCommands(this.getCachedWorkspaceCommandList(configKey))
+			const cached = this.cachedMergedCommands?.[configKey]
 
-			// Validate and sanitize workspace commands
-			const validWorkspaceCommands = Array.isArray(workspaceCommands)
-				? workspaceCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0)
-				: []
+			if (
+				cached &&
+				hasSameCommands(cached.globalStateCommands, validGlobalCommands) &&
+				hasSameCommands(cached.workspaceCommands, validWorkspaceCommands)
+			) {
+				return cached.mergedCommands
+			}
 
-			// Combine and deduplicate commands
-			// Global state takes precedence over workspace configuration
 			const mergedCommands = [...new Set([...validGlobalCommands, ...validWorkspaceCommands])]
-
+			this.cachedMergedCommands ??= {}
+			this.cachedMergedCommands[configKey] = {
+				globalStateCommands: [...validGlobalCommands],
+				workspaceCommands: [...validWorkspaceCommands],
+				mergedCommands,
+			}
 			return mergedCommands
 		} catch (error) {
 			console.error(`Error merging ${commandType} commands:`, error)
-			// Return empty array as fallback to prevent crashes
 			return []
 		}
 	}
 
-	async getStateToPostToWebview(): Promise<ExtensionState> {
+	async getStateToPostToWebview(options?: {
+		includeTaskHistory?: boolean
+		includeClineMessages?: boolean
+		includeCurrentTaskDetails?: boolean
+		includeCurrentTaskTodos?: boolean
+	}): Promise<ExtensionState> {
+		// Ensure the store is initialized before reading task history
+		await this.taskHistoryStore.initialized
+
 		const {
 			apiConfiguration,
 			lastShownAnnouncementId,
@@ -1912,7 +2746,6 @@ export class ClineProvider
 			alwaysAllowExecute,
 			allowedCommands,
 			deniedCommands,
-			alwaysAllowBrowser,
 			alwaysAllowMcp,
 			alwaysAllowModeSwitch,
 			alwaysAllowSubtasks,
@@ -1923,21 +2756,13 @@ export class ClineProvider
 			soundEnabled,
 			ttsEnabled,
 			ttsSpeed,
-			diffEnabled,
+			customStoragePath,
 			enableCheckpoints,
-			useZgsmCustomConfig,
-			zgsmCodebaseIndexEnabled,
+			useCostrictCustomConfig,
 			checkpointTimeout,
 			taskHistory,
 			soundVolume,
-			browserViewportSize,
-			screenshotQuality,
-			remoteBrowserHost,
-			remoteBrowserEnabled,
-			cachedChromeHostUrl,
 			writeDelayMs,
-			terminalOutputLineLimit,
-			terminalOutputCharacterLimit,
 			terminalShellIntegrationTimeout,
 			terminalShellIntegrationDisabled,
 			terminalCommandDelay,
@@ -1946,13 +2771,11 @@ export class ClineProvider
 			terminalZshOhMy,
 			terminalZshP10k,
 			terminalZdotdir,
-			fuzzyMatchThreshold,
 			mcpEnabled,
-			enableMcpServerCreation,
 			currentApiConfigName,
 			listApiConfigMeta,
 			pinnedApiConfigs,
-			zgsmCodeMode,
+			costrictCodeMode,
 			mode,
 			customModePrompts,
 			customSupportPrompts,
@@ -1960,19 +2783,21 @@ export class ClineProvider
 			autoApprovalEnabled,
 			customModes,
 			experiments,
+			experimentSettings,
 			maxOpenTabsContext,
 			maxWorkspaceFiles,
-			browserToolEnabled,
+			disabledTools,
 			telemetrySetting,
 			showRooIgnoredFiles,
+			enableSubfolderRules,
 			language,
-			maxReadFileLine,
-			maxReadCharacterLimit,
 			maxImageFileSize,
 			maxTotalImageSize,
-			terminalCompressProgressBar,
 			historyPreviewCollapsed,
 			reasoningBlockCollapsed,
+			showSpeedInfo,
+			automaticallyFocus,
+			collapseMarkdownWithoutScroll,
 			enterBehavior,
 			cloudUserInfo,
 			cloudIsAuthenticated,
@@ -1980,8 +2805,6 @@ export class ClineProvider
 			publicSharingEnabled,
 			organizationAllowList,
 			organizationSettingsVersion,
-			maxConcurrentFileReads,
-			condensingApiConfigId,
 			customCondensingPrompt,
 			codebaseIndexConfig,
 			codebaseIndexModels,
@@ -1995,14 +2818,14 @@ export class ClineProvider
 			includeCurrentCost,
 			maxGitStatusFiles,
 			taskSyncEnabled,
-			remoteControlEnabled,
 			imageGenerationProvider,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
-			openRouterUseMiddleOutTransform,
-			featureRoomoteControlEnabled,
-			isBrowserSessionActive,
-		} = await this.getState()
+			autoCleanup,
+			debug,
+			hasClosedCodeReviewWelcomeTips,
+			lockApiConfigAcrossModes,
+		} = await this.buildBaseState({ includeTaskHistory: options?.includeTaskHistory ?? true })
 
 		// let cloudOrganizations: CloudOrganizationMembership[] = []
 
@@ -2031,61 +2854,61 @@ export class ClineProvider
 		const mergedAllowedCommands = this.mergeAllowedCommands(allowedCommands)
 		const mergedDeniedCommands = this.mergeDeniedCommands(deniedCommands)
 		const cwd = this.cwd
+		const currentTask = this.getCurrentTask()
+		const filteredTaskHistory = (taskHistory ?? []).filter((item: HistoryItem) => item.ts && item.task)
 
-		// Check if there's a system prompt override for the current mode
-		const currentMode = mode ?? defaultModeSlug
-		const hasSystemPromptOverride = await this.hasFileBasedSystemPromptOverride(currentMode)
+		if (!debug) {
+			apiConfiguration.useCostrictCustomConfig = false
+		}
 
 		return {
 			version: this.context.extension?.packageJSON?.version ?? "",
 			apiConfiguration,
+			autoCleanup,
+			debug,
 			customInstructions,
 			alwaysAllowReadOnly: alwaysAllowReadOnly ?? false,
-			alwaysAllowReadOnlyOutsideWorkspace: alwaysAllowReadOnlyOutsideWorkspace ?? false,
+			alwaysAllowReadOnlyOutsideWorkspace: alwaysAllowReadOnlyOutsideWorkspace ?? true,
 			alwaysAllowWrite: alwaysAllowWrite ?? false,
 			alwaysAllowWriteOutsideWorkspace: alwaysAllowWriteOutsideWorkspace ?? false,
 			alwaysAllowWriteProtected: alwaysAllowWriteProtected ?? false,
 			alwaysAllowExecute: alwaysAllowExecute ?? false,
-			alwaysAllowBrowser: alwaysAllowBrowser ?? false,
 			alwaysAllowMcp: alwaysAllowMcp ?? false,
 			alwaysAllowModeSwitch: alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: alwaysAllowSubtasks ?? false,
-			isBrowserSessionActive,
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext: autoCondenseContext ?? true,
 			autoCondenseContextPercent: autoCondenseContextPercent ?? 100,
 			uriScheme: vscode.env.uriScheme,
-			currentTaskItem: this.getCurrentTask()?.taskId
-				? (taskHistory || []).find((item: HistoryItem) => item.id === this.getCurrentTask()?.taskId)
-				: undefined,
-			clineMessages: this.getCurrentTask()?.clineMessages || [],
-			currentTaskTodos: this.getCurrentTask()?.todoList || [],
-			messageQueue: this.getCurrentTask()?.messageQueueService?.messages ?? [],
-			taskHistory: (taskHistory || [])
-				.filter((item: HistoryItem) => item.ts && item.task)
-				.sort((a: HistoryItem, b: HistoryItem) => b.ts - a.ts),
+			isStreaming: currentTask?.isStreaming ?? false,
+			currentTaskId: currentTask?.taskId,
+			currentTaskItem:
+				options?.includeCurrentTaskDetails === false || !currentTask?.taskId
+					? undefined
+					: this.taskHistoryStore.get(currentTask.taskId),
+			clineMessages: options?.includeClineMessages === false ? [] : currentTask?.clineMessages || [],
+			currentTaskTodos:
+				options?.includeCurrentTaskTodos === false ||
+				(options?.includeCurrentTaskTodos === undefined && options?.includeCurrentTaskDetails === false)
+					? []
+					: currentTask?.todoList || [],
+			messageQueue:
+				options?.includeCurrentTaskDetails === false ? undefined : currentTask?.messageQueueService?.messages,
+			taskHistory: filteredTaskHistory,
 			soundEnabled: soundEnabled ?? false,
 			ttsEnabled: ttsEnabled ?? false,
 			ttsSpeed: ttsSpeed ?? 1.0,
-			diffEnabled: diffEnabled ?? true,
+			customStoragePath,
 			enableCheckpoints: enableCheckpoints ?? true,
-			useZgsmCustomConfig: useZgsmCustomConfig ?? false,
-			zgsmCodebaseIndexEnabled: zgsmCodebaseIndexEnabled ?? true,
+			useCostrictCustomConfig: useCostrictCustomConfig ?? false,
 			checkpointTimeout: checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			shouldShowAnnouncement:
 				telemetrySetting !== "disabled" && lastShownAnnouncementId !== this.latestAnnouncementId,
 			allowedCommands: mergedAllowedCommands,
 			deniedCommands: mergedDeniedCommands,
 			soundVolume: soundVolume ?? 0.5,
-			browserViewportSize: browserViewportSize ?? "900x600",
-			screenshotQuality: screenshotQuality ?? 75,
-			remoteBrowserHost,
-			remoteBrowserEnabled: remoteBrowserEnabled ?? false,
-			cachedChromeHostUrl: cachedChromeHostUrl,
 			writeDelayMs: writeDelayMs ?? DEFAULT_WRITE_DELAY_MS,
-			terminalOutputLineLimit: terminalOutputLineLimit ?? 500,
-			terminalOutputCharacterLimit: terminalOutputCharacterLimit ?? DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 			terminalShellIntegrationTimeout: terminalShellIntegrationTimeout ?? Terminal.defaultShellIntegrationTimeout,
 			terminalShellIntegrationDisabled: terminalShellIntegrationDisabled ?? true,
 			terminalCommandDelay: terminalCommandDelay ?? 0,
@@ -2094,50 +2917,49 @@ export class ClineProvider
 			terminalZshOhMy: terminalZshOhMy ?? false,
 			terminalZshP10k: terminalZshP10k ?? false,
 			terminalZdotdir: terminalZdotdir ?? false,
-			fuzzyMatchThreshold: fuzzyMatchThreshold ?? 1.0,
 			mcpEnabled: mcpEnabled ?? true,
-			enableMcpServerCreation: enableMcpServerCreation ?? true,
 			currentApiConfigName: currentApiConfigName ?? "default",
 			listApiConfigMeta: listApiConfigMeta ?? [],
 			pinnedApiConfigs: pinnedApiConfigs ?? {},
 			mode: mode ?? defaultModeSlug,
-			zgsmCodeMode: zgsmCodeMode ?? "vibe",
+			costrictCodeMode: costrictCodeMode ?? "vibe",
 			customModePrompts: customModePrompts ?? {},
 			customSupportPrompts: customSupportPrompts ?? {},
 			enhancementApiConfigId,
 			autoApprovalEnabled: autoApprovalEnabled ?? false,
 			customModes,
 			experiments: experiments ?? experimentDefault,
+			experimentSettings: experimentSettings ?? {},
 			mcpServers: this.mcpHub?.getAllServers() ?? [],
+			mcpAsyncTaskRecords: (await this.mcpHub?.getAsyncTaskRecords?.()) ?? [],
 			maxOpenTabsContext: maxOpenTabsContext ?? 20,
 			maxWorkspaceFiles: maxWorkspaceFiles ?? MAX_WORKSPACE_FILES,
 			cwd,
-			browserToolEnabled: browserToolEnabled ?? true,
+			disabledTools,
 			telemetrySetting,
 			telemetryKey,
 			machineId,
 			showRooIgnoredFiles: showRooIgnoredFiles ?? false,
 			language: language ?? formatLanguage(await defaultLang()),
+			enableSubfolderRules: enableSubfolderRules ?? false,
 			renderContext: this.renderContext,
-			maxReadFileLine: maxReadFileLine ?? 500,
-			maxReadCharacterLimit: maxReadCharacterLimit ?? DEFAULT_FILE_READ_CHARACTER_LIMIT,
 			maxImageFileSize: maxImageFileSize ?? 5,
 			maxTotalImageSize: maxTotalImageSize ?? 20,
-			maxConcurrentFileReads: maxConcurrentFileReads ?? 5,
 			settingsImportedAt: this.settingsImportedAt,
-			terminalCompressProgressBar: terminalCompressProgressBar ?? true,
-			hasSystemPromptOverride,
 			historyPreviewCollapsed: historyPreviewCollapsed ?? false,
 			reasoningBlockCollapsed: reasoningBlockCollapsed ?? true,
+			showSpeedInfo: showSpeedInfo ?? false,
+			automaticallyFocus: automaticallyFocus ?? false,
+			collapseMarkdownWithoutScroll: collapseMarkdownWithoutScroll ?? true,
 			enterBehavior: enterBehavior ?? "send",
 			cloudUserInfo,
 			cloudIsAuthenticated: cloudIsAuthenticated ?? false,
 			// cloudOrganizations,
+			cloudAuthSkipModel: this.context.globalState.get<boolean>("roo-auth-skip-model") ?? false,
 			sharingEnabled: sharingEnabled ?? false,
 			publicSharingEnabled: publicSharingEnabled ?? false,
 			organizationAllowList,
 			organizationSettingsVersion,
-			condensingApiConfigId,
 			customCondensingPrompt,
 			codebaseIndexModels: codebaseIndexModels ?? EMBEDDING_MODEL_PROFILES,
 			codebaseIndexConfig: {
@@ -2160,26 +2982,32 @@ export class ClineProvider
 			profileThresholds: profileThresholds ?? {},
 			// cloudApiUrl: getRooCodeApiUrl(),
 			hasOpenedModeSelector: this.getGlobalState("hasOpenedModeSelector") ?? false,
+			lockApiConfigAcrossModes: lockApiConfigAcrossModes ?? true,
 			alwaysAllowFollowupQuestions: alwaysAllowFollowupQuestions ?? false,
 			followupAutoApproveTimeoutMs: followupAutoApproveTimeoutMs ?? 60000,
 			includeDiagnosticMessages: includeDiagnosticMessages ?? true,
 			maxDiagnosticMessages: maxDiagnosticMessages ?? 50,
 			includeTaskHistoryInEnhance: includeTaskHistoryInEnhance ?? true,
-			includeCurrentTime: includeCurrentTime ?? true,
+			includeCurrentTime: includeCurrentTime ?? false,
 			includeCurrentCost: includeCurrentCost ?? true,
 			maxGitStatusFiles: maxGitStatusFiles ?? 0,
 			taskSyncEnabled,
-			remoteControlEnabled,
 			imageGenerationProvider,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
-			openRouterUseMiddleOutTransform,
-			featureRoomoteControlEnabled,
-			debug: vscode.workspace.getConfiguration(Package.name).get<boolean>("debug", isJetbrainsPlatform()),
+			hasClosedCodeReviewWelcomeTips: hasClosedCodeReviewWelcomeTips ?? false,
 			claudeCodeIsAuthenticated: await (async () => {
 				try {
-					const { claudeCodeOAuthManager } = await import("../../integrations/claude-code/oauth")
+					const { claudeCodeOAuthManager } = await import("../../integrations/claude-code/oauth.js")
 					return await claudeCodeOAuthManager.isAuthenticated()
+				} catch {
+					return false
+				}
+			})(),
+			openAiCodexIsAuthenticated: await (async () => {
+				try {
+					const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+					return await openAiCodexOAuthManager.isAuthenticated()
 				} catch {
 					return false
 				}
@@ -2196,26 +3024,36 @@ export class ClineProvider
 	async getState(): Promise<
 		Omit<
 			ExtensionState,
-			| "clineMessages"
-			| "renderContext"
-			| "hasOpenedModeSelector"
-			| "version"
-			| "shouldShowAnnouncement"
-			| "hasSystemPromptOverride"
+			"clineMessages" | "renderContext" | "hasOpenedModeSelector" | "version" | "shouldShowAnnouncement"
 		>
 	> {
+		return this.buildBaseState()
+	}
+
+	private async buildBaseState(options?: {
+		includeTaskHistory?: boolean
+	}): Promise<
+		Omit<
+			ExtensionState,
+			"clineMessages" | "renderContext" | "hasOpenedModeSelector" | "version" | "shouldShowAnnouncement"
+		>
+	> {
+		const { includeTaskHistory = true } = options ?? {}
 		const stateValues = this.contextProxy.getValues()
-		const customModes = await this.customModesManager.getCustomModes()
+		const customModes = await this.getCachedCustomModes()
 
-		// Determine apiProvider with the same logic as before.
-		const apiProvider: ProviderName = stateValues.apiProvider ? stateValues.apiProvider : "zgsm"
+		// Determine apiProvider with the same logic as before, while filtering retired providers.
+		const apiProvider: ProviderName =
+			stateValues.apiProvider && !isRetiredProvider(stateValues.apiProvider)
+				? stateValues.apiProvider
+				: "costrict"
 
-		// Build the apiConfiguration object combining state values and secrets.
-		const providerSettings = this.contextProxy.getProviderSettings()
-
-		// Ensure apiProvider is set properly if not already in state
-		if (!providerSettings.apiProvider) {
-			providerSettings.apiProvider = apiProvider
+		// Build the apiConfiguration object from the current state snapshot.
+		const providerSettings = this.contextProxy.getProviderSettingsFromValues(stateValues)
+		const apiConfiguration: ProviderSettings = {
+			...providerSettings,
+			apiProvider: providerSettings.apiProvider || apiProvider,
+			openAiHeaders: providerSettings.openAiHeaders ?? {},
 		}
 
 		let organizationAllowList = ORGANIZATION_ALLOW_ALL
@@ -2281,7 +3119,7 @@ export class ClineProvider
 		// 	)
 		// }
 
-		// let taskSyncEnabled: boolean = false
+		let taskSyncEnabled: boolean = false
 
 		// try {
 		// 	taskSyncEnabled = CloudService.instance.isTaskSyncEnabled()
@@ -2291,56 +3129,44 @@ export class ClineProvider
 		// 	)
 		// }
 
-		// Get actual browser session state
-		const isBrowserSessionActive = this.getCurrentTask()?.browserSession?.isSessionActive() ?? false
+		const customStoragePath = this.getCachedCustomStoragePath()
 
 		// Return the same structure as before.
-		providerSettings.openAiHeaders = providerSettings.openAiHeaders ?? {}
 		return {
-			apiConfiguration: providerSettings,
+			debug: stateValues.debug ?? false,
+			autoCleanup: stateValues.autoCleanup ?? DEFAULT_AUTO_CLEANUP_SETTINGS,
+			apiConfiguration,
 			lastShownAnnouncementId: stateValues.lastShownAnnouncementId,
 			customInstructions: stateValues.customInstructions,
 			apiModelId: stateValues.apiModelId,
 			alwaysAllowReadOnly: stateValues.alwaysAllowReadOnly ?? false,
-			alwaysAllowReadOnlyOutsideWorkspace: stateValues.alwaysAllowReadOnlyOutsideWorkspace ?? false,
+			alwaysAllowReadOnlyOutsideWorkspace: stateValues.alwaysAllowReadOnlyOutsideWorkspace ?? true,
 			alwaysAllowWrite: stateValues.alwaysAllowWrite ?? false,
 			alwaysAllowWriteOutsideWorkspace: stateValues.alwaysAllowWriteOutsideWorkspace ?? false,
 			alwaysAllowWriteProtected: stateValues.alwaysAllowWriteProtected ?? false,
 			alwaysAllowExecute: stateValues.alwaysAllowExecute ?? false,
-			alwaysAllowBrowser: stateValues.alwaysAllowBrowser ?? false,
 			alwaysAllowMcp: stateValues.alwaysAllowMcp ?? false,
 			alwaysAllowModeSwitch: stateValues.alwaysAllowModeSwitch ?? false,
 			alwaysAllowSubtasks: stateValues.alwaysAllowSubtasks ?? false,
 			alwaysAllowFollowupQuestions: stateValues.alwaysAllowFollowupQuestions ?? false,
-			isBrowserSessionActive,
 			followupAutoApproveTimeoutMs: stateValues.followupAutoApproveTimeoutMs ?? 60000,
 			diagnosticsEnabled: stateValues.diagnosticsEnabled ?? true,
 			allowedMaxRequests: stateValues.allowedMaxRequests,
 			allowedMaxCost: stateValues.allowedMaxCost,
 			autoCondenseContext: stateValues.autoCondenseContext ?? true,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
-			taskHistory: stateValues.taskHistory ?? [],
+			taskHistory: includeTaskHistory ? this.taskHistoryStore.getAll() : [],
 			allowedCommands: stateValues.allowedCommands,
 			deniedCommands: stateValues.deniedCommands,
 			soundEnabled: stateValues.soundEnabled ?? false,
 			ttsEnabled: stateValues.ttsEnabled ?? false,
 			ttsSpeed: stateValues.ttsSpeed ?? 1.0,
-			diffEnabled: stateValues.diffEnabled ?? true,
+			customStoragePath,
 			enableCheckpoints: stateValues.enableCheckpoints ?? true,
-			useZgsmCustomConfig: stateValues.useZgsmCustomConfig ?? false,
-			zgsmCodebaseIndexEnabled: stateValues.zgsmCodebaseIndexEnabled ?? true,
+			useCostrictCustomConfig: stateValues.useCostrictCustomConfig ?? false,
 			checkpointTimeout: stateValues.checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			soundVolume: stateValues.soundVolume,
-			browserViewportSize: stateValues.browserViewportSize ?? "900x600",
-			screenshotQuality: stateValues.screenshotQuality ?? 75,
-			remoteBrowserHost: stateValues.remoteBrowserHost,
-			remoteBrowserEnabled: stateValues.remoteBrowserEnabled ?? false,
-			cachedChromeHostUrl: stateValues.cachedChromeHostUrl as string | undefined,
-			fuzzyMatchThreshold: stateValues.fuzzyMatchThreshold ?? 1.0,
 			writeDelayMs: stateValues.writeDelayMs ?? DEFAULT_WRITE_DELAY_MS,
-			terminalOutputLineLimit: stateValues.terminalOutputLineLimit ?? 500,
-			terminalOutputCharacterLimit:
-				stateValues.terminalOutputCharacterLimit ?? DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 			terminalShellIntegrationTimeout:
 				stateValues.terminalShellIntegrationTimeout ?? Terminal.defaultShellIntegrationTimeout,
 			terminalShellIntegrationDisabled: stateValues.terminalShellIntegrationDisabled ?? true,
@@ -2350,12 +3176,10 @@ export class ClineProvider
 			terminalZshOhMy: stateValues.terminalZshOhMy ?? false,
 			terminalZshP10k: stateValues.terminalZshP10k ?? false,
 			terminalZdotdir: stateValues.terminalZdotdir ?? false,
-			terminalCompressProgressBar: stateValues.terminalCompressProgressBar ?? true,
 			mode: stateValues.mode ?? defaultModeSlug,
-			zgsmCodeMode: stateValues.zgsmCodeMode ?? "vibe",
+			costrictCodeMode: stateValues.costrictCodeMode ?? "vibe",
 			language: stateValues.language ?? formatLanguage(await defaultLang()),
 			mcpEnabled: stateValues.mcpEnabled ?? true,
-			enableMcpServerCreation: stateValues.enableMcpServerCreation ?? true,
 			mcpServers: this.mcpHub?.getAllServers() ?? [],
 			currentApiConfigName: stateValues.currentApiConfigName ?? "default",
 			listApiConfigMeta: stateValues.listApiConfigMeta ?? [],
@@ -2365,21 +3189,23 @@ export class ClineProvider
 			customSupportPrompts: stateValues.customSupportPrompts ?? {},
 			enhancementApiConfigId: stateValues.enhancementApiConfigId,
 			experiments: stateValues.experiments ?? experimentDefault,
+			experimentSettings: stateValues.experimentSettings ?? {},
 			autoApprovalEnabled: stateValues.autoApprovalEnabled ?? false,
 			customModes,
 			maxOpenTabsContext: stateValues.maxOpenTabsContext ?? 20,
 			maxWorkspaceFiles: stateValues.maxWorkspaceFiles ?? MAX_WORKSPACE_FILES,
-			openRouterUseMiddleOutTransform: stateValues.openRouterUseMiddleOutTransform,
-			browserToolEnabled: stateValues.browserToolEnabled ?? true,
+			// browserToolEnabled: stateValues.browserToolEnabled ?? true,
+			disabledTools: stateValues.disabledTools,
 			telemetrySetting: stateValues.telemetrySetting || "unset",
 			showRooIgnoredFiles: stateValues.showRooIgnoredFiles ?? false,
-			maxReadFileLine: stateValues.maxReadFileLine ?? 500,
-			maxReadCharacterLimit: stateValues.maxReadCharacterLimit ?? DEFAULT_FILE_READ_CHARACTER_LIMIT,
+			enableSubfolderRules: stateValues.enableSubfolderRules ?? false,
 			maxImageFileSize: stateValues.maxImageFileSize ?? 5,
 			maxTotalImageSize: stateValues.maxTotalImageSize ?? 20,
-			maxConcurrentFileReads: stateValues.maxConcurrentFileReads ?? 5,
 			historyPreviewCollapsed: stateValues.historyPreviewCollapsed ?? false,
 			reasoningBlockCollapsed: stateValues.reasoningBlockCollapsed ?? true,
+			showSpeedInfo: stateValues.showSpeedInfo ?? false,
+			automaticallyFocus: stateValues.automaticallyFocus ?? false,
+			collapseMarkdownWithoutScroll: stateValues.collapseMarkdownWithoutScroll ?? true,
 			enterBehavior: stateValues.enterBehavior ?? "send",
 			cloudUserInfo,
 			cloudIsAuthenticated,
@@ -2387,7 +3213,6 @@ export class ClineProvider
 			publicSharingEnabled,
 			organizationAllowList,
 			organizationSettingsVersion,
-			condensingApiConfigId: stateValues.condensingApiConfigId,
 			customCondensingPrompt: stateValues.customCondensingPrompt,
 			codebaseIndexModels: stateValues.codebaseIndexModels ?? EMBEDDING_MODEL_PROFILES,
 			codebaseIndexConfig: {
@@ -2411,66 +3236,105 @@ export class ClineProvider
 					stateValues.codebaseIndexConfig?.codebaseIndexOpenRouterSpecificProvider,
 			},
 			profileThresholds: stateValues.profileThresholds ?? {},
+			lockApiConfigAcrossModes: this.context.workspaceState.get("lockApiConfigAcrossModes", true),
 			includeDiagnosticMessages: stateValues.includeDiagnosticMessages ?? true,
 			maxDiagnosticMessages: stateValues.maxDiagnosticMessages ?? 50,
 			includeTaskHistoryInEnhance: stateValues.includeTaskHistoryInEnhance ?? true,
 			taskSyncEnabled: false,
-			includeCurrentTime: stateValues.includeCurrentTime ?? true,
+			includeCurrentTime: stateValues.includeCurrentTime ?? false,
 			includeCurrentCost: stateValues.includeCurrentCost ?? true,
 			maxGitStatusFiles: stateValues.maxGitStatusFiles ?? 0,
-			// taskSyncEnabled,
-			remoteControlEnabled: (() => {
-				return false
-				// try {
-				// 	const cloudSettings = CloudService.instance.getUserSettings()
-				// 	return cloudSettings?.settings?.extensionBridgeEnabled ?? false
-				// } catch (error) {
-				// 	console.error(
-				// 		`[getState] failed to get remote control setting from cloud: ${error instanceof Error ? error.message : String(error)}`,
-				// 	)
-				// 	return false
-				// }
-			})(),
+			errorCode: stateValues.errorCode ?? {},
+			hasClosedCodeReviewWelcomeTips: stateValues.hasClosedCodeReviewWelcomeTips ?? false,
 			imageGenerationProvider: stateValues.imageGenerationProvider,
 			openRouterImageApiKey: stateValues.openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel: stateValues.openRouterImageGenerationSelectedModel,
-			featureRoomoteControlEnabled: (() => {
-				return false
-				// try {
-				// 	const userSettings = CloudService.instance.getUserSettings()
-				// 	const hasOrganization = cloudUserInfo && cloudUserInfo["organizationId"] != null
-				// 	return hasOrganization || (userSettings?.features?.roomoteControlEnabled ?? false)
-				// } catch (error) {
-				// 	console.error(
-				// 		`[getState] failed to get featureRoomoteControlEnabled: ${error instanceof Error ? error.message : String(error)}`,
-				// 	)
-				// 	return false
-				// }
-			})(),
-			errorCode: stateValues.errorCode ?? {},
 		}
 	}
 
-	async updateTaskHistory(item: HistoryItem): Promise<HistoryItem[]> {
-		const history = (this.getGlobalState("taskHistory") as HistoryItem[] | undefined) || []
-		const existingItemIndex = history.findIndex((h) => h.id === item.id)
+	/**
+	 * Updates a task in the task history and optionally broadcasts the updated history to the webview.
+	 * Now delegates to TaskHistoryStore for per-task file persistence.
+	 *
+	 * @param item The history item to update or add
+	 * @param options.broadcast Whether to broadcast the updated history to the webview (default: true)
+	 * @returns The updated task history array
+	 */
+	async updateTaskHistory(item: HistoryItem, options: { broadcast?: boolean } = {}): Promise<HistoryItem[]> {
+		const { broadcast = true } = options
 
-		if (existingItemIndex !== -1) {
-			// Preserve existing metadata (e.g., delegation fields) unless explicitly overwritten.
-			// This prevents loss of status/awaitingChildId/delegatedToId when tasks are reopened,
-			// terminated, or when routine message persistence occurs.
-			history[existingItemIndex] = {
-				...history[existingItemIndex],
-				...item,
-			}
-		} else {
-			history.push(item)
-		}
-
-		await this.updateGlobalState("taskHistory", history)
+		const history = await this.taskHistoryStore.upsert(item)
 		this.recentTasksCache = undefined
 
+		// Broadcast the updated history to the webview if requested.
+		// Prefer per-item updates to avoid repeatedly cloning/sending the full history.
+		if (broadcast && this.isViewLaunched) {
+			const updatedItem = this.taskHistoryStore.get(item.id) ?? item
+			await this.postMessageToWebview({ type: "taskHistoryItemUpdated", taskHistoryItem: updatedItem })
+		}
+
 		return history
+	}
+
+	/**
+	 * Schedule a debounced write-through of task history to globalState.
+	 * Only used for backward compatibility during the transition period.
+	 * Per-task files are authoritative; globalState is the downgrade fallback.
+	 */
+	private scheduleGlobalStateWriteThrough(): void {
+		if (this.globalStateWriteThroughTimer) {
+			clearTimeout(this.globalStateWriteThroughTimer)
+		}
+
+		this.globalStateWriteThroughTimer = setTimeout(async () => {
+			this.globalStateWriteThroughTimer = null
+			try {
+				const items = this.taskHistoryStore.getAll()
+				await this.updateGlobalState("taskHistory", items)
+			} catch (err) {
+				this.log(
+					`[scheduleGlobalStateWriteThrough] Failed: ${err instanceof Error ? err.message : String(err)}`,
+				)
+			}
+		}, ClineProvider.GLOBAL_STATE_WRITE_THROUGH_DEBOUNCE_MS)
+	}
+
+	/**
+	 * Flush any pending debounced globalState write-through immediately.
+	 */
+	private flushGlobalStateWriteThrough(): void {
+		if (this.globalStateWriteThroughTimer) {
+			clearTimeout(this.globalStateWriteThroughTimer)
+			this.globalStateWriteThroughTimer = null
+		}
+
+		const items = this.taskHistoryStore.getAll()
+		this.updateGlobalState("taskHistory", items).catch((err) => {
+			this.log(`[flushGlobalStateWriteThrough] Failed: ${err instanceof Error ? err.message : String(err)}`)
+		})
+	}
+
+	/**
+	 * Broadcasts a task history update to the webview.
+	 * This sends a lightweight message with just the task history, rather than the full state.
+	 * @param history The task history to broadcast (if not provided, reads from the store)
+	 */
+	public async broadcastTaskHistoryUpdate(history?: HistoryItem[]): Promise<void> {
+		if (!this.isViewLaunched) {
+			return
+		}
+
+		const taskHistory = history ?? this.taskHistoryStore.getAll()
+
+		// Sort and filter the history the same way as getStateToPostToWebview
+		const sortedHistory = taskHistory
+			.filter((item: HistoryItem) => item.ts && item.task)
+			.sort((a: HistoryItem, b: HistoryItem) => b.ts - a.ts)
+
+		await this.postMessageToWebview({
+			type: "taskHistoryUpdated",
+			taskHistory: sortedHistory,
+		})
 	}
 
 	// ContextProxy
@@ -2501,50 +3365,13 @@ export class ClineProvider
 		await this.contextProxy.setValues(values)
 	}
 
-	async fixCodebase() {
-		let answer = await vscode.window.showInformationMessage(
-			t("common:confirmation.reset_codebase"),
-			{ modal: true },
-			t("common:answers.yes"),
-		)
-
-		if (answer !== t("common:answers.yes")) {
-			return
-		}
-		try {
-			// ZgsmCodebaseIndexManager.getInstance()
-			const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
-			await zgsmCodebaseIndexManager.stopHealthCheck()
-			await zgsmCodebaseIndexManager.stopExistingClient()
-
-			const codebaseHomeDir = path.join(os.homedir(), ".costrict")
-			const codebaseIndexDirs = [
-				path.join(codebaseHomeDir, "bin"),
-				path.join(codebaseHomeDir, "cache"),
-				path.join(codebaseHomeDir, "logs"),
-				path.join(codebaseHomeDir, "package"),
-				path.join(codebaseHomeDir, "run"),
-				path.join(codebaseHomeDir, "share"),
-			]
-
-			for (const codebaseIndexDir of codebaseIndexDirs) {
-				try {
-					await fs.rm(codebaseIndexDir, { recursive: true, force: true })
-				} catch (error) {
-					this.log(
-						`Failed to remove ${codebaseIndexDir}: ${error instanceof Error ? error.message : String(error)}`,
-					)
-				}
-			}
-
-			sendZgsmCloseWindow(generateNewSessionClientId())
-			await delay(1000)
-			await vscode.commands.executeCommand("workbench.action.closeWindow")
-		} catch (error) {
-			vscode.window.showErrorMessage(
-				`Failed to reset codebase: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+	async fixHistory() {
+		const { getStorageBasePath } = await import("../../utils/storage.js")
+		const basePath = await getStorageBasePath(this.contextProxy.globalStorageUri.fsPath)
+		const historyIndexPath = path.join(basePath, "tasks", "_index.json")
+		await fs.rm(historyIndexPath, { force: true })
+		await delay(1000)
+		await vscode.commands.executeCommand("workbench.action.closeWindow")
 	}
 
 	// dev
@@ -2575,6 +3402,7 @@ export class ClineProvider
 		await this.contextProxy.resetAllState()
 		await this.providerSettingsManager.resetAllConfigs()
 		await this.customModesManager.resetCustomModes()
+		this.cachedCustomModes = undefined
 		await this.removeClineFromStack()
 		await this.postStateToWebview()
 		await this.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
@@ -2583,10 +3411,10 @@ export class ClineProvider
 
 	// history
 	async clearHistory() {
-		const { getStorageBasePath } = await import("../../utils/storage")
+		const { getStorageBasePath } = await import("../../utils/storage.js")
 		const basePath = await getStorageBasePath(this.contextProxy.globalStorageUri.fsPath)
 		const taskDir = path.join(basePath, "tasks")
-		await fs.rm(taskDir, { recursive: true, force: true })
+		await fs.rm(taskDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 		const homeDir = os.homedir()
 		const versionDir = path.join(homeDir, ".costrict", "share")
 		const versionFilePath = path.join(versionDir, "version.json")
@@ -2618,6 +3446,50 @@ export class ClineProvider
 		return this.mcpHub
 	}
 
+	public async ensureMcpHub(): Promise<McpHub> {
+		if (this.mcpHub) {
+			return this.mcpHub
+		}
+
+		const hub = await McpServerManager.getInstance(this.context, this)
+		if (!this.mcpHub) {
+			this.mcpHub = hub
+			this.mcpHub.registerClient()
+
+			// Run one-shot async task store cleanup after the hub is first needed.
+			const store = this.mcpHub.getAsyncTaskStore()
+			void new McpAsyncTaskStoreCleaner({
+				list: () => store.list(),
+				delete: (id) => store.delete(id),
+			})
+				.run()
+				.catch((err) => this.log(`McpAsyncTaskStoreCleaner failed: ${err}`))
+		}
+
+		return this.mcpHub
+	}
+
+	public getSkillsManager(): SkillsManager | undefined {
+		return this.skillsManager
+	}
+
+	public async ensureSkillsManager(): Promise<SkillsManager> {
+		if (this.skillsManager) {
+			return this.skillsManager
+		}
+
+		const skillsManager = new SkillsManager(this)
+		this.skillsManager = skillsManager
+		try {
+			await skillsManager.initialize()
+		} catch (error) {
+			this.skillsManager = undefined
+			this.log(`Failed to initialize Skills Manager: ${error}`)
+			throw error
+		}
+		return skillsManager
+	}
+
 	/**
 	 * Check if the current state is compliant with MDM policy
 	 * @returns true if compliant or no MDM policy exists, false if MDM policy exists and user is non-compliant
@@ -2634,64 +3506,6 @@ export class ClineProvider
 		}
 
 		return true
-	}
-
-	public async remoteControlEnabled(enabled: boolean) {
-		if (!enabled) {
-			await BridgeOrchestrator.disconnect()
-			return
-		}
-
-		const userInfo = CloudService.instance.getUserInfo()
-
-		if (!userInfo) {
-			this.log("[ClineProvider#remoteControlEnabled] Failed to get user info, disconnecting")
-			await BridgeOrchestrator.disconnect()
-			return
-		}
-
-		const config = await CloudService.instance.cloudAPI?.bridgeConfig().catch(() => undefined)
-
-		if (!config) {
-			this.log("[ClineProvider#remoteControlEnabled] Failed to get bridge config")
-			return
-		}
-
-		await BridgeOrchestrator.connectOrDisconnect(userInfo, enabled, {
-			...config,
-			provider: this,
-			sessionId: generateNewSessionClientId(),
-			isCloudAgent: CloudService.instance.isCloudAgent,
-		})
-
-		const bridge = BridgeOrchestrator.getInstance()
-
-		if (bridge) {
-			const currentTask = this.getCurrentTask()
-
-			if (currentTask && !currentTask.enableBridge) {
-				try {
-					currentTask.enableBridge = true
-					await BridgeOrchestrator.subscribeToTask(currentTask)
-				} catch (error) {
-					const message = `[ClineProvider#remoteControlEnabled] BridgeOrchestrator.subscribeToTask() failed: ${error instanceof Error ? error.message : String(error)}`
-					this.log(message)
-					console.error(message)
-				}
-			}
-		} else {
-			for (const task of this.clineStack) {
-				if (task.enableBridge) {
-					try {
-						await BridgeOrchestrator.getInstance()?.unsubscribeFromTask(task.taskId)
-					} catch (error) {
-						const message = `[ClineProvider#remoteControlEnabled] BridgeOrchestrator#unsubscribeFromTask() failed: ${error instanceof Error ? error.message : String(error)}`
-						this.log(message)
-						console.error(message)
-					}
-				}
-			}
-		}
 	}
 
 	/**
@@ -2766,7 +3580,7 @@ export class ClineProvider
 			return this.recentTasksCache
 		}
 
-		const history = this.getGlobalState("taskHistory") ?? []
+		const history = this.taskHistoryStore.getAll()
 		const workspaceTasks: HistoryItem[] = []
 
 		for (const item of history) {
@@ -2823,20 +3637,24 @@ export class ClineProvider
 			await this.setValues(configuration)
 
 			if (configuration.allowedCommands) {
+				delete this.cachedMergedCommands?.allowedCommands
+				delete this.cachedWorkspaceCommandLists?.allowedCommands
 				await vscode.workspace
-					.getConfiguration(Package.name)
+					.getConfiguration(Package.commandIDPrefix)
 					.update("allowedCommands", configuration.allowedCommands, vscode.ConfigurationTarget.Global)
 			}
 
 			if (configuration.deniedCommands) {
+				delete this.cachedMergedCommands?.deniedCommands
+				delete this.cachedWorkspaceCommandLists?.deniedCommands
 				await vscode.workspace
-					.getConfiguration(Package.name)
+					.getConfiguration(Package.commandIDPrefix)
 					.update("deniedCommands", configuration.deniedCommands, vscode.ConfigurationTarget.Global)
 			}
 
 			if (configuration.commandExecutionTimeout !== undefined) {
 				await vscode.workspace
-					.getConfiguration(Package.name)
+					.getConfiguration(Package.commandIDPrefix)
 					.update(
 						"commandExecutionTimeout",
 						configuration.commandExecutionTimeout,
@@ -2847,18 +3665,26 @@ export class ClineProvider
 			if (configuration.currentApiConfigName) {
 				await this.setProviderProfile(configuration.currentApiConfigName)
 			}
+
+			// Register custom modes so the CustomModesManager knows about them.
+			// setValues writes to global state, but the manager overwrites that
+			// when it merges .roomodes + global settings on refresh.
+			// Persisting via updateCustomMode ensures modes survive the merge cycle.
+			if (configuration.customModes?.length) {
+				for (const mode of configuration.customModes) {
+					await this.customModesManager.updateCustomMode(mode.slug, mode)
+				}
+				await this.getCachedCustomModes(true)
+			}
 		}
 
 		const {
 			apiConfiguration,
 			organizationAllowList,
-			diffEnabled: enableDiff,
 			enableCheckpoints,
 			checkpointTimeout,
-			fuzzyMatchThreshold,
 			experiments,
-			cloudUserInfo,
-			remoteControlEnabled,
+			experimentSettings,
 		} = await this.getState()
 
 		// Single-open-task invariant: always enforce for user-initiated top-level tasks
@@ -2877,24 +3703,26 @@ export class ClineProvider
 		const task = new Task({
 			provider: this,
 			apiConfiguration,
-			enableDiff,
 			enableCheckpoints,
 			checkpointTimeout,
-			fuzzyMatchThreshold,
 			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			task: text,
 			images,
 			experiments,
+			experimentSettings,
 			rootTask: this.clineStack.length > 0 ? this.clineStack[0] : undefined,
 			parentTask,
 			taskNumber: this.clineStack.length + 1,
 			onCreated: this.taskCreationCallback,
-			enableBridge: BridgeOrchestrator.isEnabled(cloudUserInfo, remoteControlEnabled),
 			initialTodos: options.initialTodos,
+			// Ensure this task is present in clineStack before startTask() emits
+			// its initial state update, so state.currentTaskId is available ASAP.
+			startTask: false,
 			...options,
 		})
 
 		await this.addClineToStack(task)
+		task.start()
 
 		this.log(
 			`[createTask] ${task.parentTask ? "child" : "parent"} task ${task.taskId}.${task.instanceId} instantiated`,
@@ -2912,7 +3740,20 @@ export class ClineProvider
 
 		console.log(`[cancelTask] cancelling task ${task.taskId}.${task.instanceId}`)
 
-		const { historyItem, uiMessagesFilePath } = await this.getTaskWithId(task.taskId)
+		let historyItem: HistoryItem | undefined
+		try {
+			const history = await this.getTaskWithId(task.taskId)
+			historyItem = history.historyItem
+		} catch (error) {
+			// During task startup there is a short window where currentTask exists
+			// but task history has not been persisted yet. Cancelling should still
+			// abort safely; we just skip post-cancel rehydration in that case.
+			if (error instanceof Error && error.message === "Task not found") {
+				this.log(`[cancelTask] task history missing for ${task.taskId}; skipping rehydrate`)
+			} else {
+				throw error
+			}
+		}
 
 		// Preserve parent and root task information for history item.
 		const rootTask = task.rootTask
@@ -2970,6 +3811,10 @@ export class ClineProvider
 			}
 		}
 
+		if (!historyItem) {
+			return
+		}
+
 		// Clears task again, so we need to abortTask manually above.
 		await this.createTaskWithHistoryItem({ ...historyItem, rootTask, parentTask })
 	}
@@ -2996,7 +3841,7 @@ export class ClineProvider
 
 	public async getModes(): Promise<{ slug: string; name: string }[]> {
 		try {
-			const customModes = await this.customModesManager.getCustomModes()
+			const customModes = await this.getCachedCustomModes()
 			return [...DEFAULT_MODES, ...customModes].map(({ slug, name }) => ({ slug, name }))
 		} catch (error) {
 			return DEFAULT_MODES.map(({ slug, name }) => ({ slug, name }))
@@ -3012,8 +3857,8 @@ export class ClineProvider
 		await this.setValues({ mode })
 	}
 
-	public async setZgsmCodeMode(zgsmCodeMode: ZgsmCodeMode): Promise<void> {
-		await this.setValues({ zgsmCodeMode })
+	public async setCostrictCodeMode(costrictCodeMode: CostrictCodeMode): Promise<void> {
+		await this.setValues({ costrictCodeMode })
 		await this.postStateToWebview()
 	}
 
@@ -3047,7 +3892,7 @@ export class ClineProvider
 				appVersion: packageJSON?.version ?? Package.version,
 				vscodeVersion: vscode.version,
 				platform: process.platform,
-				editorName: getAppName(),
+				editorName: getAppName() as string,
 			}
 		}
 
@@ -3092,21 +3937,23 @@ export class ClineProvider
 		}
 
 		let userInfo: { userName?: string } | undefined = {}
-		const { zgsmAccessToken } = apiConfiguration
-		if (zgsmAccessToken) {
-			const decoded = jwtDecode(zgsmAccessToken)
+		const { costrictAccessToken } = apiConfiguration
+		if (costrictAccessToken) {
+			const decoded = jwtDecode(costrictAccessToken)
 			userInfo = {
 				userName: (decoded as any).displayName || "",
 			}
 		}
 
 		// Return all properties including git info - clients will filter as needed
+		const apiProvider = apiConfiguration?.apiProvider
+
 		return {
 			language,
 			mode,
 			taskId: task?.taskId,
 			parentTaskId: task?.parentTaskId,
-			apiProvider: apiConfiguration?.apiProvider,
+			apiProvider: apiProvider && !isRetiredProvider(apiProvider) ? apiProvider : undefined,
 			modelId: task?.api?.getModel().id,
 			diffStrategy: task?.diffStrategy?.getName(),
 			isSubtask: task ? !!task.parentTaskId : undefined,
@@ -3130,7 +3977,7 @@ export class ClineProvider
 	public async getTelemetryProperties(): Promise<TelemetryProperties> {
 		return {
 			...this.getAppProperties(),
-			...this.getCloudProperties(),
+			// ...this.getCloudProperties(),
 			...(await this.getTaskProperties()),
 			...(await this.getGitProperties()),
 		}
@@ -3139,12 +3986,12 @@ export class ClineProvider
 	public get cwd() {
 		return this.currentWorkspacePath || getWorkspacePath()
 	}
-	public getZgsmAuthCommands() {
-		return this.zgsmAuthCommands
+	public getCostrictAuthCommands() {
+		return this.costrictAuthCommands
 	}
 
-	public setZgsmAuthCommands(zgsmAuthCommands: ZgsmAuthCommands) {
-		this.zgsmAuthCommands = zgsmAuthCommands
+	public setCostrictAuthCommands(costrictAuthCommands: CostrictAuthCommands) {
+		this.costrictAuthCommands = costrictAuthCommands
 	}
 
 	/**
@@ -3175,8 +4022,18 @@ export class ClineProvider
 				`[delegateParentAndOpenChild] Parent mismatch: expected ${parentTaskId}, current ${parent.taskId}`,
 			)
 		}
+
+		// Check if parent mode has taskMode restriction
+		const state = await this.getState()
+		const parentMode = getModeBySlug(state?.mode ?? "", state?.customModes)
+		if (parentMode?.taskMode && mode !== parentMode.taskMode) {
+			throw new Error(
+				`[delegateParentAndOpenChild] Parent mode '${parentMode.name}' only allows delegation to '${parentMode.taskMode}' mode. Requested: '${mode}'`,
+			)
+		}
+
 		// 2) Flush pending tool results to API history BEFORE disposing the parent.
-		//    This is critical for native tool protocol: when tools are called before new_task,
+		//    This is critical: when tools are called before new_task,
 		//    their tool_result blocks are in userMessageContent but not yet saved to API history.
 		//    If we don't flush them, the parent's API conversation will be incomplete and
 		//    cause 400 errors when resumed (missing tool_result for tool_use blocks).
@@ -3186,7 +4043,21 @@ export class ClineProvider
 		//    recursivelyMakeClineRequests BEFORE tools start executing. We only need to
 		//    flush the pending user message with tool_results.
 		try {
-			await parent.flushPendingToolResultsToHistory()
+			const flushSuccess = await parent.flushPendingToolResultsToHistory()
+
+			if (!flushSuccess) {
+				console.warn(`[delegateParentAndOpenChild] Flush failed for parent ${parentTaskId}, retrying...`)
+				const retrySuccess = await parent.retrySaveApiConversationHistory()
+
+				if (!retrySuccess) {
+					console.error(
+						`[delegateParentAndOpenChild] CRITICAL: Parent ${parentTaskId} API history not persisted to disk. Child return may produce stale state.`,
+					)
+					vscode.window.showWarningMessage(
+						"Warning: Parent task state could not be saved. The parent task may lose recent context when resumed.",
+					)
+				}
+			}
 		} catch (error) {
 			this.log(
 				`[delegateParentAndOpenChild] Error flushing pending tool results (non-fatal): ${
@@ -3199,7 +4070,7 @@ export class ClineProvider
 		//    This ensures we never have >1 tasks open at any time during delegation.
 		//    Await abort completion to ensure clean disposal and prevent unhandled rejections.
 		try {
-			await this.removeClineFromStack()
+			await this.removeClineFromStack({ skipDelegationRepair: true })
 		} catch (error) {
 			this.log(
 				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${
@@ -3227,12 +4098,22 @@ export class ClineProvider
 		// Pass initialStatus: "active" to ensure the child task's historyItem is created
 		// with status from the start, avoiding race conditions where the task might
 		// call attempt_completion before status is persisted separately.
+		//
+		// Pass startTask: false to prevent the child from beginning its task loop
+		// (and writing to globalState via saveClineMessages → updateTaskHistory)
+		// before we persist the parent's delegation metadata in step 5.
+		// Without this, the child's fire-and-forget startTask() races with step 5,
+		// and the last writer to globalState overwrites the other's changes—
+		// causing the parent's delegation fields to be lost.
 		const child = await this.createTask(message, undefined, parent as any, {
 			initialTodos,
 			initialStatus: "active",
+			startTask: false,
+			costrictWorkflowMode: parent.costrictWorkflowMode,
+			costrictWorkflowSpecScope: parent.costrictWorkflowSpecScope,
 		})
 
-		// 5) Persist parent delegation metadata
+		// 5) Persist parent delegation metadata BEFORE the child starts writing.
 		try {
 			const { historyItem } = await this.getTaskWithId(parentTaskId)
 			const childIds = Array.from(new Set([...(historyItem.childIds ?? []), child.taskId]))
@@ -3252,7 +4133,10 @@ export class ClineProvider
 			)
 		}
 
-		// 6) Emit TaskDelegated (provider-level)
+		// 6) Start the child task now that parent metadata is safely persisted.
+		child.start()
+
+		// 7) Emit TaskDelegated (provider-level)
 		try {
 			this.emit(RooCodeEventName.TaskDelegated, parentTaskId, child.taskId)
 		} catch {
@@ -3269,6 +4153,8 @@ export class ClineProvider
 		parentTaskId: string
 		childTaskId: string
 		completionResultSummary: string
+		costrictWorkflowMode?: string
+		costrictWorkflowSpecScope?: string
 	}): Promise<void> {
 		const { parentTaskId, childTaskId, completionResultSummary } = params
 		const globalStoragePath = this.contextProxy.globalStorageUri.fsPath
@@ -3328,9 +4214,9 @@ export class ClineProvider
 			}
 		}
 
-		// The API expects: user → assistant (with tool_use) → user (with tool_result)
-		// We need to add a NEW user message with the tool_result AFTER the assistant's tool_use
-		// NOT add it to an existing user message
+		// Preferred: if the parent history contains the native tool_use for new_task,
+		// inject a matching tool_result for the Anthropic message contract:
+		// user → assistant (tool_use) → user (tool_result)
 		if (toolUseId) {
 			// Check if the last message is already a user message with a tool_result for this tool_use_id
 			// (in case this is a retry or the history was already updated)
@@ -3361,14 +4247,23 @@ export class ClineProvider
 					ts,
 				})
 			}
+
+			// Validate the newly injected tool_result against the preceding assistant message.
+			// This ensures the tool_result's tool_use_id matches a tool_use in the immediately
+			// preceding assistant message (Anthropic API requirement).
+			const lastMessage = parentApiMessages[parentApiMessages.length - 1]
+			if (lastMessage?.role === "user") {
+				const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
+				parentApiMessages[parentApiMessages.length - 1] = validatedMessage
+			}
 		} else {
-			// Fallback for XML protocol or when toolUseId couldn't be found:
-			// Add a text block (not ideal but maintains backward compatibility)
+			// If there is no corresponding tool_use in the parent API history, we cannot emit a
+			// tool_result. Fall back to a plain user text note so the parent can still resume.
 			parentApiMessages.push({
 				role: "user",
 				content: [
 					{
-						type: "text",
+						type: "text" as const,
 						text: `Subtask ${childTaskId} completed.\n\nResult:\n${completionResultSummary}`,
 					},
 				],
@@ -3376,18 +4271,21 @@ export class ClineProvider
 			})
 		}
 
-		// Validate the newly injected tool_result against the preceding assistant message.
-		// This ensures the tool_result's tool_use_id matches a tool_use in the immediately
-		// preceding assistant message (Anthropic API requirement).
-		const lastMessage = parentApiMessages[parentApiMessages.length - 1]
-		if (lastMessage?.role === "user") {
-			const validatedMessage = validateAndFixToolResultIds(lastMessage, parentApiMessages.slice(0, -1))
-			parentApiMessages[parentApiMessages.length - 1] = validatedMessage
-		}
-
 		await saveApiMessages({ messages: parentApiMessages as any, taskId: parentTaskId, globalStoragePath })
 
-		// 3) Update child metadata to "completed" status
+		// 3) Close child instance if still open (single-open-task invariant).
+		//    This MUST happen BEFORE updating the child's status to "completed" because
+		//    removeClineFromStack() → abortTask(true) → saveClineMessages() writes
+		//    the historyItem with initialStatus (typically "active"), which would
+		//    overwrite a "completed" status set earlier.
+		const current = this.getCurrentTask()
+		if (current?.taskId === childTaskId) {
+			await this.removeClineFromStack()
+		}
+
+		// 4) Update child metadata to "completed" status.
+		//    This runs after the abort so it overwrites the stale "active" status
+		//    that saveClineMessages() may have written during step 3.
 		try {
 			const { historyItem: childHistory } = await this.getTaskWithId(childTaskId)
 			await this.updateTaskHistory({
@@ -3402,7 +4300,7 @@ export class ClineProvider
 			)
 		}
 
-		// 4) Update parent metadata and persist BEFORE emitting completion event
+		// 5) Update parent metadata and persist BEFORE emitting completion event
 		const childIds = Array.from(new Set([...(historyItem.childIds ?? []), childTaskId]))
 		const updatedHistory: typeof historyItem = {
 			...historyItem,
@@ -3414,22 +4312,23 @@ export class ClineProvider
 		}
 		await this.updateTaskHistory(updatedHistory)
 
-		// 5) Emit TaskDelegationCompleted (provider-level)
+		// 6) Emit TaskDelegationCompleted (provider-level)
 		try {
 			this.emit(RooCodeEventName.TaskDelegationCompleted, parentTaskId, childTaskId, completionResultSummary)
 		} catch {
 			// non-fatal
 		}
 
-		// 6) Close child instance if still open (single-open-task invariant)
-		const current = this.getCurrentTask()
-		if (current?.taskId === childTaskId) {
-			await this.removeClineFromStack()
-		}
-
 		// 7) Reopen the parent from history as the sole active task (restores saved mode)
 		//    IMPORTANT: startTask=false to suppress resume-from-history ask scheduling
-		const parentInstance = await this.createTaskWithHistoryItem(updatedHistory, { startTask: false })
+		const parentInstance = await this.createTaskWithHistoryItem(
+			updatedHistory,
+			{ startTask: false },
+			{
+				costrictWorkflowMode: params?.costrictWorkflowMode,
+				costrictWorkflowSpecScope: params?.costrictWorkflowSpecScope,
+			},
+		)
 
 		// 8) Inject restored histories into the in-memory instance before resuming
 		if (parentInstance) {

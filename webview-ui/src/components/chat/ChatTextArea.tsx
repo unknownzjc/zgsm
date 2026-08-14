@@ -1,12 +1,14 @@
 import React, { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useEvent } from "react-use"
 import DynamicTextArea from "react-textarea-autosize"
-import { VolumeX, Image, WandSparkles, SendHorizontal /* MessageSquareX */ } from "lucide-react"
+import { ReviewTaskStatus } from "@roo/codeReview"
+import { VolumeX, Image, WandSparkles, SendHorizontal, ListEnd, Square } from "lucide-react"
+
+import type { ExtensionMessage, ProviderName, RouterModels } from "@roo-code/types"
 
 import { mentionRegex, mentionRegexGlobal, commandRegexGlobal, unescapeSpaces } from "@roo/context-mentions"
 import { WebviewMessage } from "@roo/WebviewMessage"
-import { Mode, getAllModes } from "@roo/modes"
-import { ExtensionMessage } from "@roo/ExtensionMessage"
+import { Mode, getAllModes, isProviderAllowedForCostrictCodeMode } from "@roo/modes"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
@@ -25,7 +27,7 @@ import { StandardTooltip } from "@src/components/ui"
 
 import Thumbnails from "../common/Thumbnails"
 import { ModeSelector } from "./ModeSelector"
-// import { ApiConfigSelector } from "./ApiConfigSelector"
+import { ApiConfigSelector } from "./ApiConfigSelector"
 import { AutoApproveDropdown } from "./AutoApproveDropdown"
 import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
@@ -37,7 +39,6 @@ import { filterModels } from "../settings/utils/organizationFilters"
 import { useRouterModels } from "../ui/hooks/useRouterModels"
 import { ProviderSettings } from "@roo-code/types"
 import ProviderRenderer from "../settings/ProviderRenderer"
-import { RouterModels } from "@roo/api"
 // import { CloudAccountSwitcher } from "../cloud/CloudAccountSwitcher"
 import { ModeSwitch } from "./ModeSwitch"
 
@@ -59,19 +60,22 @@ interface ChatTextAreaProps {
 	hoverPreviewMap?: Map<string, string>
 	// Edit mode props
 	isEditMode?: boolean
-	isStreaming?: boolean
+	isAutoCommandRuning?: boolean
 	onCancel?: () => void
-	// Browser session status
-	isBrowserSessionActive?: boolean
-	showBrowserDockToggle?: boolean
+	// Stop/Queue functionality
+	isStreaming?: boolean
+	onStop?: () => void
+	onStopCommand?: () => void
+	onEnqueueMessage?: () => void
 }
 
 export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 	(
 		{
-			inputValue,
+			inputValue = "",
+			isAutoCommandRuning = false,
 			setInputValue,
-			// selectApiConfigDisabled,
+			selectApiConfigDisabled,
 			placeholderText,
 			selectedImages,
 			setSelectedImages,
@@ -84,10 +88,11 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			modeShortcutText,
 			hoverPreviewMap,
 			isEditMode = false,
-			isStreaming = false,
 			onCancel,
-			isBrowserSessionActive = false,
-			showBrowserDockToggle = false,
+			isStreaming = false,
+			onStop,
+			onStopCommand,
+			onEnqueueMessage,
 		},
 		ref,
 	) => {
@@ -96,12 +101,12 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			filePaths,
 			openedTabs,
 			currentApiConfigName,
-			// listApiConfigMeta,
+			listApiConfigMeta,
 			customModes,
 			customModePrompts,
 			cwd,
-			// pinnedApiConfigs,
-			// togglePinnedApiConfig,
+			pinnedApiConfigs,
+			togglePinnedApiConfig,
 			taskHistory,
 			clineMessages,
 			commands,
@@ -110,15 +115,23 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			// cloudUserInfo,
 			// cloudOrganizations,
 			enterBehavior,
+			reviewTask,
+			automaticallyFocus,
+			ttsEnabled,
+			costrictCodeMode,
+			lockApiConfigAcrossModes,
 		} = useExtensionState()
-
 		const selectedProviderModels = useMemo(() => {
 			if (!apiConfiguration?.apiProvider) return []
 
-			const models = MODELS_BY_PROVIDER[apiConfiguration.apiProvider]
+			const models = MODELS_BY_PROVIDER[apiConfiguration.apiProvider as ProviderName]
 			if (!models) return []
 
-			const filteredModels = filterModels(models, apiConfiguration.apiProvider, organizationAllowList)
+			const filteredModels = filterModels(
+				models,
+				apiConfiguration.apiProvider as ProviderName,
+				organizationAllowList,
+			)
 
 			const modelOptions = filteredModels
 				? Object.keys(filteredModels).map((modelId) => ({
@@ -146,14 +159,20 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			[apiConfiguration, currentApiConfigName],
 		)
 
-		// // Find the ID and display text for the currently selected API configuration.
-		// const { currentConfigId, displayName } = useMemo(() => {
-		// 	const currentConfig = listApiConfigMeta?.find((config) => config.name === currentApiConfigName)
-		// 	return {
-		// 		currentConfigId: currentConfig?.id || "",
-		// 		displayName: currentApiConfigName || "", // Use the name directly for display.
-		// 	}
-		// }, [listApiConfigMeta, currentApiConfigName])
+		const selectableApiConfigs = useMemo(() => {
+			return (listApiConfigMeta || []).filter((config) =>
+				isProviderAllowedForCostrictCodeMode(costrictCodeMode, config.apiProvider),
+			)
+		}, [listApiConfigMeta, costrictCodeMode])
+
+		// Find the ID and display text for the currently selected API configuration.
+		const { currentConfigId, displayName } = useMemo(() => {
+			const currentConfig = listApiConfigMeta?.find((config) => config.name === currentApiConfigName)
+			return {
+				currentConfigId: currentConfig?.id || "",
+				displayName: currentApiConfigName || "",
+			}
+		}, [listApiConfigMeta, currentApiConfigName])
 
 		const [gitCommits, setGitCommits] = useState<any[]>([])
 		const [showDropdown, setShowDropdown] = useState(false)
@@ -232,7 +251,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						}, 0)
 					}
 				} else if (message.type === "commitSearchResults") {
-					const commits = message.commits.map((commit: any) => ({
+					const commits = (message.commits || []).map((commit: any) => ({
 						type: ContextMenuOptionType.Git,
 						value: commit.hash,
 						label: commit.subject,
@@ -292,7 +311,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 		}, [selectedType, searchQuery])
 
 		const handleEnhancePrompt = useCallback(() => {
-			const trimmedInput = inputValue.trim()
+			const trimmedInput = inputValue?.trim()
 
 			if (trimmedInput) {
 				setIsEnhancingPrompt(true)
@@ -306,7 +325,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 		// Memoized check for whether the input has content (text or images)
 		const hasInputContent = useMemo(() => {
-			return inputValue.trim().length > 0 || selectedImages.length > 0
+			return inputValue?.trim().length > 0 || selectedImages.length > 0
 		}, [inputValue, selectedImages])
 
 		// Compute the key combination text for the send button tooltip based on enterBehavior
@@ -378,15 +397,23 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				if (type === ContextMenuOptionType.Command && value) {
 					// Handle command selection.
 					setSelectedMenuIndex(-1)
-					setInputValue("")
 					setShowContextMenu(false)
-
-					// Insert the command mention into the textarea
+	
+					// Insert the command mention into the textarea. Only replace the slash-command
+					// query (from the "/" up to the cursor) with the selected command, preserving
+					// any content that already existed after the cursor (e.g. when "/" was typed
+					// before existing text).
 					const commandMention = `/${value}`
-					setInputValue(commandMention + " ")
-					setCursorPosition(commandMention.length + 1)
-					setIntendedCursorPosition(commandMention.length + 1)
-
+					const fullText = textAreaRef.current?.value ?? ""
+					const slashIndex = fullText.lastIndexOf("/", cursorPosition)
+					const beforeSlash = slashIndex >= 0 ? fullText.slice(0, slashIndex) : ""
+					const afterCursor = slashIndex >= 0 ? fullText.slice(cursorPosition) : ""
+					const newCommandValue = beforeSlash + commandMention + " " + afterCursor
+					setInputValue(newCommandValue)
+					const newCommandCursorPosition = beforeSlash.length + commandMention.length + 1
+					setCursorPosition(newCommandCursorPosition)
+					setIntendedCursorPosition(newCommandCursorPosition)
+	
 					// Focus the textarea
 					setTimeout(() => {
 						if (textAreaRef.current) {
@@ -478,6 +505,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								fileSearchResults,
 								allModes,
 								commands,
+								costrictCodeMode,
 							)
 							const optionsLength = options.length
 
@@ -516,6 +544,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							fileSearchResults,
 							allModes,
 							commands,
+							costrictCodeMode,
 						)[selectedMenuIndex]
 						if (
 							selectedOption &&
@@ -566,7 +595,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					const charAfterIsWhitespace =
 						charAfterCursor === " " || charAfterCursor === "\n" || charAfterCursor === "\r\n"
 
-					// Checks if char before cusor is whitespace after a mention.
+					// Checks if char before cursor is whitespace after a mention.
 					if (
 						charBeforeIsWhitespace &&
 						// "$" is added to ensure the match occurs at the end of the string.
@@ -601,23 +630,24 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				}
 			},
 			[
-				onSend,
 				showContextMenu,
-				searchQuery,
+				handleHistoryNavigation,
 				selectedMenuIndex,
-				handleMentionSelect,
+				searchQuery,
 				selectedType,
+				queryItems,
+				fileSearchResults,
+				allModes,
+				commands,
+				costrictCodeMode,
+				handleMentionSelect,
+				enterBehavior,
+				resetHistoryNavigation,
+				onSend,
 				inputValue,
 				cursorPosition,
-				setInputValue,
 				justDeletedSpaceAfterMention,
-				queryItems,
-				allModes,
-				fileSearchResults,
-				handleHistoryNavigation,
-				resetHistoryNavigation,
-				commands,
-				enterBehavior,
+				setInputValue,
 			],
 		)
 
@@ -646,9 +676,16 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				setShowContextMenu(showMenu)
 
 				if (showMenu) {
-					if (newValue.startsWith("/") && !newValue.includes(" ")) {
-						// Handle slash command - request fresh commands
-						const query = newValue
+					// A slash command context is active only when the text starts with "/" and the
+					// segment between "/" and the cursor has no space. Only that segment is the
+					// command query, so existing content (with spaces) after the cursor does not
+					// prevent the slash menu from being detected.
+					const isSlashCommand =
+						newValue.startsWith("/") && !newValue.slice(1, newCursorPosition).includes(" ")
+					if (isSlashCommand) {
+						// Handle slash command - request fresh commands.
+						// The query is only the text from "/" up to the cursor.
+						const query = newValue.slice(0, newCursorPosition)
 						setSearchQuery(query)
 						// Set to first selectable item (skip section headers)
 						setSelectedMenuIndex(1) // Section header is at 0, first command is at 1
@@ -705,6 +742,26 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			}
 		}, [showContextMenu])
 
+		// Automatically focus on the text box when the window regains focus.
+		useEffect(() => {
+			const handleWindowFocus = () => {
+				if (!automaticallyFocus) return
+				// When the window regains focus, automatically focus on the text box.
+				// However, avoid focusing when the context menu is displayed, and avoid interrupting user operations in edit mode.
+				if (textAreaRef.current && !showContextMenu && !isEditMode) {
+					setTimeout(() => {
+						textAreaRef.current?.focus()
+					}, 300)
+				}
+			}
+
+			window.addEventListener("focus", handleWindowFocus)
+
+			return () => {
+				window.removeEventListener("focus", handleWindowFocus)
+			}
+		}, [showContextMenu, isEditMode, automaticallyFocus])
+
 		const handleBlur = useCallback(() => {
 			// Only hide the context menu if the user didn't click on it.
 			if (!isMouseDownOnMenu) {
@@ -722,9 +779,9 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				// Check if the pasted content is a URL, add space after so user
 				// can easily delete if they don't want it.
 				const urlRegex = /^\S+:\/\/\S+$/
-				if (urlRegex.test(pastedText.trim())) {
+				if (urlRegex.test(pastedText?.trim())) {
 					e.preventDefault()
-					const trimmedUrl = pastedText.trim()
+					const trimmedUrl = pastedText?.trim()
 					const newValue =
 						inputValue.slice(0, cursorPosition) + trimmedUrl + " " + inputValue.slice(cursorPosition)
 					setInputValue(newValue)
@@ -842,7 +899,11 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				})
 
 				highlightLayerRef.current.innerHTML = processedText
-				textAreaRef.current.scrollTop += fixHeight ? 32 : 0
+				// Auto-scroll to bottom only when cursor is at the end of text (appending),
+				// so editing at the top doesn't push the viewport down.
+				if (fixHeight && textAreaRef.current.selectionStart === textAreaRef.current.value.length) {
+					textAreaRef.current.scrollTop = textAreaRef.current.scrollHeight
+				}
 				highlightLayerRef.current.scrollTop = textAreaRef.current.scrollTop
 				highlightLayerRef.current.scrollLeft = textAreaRef.current.scrollLeft
 			},
@@ -879,7 +940,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				const text = textFieldList || textUriList
 				if (text) {
 					// Split text on newlines to handle multiple files
-					const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "")
+					const lines = text.split(/\r?\n/).filter((line) => line?.trim() !== "")
 
 					if (lines.length > 0) {
 						// Process each line as a separate file path
@@ -985,7 +1046,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			}
 		})
 
-		const placeholderBottomText = `\n(${t("chat:addContext")}${shouldDisableImages ? `, ${t("chat:dragFiles")}` : `, ${t("chat:dragFilesImages")}`})`
+		const placeholderBottomText = t("chat:aiContentWarning")
 
 		// Common mode selector handler
 		const handleModeChange = useCallback(
@@ -996,10 +1057,15 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			[setMode],
 		)
 
-		// // Helper function to handle API config change
-		// const handleApiConfigChange = useCallback((value: string) => {
-		// 	vscode.postMessage({ type: "loadApiConfigurationById", text: value })
-		// }, [])
+		// Helper function to handle API config change
+		const handleApiConfigChange = useCallback((value: string) => {
+			vscode.postMessage({ type: "loadApiConfigurationById", text: value })
+		}, [])
+
+		const handleToggleLockApiConfig = useCallback(() => {
+			const newValue = !lockApiConfigAcrossModes
+			vscode.postMessage({ type: "lockApiConfigAcrossModes", bool: newValue })
+		}, [lockApiConfigAcrossModes])
 
 		return (
 			<div
@@ -1072,6 +1138,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									selectedType={selectedType}
 									queryItems={queryItems}
 									modes={allModes}
+									costrictCodeMode={costrictCodeMode ?? "vibe"}
 									loading={searchLoading}
 									dynamicSearchResults={fileSearchResults}
 									commands={commands}
@@ -1255,7 +1322,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 											"transition-all duration-1000",
 											"cursor-pointer",
 											hasInputContent
-												? "opacity-50 hover:opacity-100 delay-500 pointer-events-auto"
+												? "opacity-50 hover:opacity-100 delay-750 pointer-events-auto"
 												: "opacity-0 pointer-events-none duration-200 delay-0",
 											hasInputContent &&
 												"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
@@ -1265,8 +1332,8 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 										<WandSparkles className={cn("w-4 h-4", isEnhancingPrompt && "animate-spin")} />
 									</button>
 								</StandardTooltip>
-								{isTtsPlaying && (
-									<StandardTooltip content={t("chat:stopTts")}>
+								{ttsEnabled && isTtsPlaying && (
+									<StandardTooltip content={t("chat:cancel.title")}>
 										<button
 											aria-label={t("chat:stopTts")}
 											onClick={() => vscode.postMessage({ type: "stopTts" })}
@@ -1285,11 +1352,6 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 										</button>
 									</StandardTooltip>
 								)}
-								<div
-									className="hidden"
-									data-browser-session-active={isBrowserSessionActive}
-									data-show-browser-dock-toggle={showBrowserDockToggle}
-								/>
 								<StandardTooltip content={t("chat:addImages")}>
 									<button
 										aria-label={t("chat:addImages")}
@@ -1312,26 +1374,77 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 										<Image className="w-4 h-4" />
 									</button>
 								</StandardTooltip>
+								{/* <div
+									className="hidden"
+									data-browser-session-active={isBrowserSessionActive}
+									data-show-browser-dock-toggle={showBrowserDockToggle}
+								/> */}
+								{/* Queue button - shown when streaming and user has typed content */}
+								{!isEditMode && isStreaming && hasInputContent && onEnqueueMessage && (
+									<StandardTooltip content={t("chat:enqueueMessage")}>
+										<button
+											aria-label={t("chat:enqueueMessage")}
+											disabled={false}
+											onClick={onEnqueueMessage}
+											className={cn(
+												"relative inline-flex items-center justify-center",
+												"bg-transparent border-none p-1.5",
+												"rounded-md min-w-[28px] min-h-[28px]",
+												"text-vscode-descriptionForeground hover:text-vscode-foreground",
+												"transition-all duration-200",
+												"opacity-100 hover:opacity-100 pointer-events-auto",
+												"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+												"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+												"active:bg-[rgba(255,255,255,0.1)]",
+												"cursor-pointer",
+											)}>
+											<ListEnd className="w-4 h-4" />
+										</button>
+									</StandardTooltip>
+								)}
+								{/* Send/Stop button - morphs based on streaming state, always visible in edit mode */}
 								<StandardTooltip
-									content={t("chat:pressToSend", { keyCombination: sendKeyCombination })}>
+									content={
+										isEditMode
+											? t("chat:pressToSend", { keyCombination: sendKeyCombination })
+											: isStreaming
+												? t("chat:stop.title")
+												: t("chat:pressToSend", { keyCombination: sendKeyCombination })
+									}>
 									<button
-										aria-label={t("chat:pressToSend", { keyCombination: sendKeyCombination })}
-										disabled={!hasInputContent}
-										onClick={onSend}
+										aria-label={
+											isEditMode
+												? t("chat:pressToSend", { keyCombination: sendKeyCombination })
+												: isStreaming
+													? t("chat:stop.title")
+													: t("chat:pressToSend", { keyCombination: sendKeyCombination })
+										}
+										disabled={!isStreaming && !hasInputContent && !isAutoCommandRuning}
+										onClick={isAutoCommandRuning ? onStopCommand : isStreaming ? onStop : onSend}
 										className={cn(
-											"relative inline-flex items-center justify-center",
+											"relative inline-flex items-center justify-center right-[2px]",
 											"bg-transparent border-none p-1.5",
-											"rounded-md min-w-[28px] min-h-[28px]",
-											"hover:opacity-100 text-vscode-descriptionForeground hover:text-vscode-foreground",
-											"transition-all duration-150",
-											"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
+											"rounded-full min-w-[20px] min-h-[20px]",
+											"text-vscode-descriptionForeground hover:text-vscode-foreground",
+											"transition-all duration-200",
+											isEditMode || isStreaming || hasInputContent || isAutoCommandRuning
+												? "opacity-100 hover:opacity-100 pointer-events-auto"
+												: "opacity-40 cursor-not-allowed grayscale-[30%] hover:bg-transparent hover:border-[rgba(255,255,255,0.08)] active:bg-transparent",
+											(isEditMode || isStreaming || hasInputContent || isAutoCommandRuning) &&
+												"hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)]",
 											"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
-											"active:bg-[rgba(255,255,255,0.1)]",
-											hasInputContent
-												? "opacity-100 pointer-events-auto cursor-pointer"
-												: "opacity-60 pointer-events-auto cursor-not-allowed",
+											(isEditMode || isStreaming || hasInputContent || isAutoCommandRuning) &&
+												"active:bg-[rgba(255,255,255,0.1)]",
+											(isEditMode || isStreaming || hasInputContent || isAutoCommandRuning) &&
+												"cursor-pointer",
+											(isStreaming || isAutoCommandRuning) &&
+												"animate-pulse bg-vscode-button-background hover:bg-vscode-button-background",
 										)}>
-										<SendHorizontal className="w-4 h-4" />
+										{isStreaming || isAutoCommandRuning ? (
+											<Square className="size-3 stroke-none fill-vscode-button-foreground" />
+										) : (
+											<SendHorizontal className="size-4" />
+										)}
 									</button>
 								</StandardTooltip>
 							</div>
@@ -1339,7 +1452,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							{!inputValue && (
 								<div
 									className={cn(
-										"absolute left-2 z-30 flex items-center h-8 font-vscode-font-family text-vscode-editor-font-size leading-vscode-editor-line-height",
+										"absolute left-2 z-30 flex items-center h-8 font-vscode-font-family text-xs leading-vscode-editor-line-height",
 										isEditMode ? "pr-20" : "pr-9",
 									)}
 									style={{
@@ -1352,6 +1465,30 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								</div>
 							)}
 						</div>
+					</div>
+
+					{/* ModeSwitch positioned at the top left of the input area */}
+					<div className="absolute top-2 left-2 z-30 bg-vscode-input-background">
+						<ModeSwitch isStreaming={isStreaming} />
+					</div>
+
+					{/* Api config selector positioned at the top right to keep the bottom toolbar compact */}
+					<div
+						data-testid="api-config-topbar"
+						className="absolute top-2 right-2 z-30 flex items-center max-w-[45%]">
+						<ApiConfigSelector
+							value={currentConfigId}
+							displayName={displayName}
+							disabled={selectApiConfigDisabled}
+							title={t("chat:selectApiConfig")}
+							onChange={handleApiConfigChange}
+							iconOnly
+							listApiConfigMeta={selectableApiConfigs}
+							pinnedApiConfigs={pinnedApiConfigs}
+							togglePinnedApiConfig={togglePinnedApiConfig}
+							lockApiConfigAcrossModes={!!lockApiConfigAcrossModes}
+							onToggleLockApiConfig={handleToggleLockApiConfig}
+						/>
 					</div>
 				</div>
 
@@ -1392,26 +1529,20 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							onChange={handleModeChange}
 							triggerClassName="min-w-[28px] text-ellipsis overflow-hidden flex-shrink"
 							modeShortcutText={modeShortcutText}
+							isStreaming={isStreaming}
+							isReviewing={
+								["review", "security-review", "subreview"].includes(mode) &&
+								reviewTask.status === ReviewTaskStatus.RUNNING
+							}
 							customModes={customModes}
 							customModePrompts={customModePrompts}
 						/>
-						{/* <ApiConfigSelector
-							value={currentConfigId}
-							displayName={displayName}
-							disabled={selectApiConfigDisabled}
-							title={t("chat:selectApiConfig")}
-							onChange={handleApiConfigChange}
-							triggerClassName="min-w-[28px] text-ellipsis overflow-hidden flex-shrink"
-							listApiConfigMeta={listApiConfigMeta || []}
-							pinnedApiConfigs={pinnedApiConfigs}
-							togglePinnedApiConfig={togglePinnedApiConfig}
-						/> */}
 						{apiConfiguration && (
 							<ProviderRenderer
 								isEditMode={isEditMode}
 								isStreaming={isStreaming}
-								className="min-w-12 text-ellipsis overflow-hidden flex-shrink"
-								selectedProvider={apiConfiguration.apiProvider || "zgsm"}
+								className="min-w-12 text-ellipsis overflow-hidden flex-shrink bg-vscode-input-background"
+								selectedProvider={apiConfiguration.apiProvider || "costrict"}
 								apiConfiguration={apiConfiguration}
 								organizationAllowList={organizationAllowList}
 								setApiConfigurationField={setApiConfigurationField}
@@ -1419,13 +1550,8 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								selectedProviderModels={selectedProviderModels}
 							/>
 						)}
-						<AutoApproveDropdown triggerClassName="min-w-[28px] text-ellipsis overflow-hidden flex-shrink" />
+						<AutoApproveDropdown triggerClassName="min-w-[28px] text-ellipsis overflow-hidden flex-shrink bg-vscode-input-background" />
 					</div>
-				</div>
-
-				{/* ModeSwitch positioned at the top left of the input area */}
-				<div className="absolute top-2 left-4 z-30">
-					<ModeSwitch />
 				</div>
 			</div>
 		)

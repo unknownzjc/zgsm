@@ -1,12 +1,15 @@
 import { Completion } from "openai/resources/completions"
-import { ClineProvider } from "../../../webview/ClineProvider"
 import { settings } from "../../base/common/constant"
 import { CalculateHideScore, PromptOptions, AutocompleteOutcome } from "../types"
 import { COSTRICT_DEFAULT_HEADERS } from "../../../../shared/headers"
 import { getClientId } from "../../../../utils/getClientId"
 import { AutocompleteDebouncer } from "../utils/autocompleteDebouncer"
 import { AutocompleteLoggingService } from "../utils/autocompleteLoggingService"
-import { getWellKnownConfig } from "../../codebase-index/utils"
+import {
+	ensureCompletionRuntimeReady,
+	readCostrictWellKnownConfig,
+	waitForCompletionAgentConfig,
+} from "../../runtime-config"
 import { TextAcceptanceAction } from "../utils/autocompleteLoggingService"
 
 export interface AutoCompleteInput {
@@ -19,6 +22,7 @@ export interface AutoCompleteInput {
 }
 const MAX_SUGGESTIONS_HISTORY = 20
 const DEBOUNCE_DELAY_MS = 300
+const COMPLETION_RUNTIME_WAIT_MS = 2000
 interface FillInAtCursorSuggestion {
 	text: string
 	prefix: string
@@ -83,25 +87,59 @@ export class CompletionProvider {
 		status: "",
 		port: "",
 	}
-	private serverHost: string = ""
+	private serverHost: string | undefined
 	private readonly onError: CompletionErrorHandler
-	constructor(
-		private readonly provider: ClineProvider,
-		onError: CompletionErrorHandler,
-	) {
+	constructor(onError: CompletionErrorHandler) {
 		this.onError = onError
 		this.serverHost = this._getServerHostConfig()
 	}
 
 	private _getServerHostConfig(defaultValue?: ServiceConfig) {
-		const { services } = getWellKnownConfig()
+		const { services } = readCostrictWellKnownConfig()
 		const service = services.find((item: any) => item.name === "completion-agent")
-		if (service) {
-			this.serverHostInfo.port = service?.port || defaultValue?.port
-			this.serverHostInfo.protocol = service?.protocol || "http"
-			this.serverHostInfo.status = service?.status
+		const protocol = service?.protocol || defaultValue?.protocol || "http"
+		const port = service?.port ?? defaultValue?.port
+
+		if (!port) {
+			this.serverHostInfo = {
+				protocol: protocol || "",
+				status: String(service?.status ?? ""),
+				port: "",
+			}
+			return undefined
 		}
-		return `${service?.protocol || "http"}://localhost:${service?.port || defaultValue?.port}`
+
+		this.serverHostInfo = {
+			protocol,
+			status: String(service?.status ?? ""),
+			port: String(port),
+		}
+		return `${protocol}://localhost:${port}`
+	}
+
+	private async resolveServerHost(): Promise<string> {
+		let serverHost = this._getServerHostConfig()
+		if (serverHost) {
+			this.serverHost = serverHost
+			return serverHost
+		}
+
+		await ensureCompletionRuntimeReady()
+		const service = await waitForCompletionAgentConfig(COMPLETION_RUNTIME_WAIT_MS)
+		serverHost = this._getServerHostConfig(
+			service?.port
+				? {
+						protocol: service.protocol || "http",
+						port: service.port,
+					}
+				: undefined,
+		)
+		if (!serverHost) {
+			throw new Error("Completion agent is not ready")
+		}
+
+		this.serverHost = serverHost
+		return serverHost
 	}
 
 	/**
@@ -184,7 +222,11 @@ export class CompletionProvider {
 			}
 			return outcome
 		} catch (e) {
-			// 9. 错误处理：调用回调并返回 undefined
+			// 9. 错误处理
+			// 用户继续输入等场景触发的取消是预期行为，不应上报为错误
+			if (token?.aborted || (e as any)?.name === "AbortError") {
+				return undefined
+			}
 			this.onError(e)
 			return undefined
 		} finally {
@@ -233,10 +275,9 @@ export class CompletionProvider {
 			"zgsm-client-id": clientId,
 		}
 		const { prefix, suffix } = input.promptOptions
-		if (!this.serverHostInfo.port || !this.serverHostInfo.protocol) {
-			this.serverHost = this._getServerHostConfig()
-		}
-		const response = await fetch(`${this.serverHost}/completion-agent/api/v1/completions`, {
+		const serverHost = await this.resolveServerHost()
+		console.log(`[Completion Request ${input.completionId}]: ${serverHost}`)
+		const response = await fetch(`${serverHost}/completion-agent/api/v1/completions`, {
 			method: "post",
 			headers,
 			signal: AbortSignal.any([token, AbortSignal.timeout(2000)]),

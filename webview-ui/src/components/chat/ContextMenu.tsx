@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { getIconForFilePath, getIconUrlByName, getIconForDirectoryPath } from "vscode-material-icons"
+import { Trans } from "react-i18next"
+import { t } from "i18next"
 import { Settings } from "lucide-react"
 
-import type { ModeConfig } from "@roo-code/types"
-import type { Command } from "@roo/ExtensionMessage"
+import type { ModeConfig, Command, CostrictCodeMode } from "@roo-code/types"
 
 import {
 	ContextMenuOptionType,
@@ -13,14 +14,14 @@ import {
 } from "@src/utils/context-mentions"
 import { removeLeadingNonAlphanumeric } from "@src/utils/removeLeadingNonAlphanumeric"
 import { vscode } from "@src/utils/vscode"
-import { buildDocLink } from "@/utils/docLinks"
-import { Trans } from "react-i18next"
-import { t } from "i18next"
+
+// import { buildDocLink } from "@/utils/docLinks"
 
 interface ContextMenuProps {
 	onSelect: (type: ContextMenuOptionType, value?: string) => void
 	searchQuery: string
 	inputValue: string
+	costrictCodeMode: CostrictCodeMode
 	onMouseDown: () => void
 	selectedIndex: number
 	setSelectedIndex: (index: number) => void
@@ -35,6 +36,7 @@ interface ContextMenuProps {
 const ContextMenu: React.FC<ContextMenuProps> = ({
 	onSelect,
 	searchQuery,
+	costrictCodeMode,
 	onMouseDown,
 	selectedIndex,
 	setSelectedIndex,
@@ -48,8 +50,16 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
 	const menuRef = useRef<HTMLDivElement>(null)
 
 	const filteredOptions = useMemo(() => {
-		return getContextMenuOptions(searchQuery, selectedType, queryItems, dynamicSearchResults, modes, commands)
-	}, [searchQuery, selectedType, queryItems, dynamicSearchResults, modes, commands])
+		return getContextMenuOptions(
+			searchQuery,
+			selectedType,
+			queryItems,
+			dynamicSearchResults,
+			modes,
+			commands,
+			costrictCodeMode,
+		)
+	}, [costrictCodeMode, searchQuery, selectedType, queryItems, dynamicSearchResults, modes, commands])
 
 	useEffect(() => {
 		if (menuRef.current) {
@@ -307,10 +317,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
 										components={{
 											DocsLink: (
 												<a
-													href={buildDocLink(
-														"features/slash-commands",
-														"slash_commands_settings",
-													)}
+													href="https://docs.costrict.ai/product-features/slash-command"
 													target="_blank"
 													rel="noopener noreferrer"
 													className="text-vscode-textLink-foreground hover:underline">

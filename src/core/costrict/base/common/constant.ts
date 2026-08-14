@@ -166,7 +166,7 @@ export function getCodelensItems() {
 		} as CodelensItem,
 		shenmaInstructSet: {
 			key: "shenmaInstructSet",
-			actionName: `$(zhuge-shenma-icon)$(chevron-down)`,
+			actionName: `$(costrict-icon)$(chevron-down)`,
 			tooltip: t("common:command.shenma_instruct_set.tip"),
 			command: getCommand("codelens_more_button"),
 			actionType: "ZGSM_EXPLAIN",
@@ -181,7 +181,7 @@ export function getCodelensItems() {
 // Initialize the constant
 export let CODELENS_FUNC = getCodelensItems()
 
-// Function to refresh the Zgsm constants when language changes
+// Function to refresh the Costrict constants when language changes
 export function refreshCodelensFunc() {
 	CODELENS_FUNC = getCodelensItems()
 }
@@ -189,24 +189,8 @@ export function refreshCodelensFunc() {
 // Register refreshCodelensFunc to the language refresh list
 registerRefreshFunction(refreshCodelensFunc)
 
-export const codeLensDiffCodeTempFileDir = "codeLensDiffCodeTempFileDir"
-export const noDirtyFile = "no dirty file"
-
 export const configCompletion = "IntelligentCodeCompletion"
 export const configCodeLens = "FunctionQuickCommands"
-
-// User Authentication
-export const AUTH_TYPE = `zgsm-auth0`
-export const AUTH_NAME = `Auth0`
-export const SESSIONS_SECRET_KEY = `${AUTH_TYPE}.sessions`
-export const ACCESS_TOKEN_KEY = `${AUTH_TYPE}.accessToken`
-
 // OpenAI Client
 export const OPENAI_CLIENT_NOT_INITIALIZED = "OpenAI client not initialized"
 export const OPENAI_REQUEST_ABORTED = "Request was aborted"
-
-export const NOT_PROVIDERED = "not-provided"
-
-export const ZGSM_API_KEY = "zgsmRefreshToken" // zgsmRefreshToken
-export const ZGSM_BASE_URL = "zgsmBaseUrl"
-export const ZGSM_COMPLETION_URL = "zgsmCompletionUrl"

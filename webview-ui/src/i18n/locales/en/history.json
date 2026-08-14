@@ -9,6 +9,7 @@
 	"oldest": "Oldest",
 	"mostExpensive": "Most Expensive",
 	"mostTokens": "Most Tokens",
+	"largestSize": "Largest Size",
 	"mostRelevant": "Most Relevant",
 	"deleteTaskTitle": "Delete Task (Shift + Click to skip confirmation)",
 	"copyPrompt": "Copy Prompt",
@@ -39,7 +40,18 @@
 		"oldest": "Oldest",
 		"mostExpensive": "Most Expensive",
 		"mostTokens": "Most Tokens",
+		"largestSize": "Largest Size",
 		"mostRelevant": "Most Relevant"
 	},
-	"viewAllHistory": "View all"
+	"viewAllHistory": "View all",
+	"subtasks_one": "{{count}} subtask",
+	"subtasks_other": "{{count}} subtasks",
+	"subtaskTag": "Subtask",
+	"deleteWithSubtasks": "This will also delete {{count}} subtask(s). Are you sure?",
+	"expandSubtasks": "Expand subtasks",
+	"collapseSubtasks": "Collapse subtasks",
+	"backupTasks": "Backup Tasks",
+	"restoreTasks": "Restore Tasks",
+	"backingUpTasks": "Please wait, do not perform other operations, Backing up task history...",
+	"restoringTasks": "Please wait, do not perform other operations, Restoring task history..."
 }

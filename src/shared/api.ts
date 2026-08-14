@@ -23,6 +23,8 @@ export type ApiHandlerOptions = Omit<ProviderSettings, "apiProvider"> & {
 	 * When undefined, Ollama will use the model's default num_ctx from the Modelfile.
 	 */
 	ollamaNumCtx?: number
+
+	debug?: boolean
 }
 
 // RouterName
@@ -37,12 +39,6 @@ export function toRouterName(value?: string): RouterName {
 
 	throw new Error(`Invalid router name: ${value}`)
 }
-
-// RouterModels
-
-export type ModelRecord = Record<string, ModelInfo>
-
-export type RouterModels = Record<RouterName, ModelRecord>
 
 // Reasoning
 
@@ -116,7 +112,7 @@ export const getModelMaxOutputTokens = ({
 	modelId: string
 	model: ModelInfo
 	settings?: ProviderSettings
-	format?: "anthropic" | "openai" | "gemini" | "openrouter" | "zgsm"
+	format?: "anthropic" | "openai" | "gemini" | "openrouter" | "costrict"
 }): number | undefined => {
 	if (shouldUseReasoningBudget({ model, settings })) {
 		return settings?.modelMaxTokens || DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS
@@ -172,19 +168,22 @@ type CommonFetchParams = {
 // If a new dynamic provider is added in packages/types, this will fail to compile
 // until a corresponding entry is added here.
 const dynamicProviderExtras = {
-	zgsm: {} as { baseUrl?: string; apiKey?: string; openAiHeaders?: Record<string, string> },
+	costrict: {} as {
+		baseUrl?: string
+		apiKey?: string
+		openAiHeaders?: Record<string, string>
+		refreshOnDiskCacheHit?: boolean
+		timeout?: number
+	},
 	openrouter: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	"vercel-ai-gateway": {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
-	huggingface: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	litellm: {} as { apiKey: string; baseUrl: string },
-	deepinfra: {} as { apiKey?: string; baseUrl?: string },
-	"io-intelligence": {} as { apiKey: string },
 	requesty: {} as { apiKey?: string; baseUrl?: string },
 	unbound: {} as { apiKey?: string },
 	ollama: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	lmstudio: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	// roo: {} as { apiKey?: string; baseUrl?: string },
-	chutes: {} as { apiKey?: string },
+	poe: {} as { apiKey?: string; baseUrl?: string },
 } as const satisfies Record<RouterName, object>
 
 // Build the dynamic options union from the map, intersected with CommonFetchParams

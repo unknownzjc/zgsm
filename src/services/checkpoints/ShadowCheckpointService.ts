@@ -9,6 +9,7 @@ import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
 
 import { fileExistsAtPath } from "../../utils/fs"
+import { arePathsEqual } from "../../utils/path"
 import { executeRipgrep } from "../../services/search/file-search"
 import { t } from "../../i18n"
 
@@ -38,8 +39,16 @@ function createSanitizedGit(baseDir: string): SimpleGit {
 			key === "GIT_INDEX_FILE" ||
 			key === "GIT_OBJECT_DIRECTORY" ||
 			key === "GIT_ALTERNATE_OBJECT_DIRECTORIES" ||
-			key === "GIT_CEILING_DIRECTORIES"
+			key === "GIT_CEILING_DIRECTORIES" ||
+			key === "GIT_TEMPLATE_DIR"
 		) {
+			removedVars.push(`${key}=${value}`)
+			continue
+		}
+
+		// Skip generic environment variables that simple-git considers unsafe
+		// for command injection (e.g. PAGER, EDITOR, VISUAL, BROWSER)
+		if (key === "PAGER" || key === "EDITOR" || key === "VISUAL" || key === "BROWSER") {
 			removedVars.push(`${key}=${value}`)
 			continue
 		}
@@ -60,6 +69,11 @@ function createSanitizedGit(baseDir: string): SimpleGit {
 	const options: Partial<SimpleGitOptions> = {
 		baseDir,
 		config: [],
+		unsafe: {
+			allowUnsafeTemplateDir: true,
+			allowUnsafeConfigEnvCount: true,
+			allowUnsafePager: true,
+		} as SimpleGitOptions["unsafe"],
 	}
 
 	// Create git instance and set the sanitized environment
@@ -72,6 +86,19 @@ function createSanitizedGit(baseDir: string): SimpleGit {
 	console.log(`[createSanitizedGit] Created git instance for baseDir: ${baseDir}`)
 
 	return git
+}
+
+/**
+ * Error thrown when a revert operation results in merge conflicts
+ */
+export class RevertConflictError extends Error {
+	public readonly conflictedFiles: string[]
+
+	constructor(message: string, options: { conflictedFiles: string[] }) {
+		super(message)
+		this.name = "RevertConflictError"
+		this.conflictedFiles = options.conflictedFiles
+	}
 }
 
 export abstract class ShadowCheckpointService extends EventEmitter {
@@ -155,9 +182,15 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 			this.log(`[${this.constructor.name}#initShadowGit] shadow git repo already exists at ${this.dotGitDir}`)
 			const worktree = await this.getShadowGitConfigWorktree(git)
 
-			if (worktree !== this.workspaceDir) {
+			if (!worktree) {
+				throw new Error("Checkpoints require core.worktree to be set in the shadow git config")
+			}
+
+			const worktreeTrimmed = worktree.trim()
+
+			if (!arePathsEqual(worktreeTrimmed, this.workspaceDir)) {
 				throw new Error(
-					`Checkpoints can only be used in the original workspace: ${worktree} !== ${this.workspaceDir}`,
+					`Checkpoints can only be used in the original workspace: ${worktreeTrimmed} !== ${this.workspaceDir}`,
 				)
 			}
 
@@ -165,7 +198,7 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 			this.baseHash = await git.revparse(["HEAD"])
 		} else {
 			this.log(`[${this.constructor.name}#initShadowGit] creating shadow git repo at ${this.checkpointsDir}`)
-			await git.init()
+			await git.init({ "--template": "" })
 			await git.addConfig("core.worktree", this.workspaceDir) // Sets the working tree to the current workspace.
 			await git.addConfig("commit.gpgSign", "false") // Disable commit signing for shadow repo.
 			await git.addConfig("user.name", "CoStrict")
@@ -363,6 +396,86 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		}
 	}
 
+	/**
+	 * Reverts the changes from a specific checkpoint by creating a new commit.
+	 * This preserves the complete git history and is a safe, non-destructive operation.
+	 *
+	 * Note: This method only reverts a single commit. It does NOT restore the state
+	 * to that checkpoint. To restore to a specific checkpoint state, use restoreCheckpoint instead.
+	 *
+	 * @param commitHash - The hash of the checkpoint to revert
+	 * @returns The hash of the new revert commit
+	 * @throws Error if git repo is not initialized, commit hash is invalid, or revert fails
+	 * @throws RevertConflictError if the revert operation results in merge conflicts
+	 */
+	public async revertCheckpoint(commitHash: string): Promise<string> {
+		const startTime = Date.now()
+
+		try {
+			this.log(`[${this.constructor.name}#revertCheckpoint] starting checkpoint revert`)
+
+			// 1. 验证 Git 仓库是否初始化
+			if (!this.git) {
+				throw new Error("Shadow git repo not initialized")
+			}
+
+			// 2. 验证 commitHash 是否存在于检查点历史中
+			const logs = await this.git.log({ maxCount: 1 })
+			const commits = logs.all
+			const existingCommits = commits.map((commit: any) => commit.hash)
+
+			if (!existingCommits.includes(commitHash)) {
+				throw new Error(`Commit ${commitHash} does not exist in the checkpoint history`)
+			}
+
+			// 3. 执行 git revert 操作
+			// 使用 --no-edit 避免打开编辑器（因为 shadow repo 是自动化的）
+			await this.git.raw(["revert", commitHash, "--no-edit"])
+
+			// 4. 获取新创建的 revert 提交 hash
+			const newLogs = await this.git.log({ maxCount: 1 })
+			const newCommitHash = newLogs.all[0]?.hash
+
+			if (!newCommitHash) {
+				throw new Error("Failed to create revert commit")
+			}
+
+			// 5. 更新检查点列表
+			// 注意：revert 提交本身应该被记录为检查点
+			// 因为它是一个用户触发的有意义的提交
+			this._checkpoints.push(newCommitHash)
+
+			// 6. 触发 revert 事件
+			const duration = Date.now() - startTime
+			this.emit("revert", {
+				type: "revert",
+				newCommitHash: newCommitHash,
+				duration,
+			})
+
+			this.log(
+				`[${this.constructor.name}#revertCheckpoint] reverted ${commitHash} ` +
+					`with new commit ${newCommitHash} in ${duration}ms`,
+			)
+
+			return newCommitHash
+		} catch (e) {
+			const error = e instanceof Error ? e : new Error(String(e))
+
+			// 如果不是 RevertConflictError，包装为标准错误
+			if (error.name !== "RevertConflictError") {
+				this.log(
+					`[${this.constructor.name}#revertCheckpoint] failed to revert checkpoint ${commitHash}: ${error.message}`,
+				)
+			}
+
+			this.emit("error", { type: "error", error })
+
+			// 重新抛出错误，以便调用者可以处理
+			throw error
+		}
+	}
+
 	public async getDiff({ from, to }: { from?: string; to?: string }): Promise<CheckpointDiff[]> {
 		if (!this.git) {
 			throw new Error("Shadow git repo not initialized")
@@ -449,7 +562,7 @@ export abstract class ShadowCheckpointService extends EventEmitter {
 		workspaceDir: string
 	}) {
 		const workspaceRepoDir = this.workspaceRepoDir({ globalStorageDir, workspaceDir })
-		const branchName = `roo-${taskId}`
+		const branchName = `costrict-${taskId}`
 		const git = createSanitizedGit(workspaceRepoDir)
 		const success = await this.deleteBranch(git, branchName)
 

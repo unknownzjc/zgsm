@@ -1,6 +1,7 @@
 // npx vitest core/prompts/__tests__/system-prompt.spec.ts
 
-vi.mock("os", () => ({
+vi.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	default: {
 		homedir: () => "/home/user",
 		platform: () => "linux",
@@ -113,9 +114,7 @@ __setMockImplementation(
 		}
 
 		const joinedSections = sections.join("\n\n")
-		const effectiveProtocol = options?.settings?.toolProtocol || "xml"
-		const skipXmlReferences = effectiveProtocol === "native"
-		const toolUseRef = skipXmlReferences ? "." : " without interfering with the TOOL USE guidelines."
+		const toolUseRef = "."
 		return joinedSections
 			? `\n====\n\nUSER'S CUSTOM INSTRUCTIONS\n\nThe following additional instructions are provided by the user, and should be followed to the best of your ability${toolUseRef}\n\n${joinedSections}`
 			: ""
@@ -125,7 +124,7 @@ __setMockImplementation(
 // Mock vscode language
 vi.mock("vscode", () => ({
 	env: {
-		language: "en",
+		language: "zh-CN",
 	},
 	workspace: {
 		workspaceFolders: [{ uri: { fsPath: "/test/path" } }],
@@ -152,7 +151,7 @@ vi.mock("vscode", () => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -256,43 +255,16 @@ describe("SYSTEM_PROMPT", () => {
 			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/consistent-system-prompt.snap")
-	})
-
-	it("should include browser actions when supportsImages is true", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			true, // supportsImages
-			undefined, // mcpHub
-			undefined, // diffStrategy
-			"1280x800", // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes,
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-computer-use-support.snap")
 	})
 
 	it("should include MCP server info when mcpHub is provided", async () => {
@@ -304,17 +276,13 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			mockMcpHub, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes,
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-mcp-hub-provided.snap")
@@ -327,115 +295,16 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // explicitly undefined mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes,
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-undefined-mcp-hub.snap")
-	})
-
-	it("should handle different browser viewport sizes", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined, // mcpHub
-			undefined, // diffStrategy
-			"900x600", // different viewport size
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes,
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-different-viewport-size.snap")
-	})
-
-	it("should include diff strategy tool description when diffEnabled is true", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined, // mcpHub
-			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes
-			undefined, // globalCustomInstructions
-			true, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).toContain("apply_diff")
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-diff-enabled-true.snap")
-	})
-
-	it("should exclude diff strategy tool description when diffEnabled is false", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false, // supportsImages
-			undefined, // mcpHub
-			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes
-			undefined, // globalCustomInstructions
-			false, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).not.toContain("apply_diff")
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-diff-enabled-false.snap")
-	})
-
-	it("should exclude diff strategy tool description when diffEnabled is undefined", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined, // mcpHub
-			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).not.toContain("apply_diff")
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/with-diff-enabled-undefined.snap")
 	})
 
 	it("should include vscode language in custom instructions", async () => {
@@ -474,17 +343,13 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			true, // enableMcpServerCreation
 			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).toContain("Language Preference:")
@@ -537,20 +402,17 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			"custom-mode", // mode
 			undefined, // customModePrompts
 			customModes, // customModes
 			"Global instructions", // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
-		// Role definition should be at the top
+		// Role definition should be at the very beginning (before any static or dynamic sections)
+		// See: refactor(prompts): move role definition to prompt start
 		expect(prompt.indexOf("Custom role definition")).toBeLessThan(prompt.indexOf("TOOL USE"))
 
 		// Custom instructions should be at the bottom
@@ -575,20 +437,17 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug as Mode, // mode
 			customModePrompts, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			false, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
-		// Role definition from promptComponent should be at the top
+		// Role definition from promptComponent should be at the very beginning (before any static or dynamic sections)
+		// See: refactor(prompts): move role definition to prompt start
 		expect(prompt.indexOf("Custom prompt role definition")).toBeLessThan(prompt.indexOf("TOOL USE"))
 		// Should not contain the default mode's role definition
 		expect(prompt).not.toContain(modes[0].roleDefinition)
@@ -608,30 +467,25 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug as Mode, // mode
 			customModePrompts, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			false, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 		)
 
-		// Should use the default mode's role definition
+		// Should use the default mode's role definition (at the beginning of the prompt)
+		// See: refactor(prompts): move role definition to prompt start
 		expect(prompt.indexOf(modes[0].roleDefinition)).toBeLessThan(prompt.indexOf("TOOL USE"))
 	})
 
 	it("should exclude update_todo_list tool when todoListEnabled is false", async () => {
 		const settings = {
-			maxConcurrentFileReads: 5,
 			todoListEnabled: false,
 			useAgentRules: true,
 			newTaskRequireTodos: false,
-			toolProtocol: "xml" as const,
 		}
 
 		const prompt = await SYSTEM_PROMPT(
@@ -640,17 +494,13 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 			settings, // settings
 		)
 
@@ -661,11 +511,9 @@ describe("SYSTEM_PROMPT", () => {
 
 	it("should include update_todo_list tool when todoListEnabled is true", async () => {
 		const settings = {
-			maxConcurrentFileReads: 5,
 			todoListEnabled: true,
 			useAgentRules: true,
 			newTaskRequireTodos: false,
-			toolProtocol: "xml" as const,
 		}
 
 		const prompt = await SYSTEM_PROMPT(
@@ -674,31 +522,26 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
+			"architect", // mode - architect mode references update_todo_list in customInstructions
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 			settings, // settings
 		)
 
+		// update_todo_list is still referenced by mode instructions, but tool catalogs are not embedded.
 		expect(prompt).toContain("update_todo_list")
-		expect(prompt).toContain("## update_todo_list")
+		expect(prompt).not.toContain("## update_todo_list")
 	})
 
 	it("should include update_todo_list tool when todoListEnabled is undefined", async () => {
 		const settings = {
-			maxConcurrentFileReads: 5,
 			todoListEnabled: true,
 			useAgentRules: true,
 			newTaskRequireTodos: false,
-			toolProtocol: "xml" as const,
 		}
 
 		const prompt = await SYSTEM_PROMPT(
@@ -707,31 +550,26 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
+			"architect", // mode - architect mode references update_todo_list in customInstructions
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 			settings, // settings
 		)
 
+		// update_todo_list is still referenced by mode instructions, but tool catalogs are not embedded.
 		expect(prompt).toContain("update_todo_list")
-		expect(prompt).toContain("## update_todo_list")
+		expect(prompt).not.toContain("## update_todo_list")
 	})
 
-	it("should include XML tool instructions when disableXmlToolInstructions is false (default)", async () => {
+	it("should include native tool instructions", async () => {
 		const settings = {
-			maxConcurrentFileReads: 5,
 			todoListEnabled: true,
 			useAgentRules: true,
 			newTaskRequireTodos: false,
-			toolProtocol: "xml" as const, // explicitly xml
 		}
 
 		const prompt = await SYSTEM_PROMPT(
@@ -740,109 +578,28 @@ describe("SYSTEM_PROMPT", () => {
 			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			experiments,
-			true, // enableMcpServerCreation
 			undefined, // language
 			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-			settings, // settings
-		)
-
-		// Should contain XML guidance sections
-		expect(prompt).toContain("TOOL USE")
-		expect(prompt).toContain("XML-style tags")
-		expect(prompt).toContain("<actual_tool_name>")
-		expect(prompt).toContain("</actual_tool_name>")
-		expect(prompt).toContain("Tool Use Guidelines")
-		expect(prompt).toContain("# Tools")
-
-		// Should contain tool descriptions with XML examples
-		expect(prompt).toContain("## read_file")
-		expect(prompt).toContain("<read_file>")
-		expect(prompt).toContain("<path>")
-
-		// Should be byte-for-byte compatible with default behavior
-		const defaultPrompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined,
-			undefined,
-			undefined,
-			defaultModeSlug,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			experiments,
-			true,
-			undefined,
-			undefined,
-			undefined,
-			{
-				maxConcurrentFileReads: 5,
-				todoListEnabled: true,
-				useAgentRules: true,
-				newTaskRequireTodos: false,
-				toolProtocol: "xml" as const,
-			},
-		)
-
-		expect(prompt).toBe(defaultPrompt)
-	})
-
-	it("should include native tool instructions when toolProtocol is native", async () => {
-		const settings = {
-			maxConcurrentFileReads: 5,
-			todoListEnabled: true,
-			useAgentRules: true,
-			newTaskRequireTodos: false,
-			toolProtocol: "native" as const, // native protocol
-		}
-
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined, // mcpHub
-			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			undefined, // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
 			settings, // settings
 		)
 
 		// Should contain TOOL USE section with native note
 		expect(prompt).toContain("TOOL USE")
-		expect(prompt).toContain("provider-native tool-calling mechanism")
-		expect(prompt).toContain("Do not include XML markup or examples")
+		expect(prompt).toContain("Use provider-native tool-calling")
 
 		// Should NOT contain XML-style tags or examples
-		expect(prompt).not.toContain("XML-style tags")
 		expect(prompt).not.toContain("<actual_tool_name>")
 		expect(prompt).not.toContain("</actual_tool_name>")
 
-		// Should contain Tool Use Guidelines section without format-specific guidance
+		// Should contain Tool Use Guidelines section
 		expect(prompt).toContain("Tool Use Guidelines")
-		// Should NOT contain any protocol-specific formatting instructions
-		expect(prompt).not.toContain("provider's native tool-calling mechanism")
-		expect(prompt).not.toContain("XML format specified for each tool")
 
-		// Should NOT contain # Tools catalog at all in native mode
+		// Should NOT contain a tool catalog / XML examples
 		expect(prompt).not.toContain("# Tools")
 		expect(prompt).not.toContain("## read_file")
 		expect(prompt).not.toContain("## execute_command")
@@ -857,43 +614,6 @@ describe("SYSTEM_PROMPT", () => {
 		expect(prompt).toContain("RULES")
 		expect(prompt).toContain("SYSTEM INFORMATION")
 		expect(prompt).toContain("OBJECTIVE")
-	})
-
-	it("should default to XML tool instructions when toolProtocol is undefined", async () => {
-		const settings = {
-			maxConcurrentFileReads: 5,
-			todoListEnabled: true,
-			useAgentRules: true,
-			newTaskRequireTodos: false,
-			toolProtocol: "xml" as const,
-		}
-
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false,
-			undefined, // mcpHub
-			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			experiments,
-			true, // enableMcpServerCreation
-			undefined, // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-			settings, // settings
-		)
-
-		// Should contain XML guidance (default behavior)
-		expect(prompt).toContain("TOOL USE")
-		expect(prompt).toContain("XML-style tags")
-		expect(prompt).toContain("<actual_tool_name>")
-		expect(prompt).toContain("Tool Use Guidelines")
-		expect(prompt).toContain("# Tools")
 	})
 
 	afterAll(() => {

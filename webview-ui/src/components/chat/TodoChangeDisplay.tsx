@@ -51,7 +51,7 @@ export function TodoChangeDisplay({ previousTodos, newTodos }: TodoChangeDisplay
 
 	// If no todos to display, don't render anything
 	if (todosToDisplay.length === 0) {
-		return null
+		return <div className="ml-2 pl-4 pb-1">{t("chat:emptyCompletionResult")}</div>
 	}
 
 	return (
@@ -71,8 +71,12 @@ export function TodoChangeDisplay({ previousTodos, newTodos }: TodoChangeDisplay
 						return (
 							<li
 								key={todo.id || todo.content}
-								className={`flex flex-row gap-2 items-start ${
-									status === "in_progress" ? "text-vscode-charts-yellow" : ""
+								className={`flex flex-row gap-2 items-start ${todo.status === "completed" ? "line-through" : ""} ${
+									status === "completed"
+										? "text-vscode-charts-green"
+										: status === "in_progress"
+											? "text-vscode-charts-yellow"
+											: ""
 								}`}>
 								{icon}
 								<span>{todo.content}</span>

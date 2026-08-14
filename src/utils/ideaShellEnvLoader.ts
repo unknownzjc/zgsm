@@ -61,7 +61,6 @@ export function mergePath(shellPath: string) {
 
 	const shellEntries = shellPath.split(delimiter).filter(Boolean)
 
-	// 保留顺序：shell PATH 在前，VS Code PATH 在后
 	const merged = [...shellEntries, ...currentEntries.filter((p) => !shellEntries.includes(p))]
 
 	envSnapshot.PATH = merged.join(delimiter)

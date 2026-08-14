@@ -5,7 +5,7 @@ import * as fsSync from "fs"
 import NodeCache from "node-cache"
 import { z } from "zod"
 
-import type { ProviderName } from "@roo-code/types"
+import type { ProviderName, ModelRecord } from "@roo-code/types"
 import { modelInfoSchema, TelemetryEventName } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
@@ -13,35 +13,41 @@ import { safeWriteJson } from "../../../utils/safeWriteJson"
 
 import { ContextProxy } from "../../../core/config/ContextProxy"
 import { getCacheDirectoryPath } from "../../../utils/storage"
-import type { RouterName, ModelRecord } from "../../../shared/api"
+import type { RouterName } from "../../../shared/api"
 import { fileExistsAtPath } from "../../../utils/fs"
 
 import { getOpenRouterModels } from "./openrouter"
 import { getVercelAiGatewayModels } from "./vercel-ai-gateway"
 import { getRequestyModels } from "./requesty"
-import { getZgsmModels } from "./zgsm"
+import { getCostrictModels } from "./costrict"
 import { getUnboundModels } from "./unbound"
 import { getLiteLLMModels } from "./litellm"
 import { GetModelsOptions } from "../../../shared/api"
 import { getOllamaModels } from "./ollama"
 import { getLMStudioModels } from "./lmstudio"
-import { getIOIntelligenceModels } from "./io-intelligence"
-import { getDeepInfraModels } from "./deepinfra"
-import { ZgsmAuthApi, ZgsmAuthConfig } from "../../../core/costrict/auth"
-import { IZgsmModelResponseData } from "@roo-code/types"
-import { getHuggingFaceModels } from "./huggingface"
+import { CostrictAuthApi, CostrictAuthConfig } from "../../../core/costrict/auth"
+import { ICostrictModelResponseData } from "@roo-code/types"
 import { ClineProvider } from "../../../core/webview/ClineProvider"
 // import { getRooModels } from "./roo"
-import { getChutesModels } from "./chutes"
+import { getPoeModels } from "./poe"
 
 const memoryCache = new NodeCache({ stdTTL: 5 * 60, checkperiod: 5 * 60 })
 
 // Zod schema for validating ModelRecord structure from disk cache
 const modelRecordSchema = z.record(z.string(), modelInfoSchema)
 
+export interface ModelFetchResult {
+	models: ModelRecord
+	/**
+	 * True only when `models` came directly from a successful provider request.
+	 * Memory/disk cache hits and graceful-degradation fallbacks are never authoritative.
+	 */
+	authoritative: boolean
+}
+
 // Track in-flight refresh requests to prevent concurrent API calls for the same provider
 // This prevents race conditions where multiple calls might overwrite each other's results
-const inFlightRefresh = new Map<RouterName, Promise<ModelRecord>>()
+const inFlightRefresh = new Map<RouterName, Promise<ModelFetchResult>>()
 
 async function writeModels(router: RouterName, data: ModelRecord) {
 	const filename = `${router}_models.json`
@@ -71,17 +77,17 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 	let models: ModelRecord
 
 	switch (provider) {
-		case "zgsm": {
-			const _models = await getZgsmModels(
-				options.baseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
-				options.apiKey || clineProvider?.getValue("zgsmAccessToken"),
+		case "costrict": {
+			const _models = await getCostrictModels(
+				options.baseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl(),
+				options.apiKey || clineProvider?.getValue("costrictAccessToken"),
 				options.openAiHeaders,
+				options.timeout,
 			)
-			models = _models.reduce((acc, model: IZgsmModelResponseData) => {
+			models = _models.reduce((acc, model: ICostrictModelResponseData) => {
 				if (!model.id) {
 					return acc
 				}
-
 				acc[model.id] = model
 				return acc
 			}, {} as ModelRecord)
@@ -95,7 +101,6 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getRequestyModels(options.baseUrl, options.apiKey)
 			break
 		case "unbound":
-			// Unbound models endpoint requires an API key to fetch application specific models.
 			models = await getUnboundModels(options.apiKey)
 			break
 		case "litellm":
@@ -108,17 +113,8 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 		case "lmstudio":
 			models = await getLMStudioModels(options.baseUrl)
 			break
-		case "deepinfra":
-			models = await getDeepInfraModels(options.apiKey, options.baseUrl)
-			break
-		case "io-intelligence":
-			models = await getIOIntelligenceModels(options.apiKey)
-			break
 		case "vercel-ai-gateway":
 			models = await getVercelAiGatewayModels()
-			break
-		case "huggingface":
-			models = await getHuggingFaceModels()
 			break
 		// case "roo": {
 		// 	// Roo Code Cloud provider requires baseUrl and optional apiKey
@@ -126,8 +122,8 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 		// 	models = await getRooModels(rooBaseUrl, options.apiKey)
 		// 	break
 		// }
-		case "chutes":
-			models = await getChutesModels(options.apiKey)
+		case "poe":
+			models = await getPoeModels(options.apiKey, options.baseUrl)
 			break
 		default: {
 			// Ensures router is exhaustively checked if RouterName is a strict union.
@@ -150,18 +146,26 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
  * @param baseUrl - Optional base URL for the provider (currently used only for LiteLLM).
  * @returns The models from the cache or the fetched models.
  */
-export const getModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
+export const getModelsWithMetadata = async (options: GetModelsOptions): Promise<ModelFetchResult> => {
 	const { provider } = options
+	const refreshOnDiskCacheHit = "refreshOnDiskCacheHit" in options && options.refreshOnDiskCacheHit
+	const hadMemoryModels = memoryCache.get<ModelRecord>(provider) != null
 	// let clineProvider = await ClineProvider.getAllInstance()
 
 	let models = getModelsFromCache(provider)
 
 	try {
 		if (models) {
-			if (provider === "zgsm" && JSON.stringify(models) === "{}") {
+			if (provider === "costrict" && JSON.stringify(models) === "{}") {
 				models = undefined
 			} else {
-				return models
+				if (!hadMemoryModels && refreshOnDiskCacheHit) {
+					options.timeout = 1000 // Set a short timeout for the background refresh to prevent long waits on slow API responses
+					void refreshModels(options).catch((error) => {
+						console.error(`[getModels] Background refresh failed for ${provider}:`, error)
+					})
+				}
+				return { models, authoritative: false }
 			}
 		}
 		models = await fetchModelsFromProvider(options)
@@ -183,7 +187,7 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 			})
 		}
 
-		return models
+		return { models, authoritative: true }
 	} catch (error) {
 		// Log the error and re-throw it so the caller can handle it (e.g., show a UI message).
 		console.error(`[getModels] Failed to fetch models in modelCache for ${provider}:`, error)
@@ -191,6 +195,9 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 		throw error // Re-throw the original error to be handled by the caller.
 	}
 }
+
+export const getModels = async (options: GetModelsOptions): Promise<ModelRecord> =>
+	(await getModelsWithMetadata(options)).models
 
 /**
  * Force-refresh models from API, bypassing cache.
@@ -201,7 +208,7 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
  * @param options - Provider options for fetching models
  * @returns Fresh models from API, or existing cache if refresh yields worse data
  */
-export const refreshModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
+export const refreshModelsWithMetadata = async (options: GetModelsOptions): Promise<ModelFetchResult> => {
 	const { provider } = options
 
 	// Check if there's already an in-flight refresh for this provider
@@ -213,17 +220,17 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 	}
 
 	// Create the refresh promise and track it
-	const refreshPromise = (async (): Promise<ModelRecord> => {
+	const refreshPromise = (async (): Promise<ModelFetchResult> => {
 		try {
 			// Force fresh API fetch - skip getModelsFromCache() check
 			const models = await fetchModelsFromProvider(options)
 			const modelCount = Object.keys(models).length
 
-			// Get existing cached data for comparison
-			const existingCache = getModelsFromCache(provider)
-			const existingCount = existingCache ? Object.keys(existingCache).length : 0
-
 			if (modelCount === 0) {
+				// Get existing cached data for comparison
+				const existingCache = getModelsFromCache(provider)
+				const existingCount = existingCache ? Object.keys(existingCache).length : 0
+
 				TelemetryService.instance.captureEvent(TelemetryEventName.MODEL_CACHE_EMPTY_RESPONSE, {
 					provider,
 					context: "refreshModels",
@@ -231,9 +238,9 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 					existingCacheSize: existingCount,
 				})
 				if (existingCount > 0) {
-					return existingCache!
+					return { models: existingCache!, authoritative: false }
 				} else {
-					return {}
+					return { models: {}, authoritative: false }
 				}
 			}
 
@@ -245,11 +252,11 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 				console.error(`[refreshModels] Error writing ${provider} models to disk:`, err),
 			)
 
-			return models
+			return { models, authoritative: true }
 		} catch (error) {
 			// Log the error for debugging, then return existing cache if available (graceful degradation)
 			console.error(`[refreshModels] Failed to refresh ${provider} models:`, error)
-			return getModelsFromCache(provider) || {}
+			return { models: getModelsFromCache(provider) || {}, authoritative: false }
 		} finally {
 			// Always clean up the in-flight tracking
 			inFlightRefresh.delete(provider)
@@ -261,6 +268,9 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 
 	return refreshPromise
 }
+
+export const refreshModels = async (options: GetModelsOptions): Promise<ModelRecord> =>
+	(await refreshModelsWithMetadata(options)).models
 
 /**
  * Initialize background model cache refresh.
@@ -274,7 +284,6 @@ export async function initializeModelCacheRefresh(): Promise<void> {
 		const publicProviders: Array<{ provider: RouterName; options: GetModelsOptions }> = [
 			{ provider: "openrouter", options: { provider: "openrouter" } },
 			{ provider: "vercel-ai-gateway", options: { provider: "vercel-ai-gateway" } },
-			{ provider: "chutes", options: { provider: "chutes" } },
 		]
 
 		// Refresh each provider in background (fire and forget)
@@ -292,27 +301,28 @@ export async function initializeModelCacheRefresh(): Promise<void> {
 /**
  * Flush models memory cache for a specific router.
  *
- * @param router - The router to flush models for.
+ * @param options - The options for fetching models, including provider, apiKey, and baseUrl
  * @param refresh - If true, immediately fetch fresh data from API
  */
 export const flushModels = async (
-	router: RouterName,
+	options: GetModelsOptions,
 	refresh: boolean = false,
-	opt?: GetModelsOptions,
-	cb?: (v: any) => void,
+	cb?: (models: ModelRecord, metadata: ModelFetchResult) => void,
 ): Promise<void> => {
+	const { provider } = options
 	if (refresh) {
 		// Don't delete memory cache - let refreshModels atomically replace it
 		// This prevents a race condition where getModels() might be called
 		// before refresh completes, avoiding a gap in cache availability
-		try {
-			await refreshModels({ ...opt, provider: router } as GetModelsOptions).then(cb)
-		} catch (error) {
-			console.error(`[flushModels] Refresh failed for ${router}:`, error)
-		}
+		// Await the refresh to ensure the cache is updated before returning
+		await refreshModelsWithMetadata(options)
+			.then((result) => cb?.(result.models, result))
+			.catch((error) => {
+				console.log(`[flushModels] Refresh failed for ${provider}:`, error.message)
+			})
 	} else {
 		// Only delete memory cache when not refreshing
-		memoryCache.del(router)
+		memoryCache.del(provider)
 	}
 }
 

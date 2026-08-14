@@ -1,8 +1,11 @@
 import React from "react"
+
 import { type ProviderSettings, claudeCodeDefaultModelId, getClaudeCodeModels } from "@roo-code/types"
+
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { Button } from "@src/components/ui"
 import { vscode } from "@src/utils/vscode"
+
 import { ModelPicker } from "../ModelPicker"
 import { ClaudeCodeRateLimitDashboard } from "./ClaudeCodeRateLimitDashboard"
 

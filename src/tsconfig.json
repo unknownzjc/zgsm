@@ -1,11 +1,16 @@
 {
 	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@roo-code/logger": ["../packages/logger/src/index.ts"],
+			"@node-ipc/node-ipc": ["../packages/ipc/src/node-ipc.d.ts"]
+		},
 		"types": ["vitest/globals"],
 		"esModuleInterop": true,
 		"experimentalDecorators": true,
 		"forceConsistentCasingInFileNames": true,
 		"isolatedModules": true,
-		"lib": ["es2022", "esnext.disposable", "DOM"],
+		"lib": ["ES2023", "esnext.disposable", "DOM"],
 		"module": "esnext",
 		"moduleResolution": "Bundler",
 		"noFallthroughCasesInSwitch": true,

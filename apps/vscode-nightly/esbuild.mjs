@@ -22,6 +22,8 @@ async function main() {
 	const gitSha = getGitSha()
 	console.log(`[${name}] gitSha: ${gitSha}`)
 
+	const buildTime = new Date().toISOString()
+
 	/**
 	 * @type {import('esbuild').BuildOptions}
 	 */
@@ -35,12 +37,12 @@ async function main() {
 		platform: "node",
 		define: {
 			"process.env.NODE_ENV": production ? '"production"' : '"development"',
-			"process.env.ZGSM_BASE_URL": JSON.stringify(process.env.ZGSM_BASE_URL || ""),
-			"process.env.ZGSM_PUBLIC_KEY": JSON.stringify(process.env.ZGSM_PUBLIC_KEY || ""),
-			"process.env.PKG_NAME": '"roo-code-nightly"',
-			"process.env.PKG_VERSION": `"${overrideJson.version}"`,
-			"process.env.PKG_OUTPUT_CHANNEL": '"Roo-Code-Nightly"',
-			...(gitSha ? { "process.env.PKG_SHA": `"${gitSha}"` } : {}),
+			"process.env.COSTRICT_PUBLIC_KEY": JSON.stringify(process.env.COSTRICT_PUBLIC_KEY || process.env.ZGSM_PUBLIC_KEY || ""),
+			"process.env.COSTRICT_PKG_NAME": '"roo-code-nightly"',
+			"process.env.COSTRICT_PKG_VERSION": `"${overrideJson.version}"`,
+			"process.env.COSTRICT_PKG_OUTPUT_CHANNEL": '"Roo-Code-Nightly"',
+			"process.env.COSTRICT_PKG_BUILD_TIME": `"${buildTime}"`,
+			...(gitSha ? { "process.env.COSTRICT_PKG_SHA": `"${gitSha}"` } : {}),
 		},
 		banner: {
 			js: networkInterfacesCompatible,

@@ -26,12 +26,12 @@
 		}
 	},
 	"providers": {
-		"zgsm": "CoStrict",
-		"zgsmBaseUrl": "CoStrict 基礎 URL",
-		"zgsmApiKey": "CoStrict API 密鑰",
-		"getZgsmApiKey": "登入 CoStrict",
-		"getZgsmApiKeyAgain": "重新登入",
-		"zgsmDefaultBaseUrl": "預設: {{zgsmBaseUrl}}",
+		"costrict": "CoStrict",
+		"costrictBaseUrl": "CoStrict 基礎 URL",
+		"costrictApiKey": "CoStrict API 密鑰",
+		"getCostrictApiKey": "登入 CoStrict",
+		"getCostrictApiKeyAgain": "重新登入",
+		"costrictDefaultBaseUrl": "預設: {{costrictBaseUrl}}",
 		"lmStudio": {
 			"description": "LM Studio允許您在本地電腦上運行模型。有關如何入門的說明，請參閱他們的<a>快速入門指南</a>。您還需要啟動LM Studio的<b>本地伺服器</b>功能才能在此擴展中使用它。<span>注意：</span>CoStrict 使用複雜的提示，最適合與Claude模型配合使用。功能較弱的模型可能無法按預期工作。"
 		},
@@ -41,10 +41,7 @@
 		"customModel": {
 			"capabilities": "配置您的自定義OpenAI兼容模型的功能和定價。在指定模型功能時要小心，因為它們會影響 CoStrict 的表現。"
 		},
-		"useZgsmCustomConfig": "使用自定義配置",
-		"geminiCli": {
-			"projectIdDescription": "若為企業或非免費方案存取，請指定您的 Google Cloud 專案 ID。如使用個人帳號並希望自動探索專案，請留空。如果您遇到 API 錯誤，建議填寫專案 ID。"
-		},
+		"useCostrictCustomConfig": "使用自定義配置 (debug 已開啟)",
 		"consecutiveMistakeLimit": {
 			"description": "在顯示「CoStrict 遇到問題」對話方塊前允許的連續錯誤或重複操作次數。設定為 0 可停用此安全機制（永不觸發）。"
 		}
@@ -94,11 +91,12 @@
 		"autoCondenseContextPercent": {
 			"description": "當上下文窗口達到此閾值時，CoStrict 將自動壓縮它。"
 		},
+		"USE_LITE_PROMPTS": {
+			"name": "Lite 模式",
+			"description": "啟用後，CoStrict 將使用 Lite 模式，這將減少上下文使用，從而減少 token 消耗。"
+		},
 		"INSERT_BLOCK": {
 			"description": "啟用實驗性的插入內容工具，允許 CoStrict 在特定行號插入內容，無需創建差異。"
-		},
-		"POWER_STEERING": {
-			"description": "啟用後，CoStrict 會更頻繁地提醒模型其當前模式定義的細節。這將導致更嚴格地遵守角色定義和自定義指令，但每條消息會使用更多令牌。"
 		},
 		"PREVENT_FOCUS_DISRUPTION": {
 			"description": "啟用後可防止編輯器焦點中斷。檔案編輯會在背景進行，不會開啟 diff 檢視或搶奪焦點。您可以在 CoStrict 進行變更時繼續不受干擾地工作。檔案可能會在不獲得焦點的情況下開啟以捕獲診斷，或保持完全關閉。"
@@ -128,20 +126,28 @@
 			"next": "下一個結果",
 			"close": "關閉搜尋"
 		},
-		"ALWAYS_INCLUDE_FILE_DETAILS": {
-			"name": "目錄信息增強",
-			"description": "啟用後，CoStrict 將始終包含項目目錄詳細信息。"
+		"USE_KPT_TREE": {
+			"name": "目錄詳情增強",
+			"description": "啟用後,CoStrict 將優化目錄詳細信息。"
 		},
 		"COMMIT_REVIEW": {
 			"name": "Commit 審查",
 			"description": "啟用後，CoStrict 可以對提交進行代碼審查。"
+		},
+		"SMART_MISTAKE_DETECTION": {
+			"name": "強制完成模式",
+			"description": "啟用後，CoStrict 將使用智能錯誤檢測系統，該系統採用加權評分和漸進式警告。相比簡單的連續錯誤計數，這提供了更細緻的錯誤追蹤和自動執行恢復能力。（token 消耗量大）",
+			"AUTO_SWITCH_MODEL": {
+				"name": "自動切換模型",
+				"description": "當前模型連續失敗時，自動切換到備用模型繼續完成任務。"
+			}
 		}
 	},
 	"modelPicker": {
 		"automaticFetch": "擴展會自動獲取<serviceLink>{{serviceName}}</serviceLink>上可用的最新模型列表。如果您不確定選擇哪個模型，CoStrict 最適合與<defaultModelLink>{{defaultModelId}}</defaultModelLink>配合使用。您也可以嘗試搜索\"免費\"以查找當前可用的免費選項。"
 	},
 	"footer": {
-		"feedback": "如果您有任何問題或反饋，請隨時在<zgsmGithubLink>github.com/zgsm-ai/costrict</zgsmGithubLink>上提出問題",
+		"feedback": "如果您有任何問題或反饋，請隨時在<costrictGithubLink>github.com/zgsm-ai/costrict</costrictGithubLink>上提出問題",
 		"telemetry": {
 			"description": "通過發送匿名使用數據和錯誤報告來幫助改進 CoStrict。不會發送代碼、提示或個人信息。有關更多詳情，請參閱我們的隱私政策。"
 		}
@@ -150,7 +156,13 @@
 		"description": "選中後，CoStrict 將不會為此模型使用提示詞快取。"
 	},
 	"prompts": {
-		"description": "設定用於快速操作的支援提示詞，如增強提示詞、解釋程式碼和修復問題。這些提示詞幫助 CoStrict 為常見開發工作提供更好的支援。"
+		"description": "設定用於快速操作的支援提示詞，如增強提示詞、解釋程式碼和修復問題。這些提示詞幫助 CoStrict 為常見開發工作提供更好的支援。<DocsLink>了解更多</DocsLink>"
+	},
+	"ui": {
+		"collapseMarkdownWithoutScroll": {
+			"label": "折疊長 Markdown",
+			"description": "啟用後，較長的 Markdown 會被折疊，可從底部展開全部內容。"
+		}
 	},
 	"providerChangeWarning": {
 		"title": "確定從 CoStrict 切換到其他提供商？",
@@ -203,6 +215,7 @@
 		"general": {
 			"indexBuildFailed": "索引建置失敗",
 			"codebaseIndexBuild": "Codebase索引建置",
+			"codebaseIndexBuildDisabledHint": "未開啟索引建置時，CoStrict 服務仍會正常啟動，但不會自動建置索引。",
 			"onlyCostrictProviderSupport": "僅 CoStrict 提供商支援此服務"
 		},
 		"errors": {

@@ -5,8 +5,16 @@ import { UISettings } from "../UISettings"
 describe("UISettings", () => {
 	const defaultProps = {
 		reasoningBlockCollapsed: false,
+		showSpeedInfo: false,
+		automaticallyFocus: false,
+		collapseMarkdownWithoutScroll: false,
+		apiConfiguration: {
+			apiProvider: "costrict",
+		},
 		enterBehavior: "send" as const,
+		experiments: {},
 		setCachedStateField: vi.fn(),
+		setExperimentEnabled: vi.fn(),
 	}
 
 	it("renders the collapse thinking checkbox", () => {

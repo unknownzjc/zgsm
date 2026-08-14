@@ -1,5 +1,6 @@
 .pnpm-store
 **/dist/**
+/dist/
 out
 out-*
 node_modules
@@ -18,6 +19,7 @@ bin/
 
 # Local prompts and rules
 /local-prompts
+AGENTS.local.md
 
 # Test environment
 .test_env
@@ -55,3 +57,21 @@ openspec
 
 # Architect plans
 plans/
+
+# Review results
+code-review_result/
+security-review_result/
+
+roo-cli-*.tar.gz*
+zgsm-cli-*.tar.gz*
+cos-cli-*.tar.gz*
+
+# Bundled skills (generated during build)
+src/bundled-skills/
+
+.claude
+.costrict
+.gemini*
+
+# Bundled modes (generated during build)
+src/bundled-modes/

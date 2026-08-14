@@ -4,7 +4,7 @@ import OpenAI from "openai"
 import type { ModelInfo } from "@roo-code/types"
 
 import { type ApiHandlerOptions, getModelMaxOutputTokens } from "../../shared/api"
-import { XmlMatcher } from "../../utils/xml-matcher"
+import { TagMatcher } from "../../utils/tag-matcher"
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 
@@ -84,7 +84,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 				format: "openai",
 			}) ?? undefined
 
-		const temperature = this.options.modelTemperature ?? this.defaultTemperature
+		const temperature = this.options.modelTemperature ?? info.defaultTemperature ?? this.defaultTemperature
 
 		const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 			model,
@@ -93,11 +93,9 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			messages: [{ role: "system", content: systemPrompt }, ...convertToOpenAiMessages(messages)],
 			stream: true,
 			stream_options: { include_usage: true },
-			...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-			...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-			...(metadata?.toolProtocol === "native" && {
-				parallel_tool_calls: metadata.parallelToolCalls ?? false,
-			}),
+			tools: this.convertToolsForOpenAI(metadata?.tools),
+			tool_choice: metadata?.tool_choice,
+			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
 		// Add thinking parameter if reasoning is enabled and model supports it
@@ -119,7 +117,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 	): ApiStream {
 		const stream = await this.createStream(systemPrompt, messages, metadata)
 
-		const matcher = new XmlMatcher(
+		const matcher = new TagMatcher(
 			"think",
 			(chunk) =>
 				({
@@ -129,6 +127,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		)
 
 		let lastUsage: OpenAI.CompletionUsage | undefined
+		const activeToolCallIds = new Set<string>()
 
 		for await (const chunk of stream) {
 			// Check for provider-specific error responses (e.g., MiniMax base_resp)
@@ -140,6 +139,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			}
 
 			const delta = chunk.choices?.[0]?.delta
+			const finishReason = chunk.choices?.[0]?.finish_reason
 
 			if (delta?.content) {
 				for (const processedChunk of matcher.update(delta.content)) {
@@ -162,6 +162,9 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			// Emit raw tool call chunks - NativeToolCallParser handles state management
 			if (delta?.tool_calls) {
 				for (const toolCall of delta.tool_calls) {
+					if (toolCall.id) {
+						activeToolCallIds.add(toolCall.id)
+					}
 					yield {
 						type: "tool_call_partial",
 						index: toolCall.index,
@@ -170,6 +173,15 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 						arguments: toolCall.function?.arguments,
 					}
 				}
+			}
+
+			// Emit tool_call_end events when finish_reason is "tool_calls"
+			// This ensures tool calls are finalized even if the stream doesn't properly close
+			if (finishReason === "tool_calls" && activeToolCallIds.size > 0) {
+				for (const id of activeToolCallIds) {
+					yield { type: "tool_call_end", id }
+				}
+				activeToolCallIds.clear()
 			}
 
 			if (chunk.usage) {
@@ -207,7 +219,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 	}
 
-	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any): Promise<string> {
+	async completePrompt(prompt: string): Promise<string> {
 		const { id: modelId, info: modelInfo } = this.getModel()
 
 		const params: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
@@ -221,7 +233,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 
 		try {
-			const response = await this.client.chat.completions.create(params, { signal: metadata?.signal })
+			const response = await this.client.chat.completions.create(params)
 
 			// Check for provider-specific error responses (e.g., MiniMax base_resp)
 			const responseAny = response as any

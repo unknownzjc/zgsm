@@ -65,7 +65,7 @@ export function OptionOverviewSection() {
 
 						<div className="text-muted-foreground mb-4">
 							<p>
-								Create your agent team in the Cloud, give them access to Github and start giving them
+								Create your agent team in the Cloud, give them access to GitHub and start giving them
 								tasks:
 							</p>
 							<ul className="list-inside my-4 space-y-1">
@@ -76,7 +76,7 @@ export function OptionOverviewSection() {
 								<li className="list-disc">
 									Create tasks from the Web and Slack (more integrations soon)
 								</li>
-								<li className="list-disc">Get PR Reviews (and fixes) directly on Github</li>
+								<li className="list-disc">Get PR Reviews (and fixes) directly on GitHub</li>
 								<li className="list-disc">Collaborate with co-workers</li>
 							</ul>
 							<p>
@@ -86,8 +86,12 @@ export function OptionOverviewSection() {
 						</div>
 
 						<Button size="lg" variant="default" className="bg-violet-600 hover:bg-violet-600/80">
-							<a href={EXTERNAL_LINKS.CLOUD_APP_SIGNUP_HOME} className="flex items-center justify-center">
-								Try now for free
+							<a
+								href={EXTERNAL_LINKS.DOCUMENTATION}
+								target="_blank"
+								rel="noreferrer"
+								className="flex items-center justify-center">
+								Read Docs
 								<ArrowRight className="ml-2" />
 							</a>
 						</Button>

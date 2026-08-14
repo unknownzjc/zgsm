@@ -3,16 +3,18 @@ import { exec } from "child_process"
 import { promisify } from "util"
 import { spawn } from "child_process"
 import type { GitDiffInfo, CommitMessageSuggestion, CommitGenerationOptions } from "./types"
-import { ZgsmAuthStorage } from "../auth"
+import { CostrictAuthStorage } from "../auth"
 import { ProviderSettings } from "@roo-code/types"
 import type { ClineProvider } from "../../webview/ClineProvider"
 import { t } from "../../../i18n"
 import { singleCompletionHandler } from "../../../utils/single-completion-handler"
 import { truncateOutput } from "../../../integrations/misc/extract-text"
+import { excludedFileExtensions } from "../../../utils/costrictUtils"
+import { Package } from "shared/package"
 
 const execAsync = promisify(exec)
 
-const GIT_OUTPUT_CHAR_LIMIT = 50_000
+const GIT_OUTPUT_CHAR_LIMIT = 80_000
 /**
  * Commit message generator service
  */
@@ -30,35 +32,88 @@ export class CommitMessageGenerator {
 	 */
 	async getGitDiff(): Promise<GitDiffInfo> {
 		try {
-			// Get staged changes
-			const { stdout: stagedDiff } = await execAsync("git diff --cached --name-status", {
-				cwd: this.workspaceRoot,
-				maxBuffer: 1024 * 1024 * 2, // 2MB buffer for file names
-			})
-
-			// Get unstaged changes
-			const { stdout: unstagedDiff } = await execAsync("git diff --name-status", {
-				cwd: this.workspaceRoot,
-				maxBuffer: 1024 * 1024 * 2, // 2MB buffer for file names
-			})
-
-			// Get full diff content for analysis using streaming approach
-			const fullDiff = await this.getGitDiffStreaming()
-
+			// 1. Initialize diffInfo object
 			const diffInfo: GitDiffInfo = {
 				added: [],
 				modified: [],
 				deleted: [],
 				renamed: [],
-				diffContent: fullDiff,
+				diffContent: "",
 			}
 
-			// Parse staged changes
-			this.parseDiffOutput(stagedDiff, diffInfo)
+			// 2. Verify Git repository
+			await execAsync("git rev-parse --git-dir", {
+				cwd: this.workspaceRoot,
+			})
 
-			// Parse unstaged changes
-			this.parseDiffOutput(unstagedDiff, diffInfo)
+			// 3. Check repository status
+			const hasCommits = await this.hasCommits()
 
+			// 4. Get untracked files
+			const untrackedFiles = await this.getUntrackedFiles()
+
+			// 5. Get changes based on repository status
+			if (hasCommits) {
+				// Repository with commits: use staged and unstaged changes
+				const { stdout: stagedDiff } = await execAsync("git diff --cached --name-status", {
+					cwd: this.workspaceRoot,
+					maxBuffer: 1024 * 1024 * 2, // 2MB buffer for file names
+				})
+
+				const { stdout: unstagedDiff } = await execAsync("git diff --name-status", {
+					cwd: this.workspaceRoot,
+					maxBuffer: 1024 * 1024 * 2, // 2MB buffer for file names
+				})
+
+				// Get full diff content
+				diffInfo.diffContent = await this.getGitDiffStreaming()
+
+				// Parse staged and unstaged changes
+				this.parseDiffOutput(stagedDiff, diffInfo)
+				this.parseDiffOutput(unstagedDiff, diffInfo)
+			} else {
+				// New repository: use git status --short to get working tree changes
+				const { stdout: statusOutput } = await execAsync("git status --short", {
+					cwd: this.workspaceRoot,
+					maxBuffer: 1024 * 1024 * 2, // 2MB buffer for file names
+				})
+
+				// Get full diff content (getGitDiffStreaming will automatically use git diff)
+				diffInfo.diffContent = await this.getGitDiffStreaming()
+
+				// Parse status --short output
+				const lines = statusOutput.trim().split("\n")
+				for (const line of lines) {
+					if (!line.trim()) continue
+
+					const status = line.charAt(0)
+					const filePath = line.substring(3) // Skip status characters and spaces
+
+					// git status --short status codes:
+					// ? Untracked, A Added, M Modified, D Deleted, R Renamed
+					// First column is staged status, second column is working tree status
+					switch (status) {
+						case "?": // Untracked
+						case "A": // Added to staging
+							diffInfo.added.push(filePath)
+							break
+						case "M": // Modified
+							diffInfo.modified.push(filePath)
+							break
+						case "D": // Deleted
+							diffInfo.deleted.push(filePath)
+							break
+						case "R": // Renamed
+							// git status --short doesn't show rename info, ignore for now
+							break
+					}
+				}
+			}
+
+			// 6. Merge untracked files
+			untrackedFiles.forEach((file) => diffInfo.added.push(file))
+
+			// 7. Return result
 			return diffInfo
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
@@ -71,14 +126,14 @@ export class CommitMessageGenerator {
 	 */
 	private async getGitDiffStreaming(): Promise<string> {
 		return new Promise((resolve, reject) => {
-			// 首先检查是否有任何提交
+			// First check if there are any commits
 			execAsync("git rev-parse --verify HEAD", { cwd: this.workspaceRoot })
 				.then(() => {
-					// 有提交，使用 git diff HEAD
+					// Has commits, use git diff HEAD
 					this.runGitDiff(["diff", "HEAD"], resolve, reject)
 				})
 				.catch(() => {
-					// 没有提交，使用 git diff 获取所有更改
+					// No commits, use git diff to get all changes
 					this.runGitDiff(["diff"], resolve, reject)
 				})
 		})
@@ -125,6 +180,46 @@ export class CommitMessageGenerator {
 	}
 
 	/**
+	 * Check if repository has any commits
+	 * @returns true if repository has commits, false if it's a new repository (no commits)
+	 */
+	private async hasCommits(): Promise<boolean> {
+		try {
+			const { stdout } = await execAsync("git rev-parse HEAD", {
+				cwd: this.workspaceRoot,
+			})
+			// If command succeeds and returns non-empty string, there are commits
+			return stdout.trim().length > 0
+		} catch (error) {
+			// Command failed (no HEAD), indicates new repository
+			return false
+		}
+	}
+
+	/**
+	 * Get list of untracked files
+	 * @returns Array of untracked file paths
+	 */
+	private async getUntrackedFiles(): Promise<string[]> {
+		try {
+			const { stdout } = await execAsync("git ls-files --others --exclude-standard", {
+				cwd: this.workspaceRoot,
+				maxBuffer: 1024 * 1024 * 2, // 2MB buffer
+			})
+			// Split output by lines and filter empty lines
+			return stdout
+				.trim()
+				.split("\n")
+				.filter((line) => line.trim().length > 0)
+		} catch (error) {
+			// If command fails, return empty array instead of throwing exception
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			console.error(t("commit:commit.error.failedToGetUntrackedFiles", { 0: errorMessage }))
+			return []
+		}
+	}
+
+	/**
 	 * Parse git diff output and populate diff info
 	 */
 	private parseDiffOutput(diffOutput: string, diffInfo: GitDiffInfo): void {
@@ -168,6 +263,12 @@ export class CommitMessageGenerator {
 			throw new Error(t("commit:commit.error.noChanges"))
 		}
 
+		// Provide friendly message for new repository with only untracked files
+		const hasCommits = await this.hasCommits()
+		if (!hasCommits && diffInfo.added.length > 0 && diffInfo.modified.length === 0) {
+			console.log(t("commit:commit.info.newRepoWithUntracked", { 0: diffInfo.added.length }))
+		}
+
 		const aiSuggestion = await this.generateCommitMessageWithAI(diffInfo, options)
 		console.log("commit meta:" + JSON.stringify(aiSuggestion))
 		return aiSuggestion
@@ -181,7 +282,7 @@ export class CommitMessageGenerator {
 		options: CommitGenerationOptions,
 	): Promise<CommitMessageSuggestion> {
 		// Get authentication tokens
-		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
+		const tokens = await CostrictAuthStorage.getInstance().getTokens()
 
 		// Get language configuration
 		let lang = this.getCommitLanguage(options)
@@ -198,8 +299,15 @@ export class CommitMessageGenerator {
 		}
 		this.abortController = new AbortController()
 		// Prepare prompt for AI
-		const systemPrompt =
-			"You are an expert at generating concise, meaningful commit messages based on git diff information. Follow conventional commit format when appropriate."
+		const systemPrompt = `
+You are an expert at generating concise, meaningful commit messages based on git diff information. Follow conventional commit format when appropriate.
+
+Rules:
+1. Output ONLY the commit message
+2. No thinking process
+3. No conversational filler
+4. Start directly with the message content	
+`
 		let aiMessage = await singleCompletionHandler(
 			apiConfiguration!,
 			this.buildAIPrompt(diffInfo, options),
@@ -217,6 +325,13 @@ export class CommitMessageGenerator {
 			aiMessage = (aiMessage.split("</think>")[1] || "").trim()
 		}
 
+		if (aiMessage.startsWith("```")) {
+			aiMessage = aiMessage.slice(3).trim()
+			if (aiMessage.endsWith("```")) {
+				aiMessage = aiMessage.slice(0, -3).trim()
+			}
+		}
+
 		if (!aiMessage) {
 			throw new Error(t("commit:commit.error.aiFailed"))
 		}
@@ -230,94 +345,9 @@ export class CommitMessageGenerator {
 	 * Check if a file should only show filename without content in the prompt
 	 */
 	private shouldFilterFileContent(filePath: string): boolean {
-		const fileExtensions = [
-			// Image files
-			".png",
-			".jpg",
-			".jpeg",
-			".gif",
-			".bmp",
-			".svg",
-			".webp",
-			".ico",
-			// Lock files
-			".lock",
-			".lock.json",
-			"package-lock.json",
-			"yarn.lock",
-			"pnpm-lock.yaml",
-			// Binary files
-			".bin",
-			".exe",
-			".dll",
-			".so",
-			".dylib",
-			".a",
-			".lib",
-			".o",
-			// Archive files
-			".zip",
-			".tar",
-			".gz",
-			".bz2",
-			".xz",
-			".7z",
-			".rar",
-			".deb",
-			".rpm",
-			// Font files
-			".ttf",
-			".otf",
-			".woff",
-			".woff2",
-			".eot",
-			// Video files
-			".mp4",
-			".avi",
-			".mov",
-			".wmv",
-			".flv",
-			".webm",
-			".mkv",
-			// Audio files
-			".mp3",
-			".wav",
-			".flac",
-			".aac",
-			".ogg",
-			".wma",
-			// Database files
-			".db",
-			".sqlite",
-			".sqlite3",
-			".mdb",
-			".accdb",
-			// Certificate files
-			".pem",
-			".crt",
-			".cer",
-			".key",
-			".p12",
-			".pfx",
-			// Compiled files
-			".class",
-			".pyc",
-			".pyo",
-			".pyd",
-			".dll",
-			".exe",
-			".so",
-			// Large data files
-			".dat",
-			".data",
-			".log",
-			".tmp",
-			".temp",
-		]
-
 		const fileName = filePath.toLowerCase()
 		return (
-			fileExtensions.some((ext) => fileName.endsWith(ext)) ||
+			excludedFileExtensions.some((ext) => fileName.endsWith(ext)) ||
 			fileName.includes("package-lock.json") ||
 			fileName.includes("yarn.lock") ||
 			fileName.includes("pnpm-lock.yaml") ||
@@ -585,7 +615,7 @@ export class CommitMessageGenerator {
 
 		// Check if all files are style-related
 		const stylePattern = /\.(css|scss|sass|less|styl|stylus)(\.(d\.ts|map))?$|tailwind\.config\.(js|ts)$/i
-		return allFiles.length > 0 && allFiles.every((file) => stylePattern.test(file))
+		return allFiles.length > 0 && allFiles?.every?.((file) => stylePattern.test(file))
 	}
 	/**
 	 * Check if any files match the given pattern
@@ -611,7 +641,7 @@ export class CommitMessageGenerator {
 		}
 
 		// Get from VSCode configuration
-		const config = vscode.workspace.getConfiguration("zgsm.commit")
+		const config = vscode.workspace.getConfiguration(`${Package.commandIDPrefix}.commit`)
 		const configuredLanguage = config.get<string>("language", "auto")
 
 		if (configuredLanguage !== "auto") {

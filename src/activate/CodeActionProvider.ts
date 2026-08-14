@@ -46,7 +46,7 @@ export class CodeActionProvider implements vscode.CodeActionProvider {
 		context: vscode.CodeActionContext,
 	): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
 		try {
-			if (!vscode.workspace.getConfiguration(Package.name).get<boolean>("enableCodeActions", true)) {
+			if (!vscode.workspace.getConfiguration(Package.commandIDPrefix).get<boolean>("enableCodeActions", true)) {
 				return []
 			}
 
@@ -80,7 +80,7 @@ export class CodeActionProvider implements vscode.CodeActionProvider {
 							effectiveRange.text,
 							effectiveRange.range.start.line + 1,
 							effectiveRange.range.end.line + 1,
-							relevantDiagnostics.map(EditorUtils.createDiagnosticData),
+							relevantDiagnostics?.map(EditorUtils.createDiagnosticData),
 						]),
 					)
 				}

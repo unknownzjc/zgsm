@@ -2,11 +2,12 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
 import { rooDefaultModelId, getApiProtocol, type ImageGenerationApiMethod } from "@roo-code/types"
-import { NativeToolCallParser } from "../../core/assistant-message/NativeToolCallParser"
 import { CloudService } from "@roo-code/cloud"
 
+import { NativeToolCallParser } from "../../core/assistant-message/NativeToolCallParser"
+
 import { Package } from "../../shared/package"
-import type { ApiHandlerOptions, ModelRecord } from "../../shared/api"
+import type { ApiHandlerOptions } from "../../shared/api"
 import { ApiStream } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 import { convertToOpenAiMessages } from "../transform/openai-format"
@@ -42,7 +43,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 	private currentReasoningDetails: any[] = []
 
 	constructor(options: ApiHandlerOptions) {
-		const sessionToken = getSessionToken()
+		const sessionToken = options.rooApiKey ?? getSessionToken()
 
 		let baseURL = process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy"
 
@@ -64,6 +65,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 
 		// Load dynamic models asynchronously - strip /v1 from baseURL for fetcher
 		this.fetcherBaseURL = baseURL.endsWith("/v1") ? baseURL.slice(0, -3) : baseURL
+
 		this.loadDynamicModels(this.fetcherBaseURL, sessionToken).catch((error) => {
 			console.error("[RooHandler] Failed to load dynamic models:", error)
 		})
@@ -105,12 +107,12 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 			stream: true,
 			stream_options: { include_usage: true },
 			...(reasoning && { reasoning }),
-			...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-			...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
+			tools: this.convertToolsForOpenAI(metadata?.tools),
+			tool_choice: metadata?.tool_choice,
 		}
 
 		try {
-			this.client.apiKey = getSessionToken()
+			this.client.apiKey = this.options.rooApiKey ?? getSessionToken()
 			return this.client.chat.completions.create(rooParams, requestOptions)
 		} catch (error) {
 			throw handleOpenAIError(error, this.providerName)
@@ -131,17 +133,18 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 			this.currentReasoningDetails = []
 
 			const headers: Record<string, string> = {
-				"X-Costrict-App-Version": Package.version,
+				"X-Roo-App-Version": Package.version,
 			}
 
 			if (metadata?.taskId) {
-				headers["X-Costrict-Task-ID"] = metadata.taskId
+				headers["X-Roo-Task-ID"] = metadata.taskId
 			}
 
 			const stream = await this.createStream(systemPrompt, messages, metadata, { headers })
 
 			let lastUsage: RooUsage | undefined = undefined
-			// Accumulator for reasoning_details: accumulate text by type-index key
+			// Accumulator for reasoning_details FROM the API.
+			// We preserve the original shape of reasoning_details to prevent malformed responses.
 			const reasoningDetailsAccumulator = new Map<
 				string,
 				{
@@ -155,6 +158,11 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 					index: number
 				}
 			>()
+
+			// Track whether we've yielded displayable text from reasoning_details.
+			// When reasoning_details has displayable content (reasoning.text or reasoning.summary),
+			// we skip yielding the top-level reasoning field to avoid duplicate display.
+			let hasYieldedReasoningFromDetails = false
 
 			for await (const chunk of stream) {
 				const delta = chunk.choices[0]?.delta
@@ -180,7 +188,10 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 					if (deltaWithReasoning.reasoning_details && Array.isArray(deltaWithReasoning.reasoning_details)) {
 						for (const detail of deltaWithReasoning.reasoning_details) {
 							const index = detail.index ?? 0
-							const key = `${detail.type}-${index}`
+							// Use id as key when available to merge chunks that share the same reasoning block id
+							// This ensures that reasoning.summary and reasoning.encrypted chunks with the same id
+							// are merged into a single object, matching the provider's expected format
+							const key = detail.id ?? `${detail.type}-${index}`
 							const existing = reasoningDetailsAccumulator.get(key)
 
 							if (existing) {
@@ -195,11 +206,13 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 									existing.data = (existing.data || "") + detail.data
 								}
 								// Update other fields if provided
+								// Note: Don't update type - keep original type (e.g., reasoning.summary)
+								// even when encrypted data chunks arrive with type reasoning.encrypted
 								if (detail.id !== undefined) existing.id = detail.id
 								if (detail.format !== undefined) existing.format = detail.format
 								if (detail.signature !== undefined) existing.signature = detail.signature
 							} else {
-								// Start new reasoning detail accumulation - sanitize ID to remove invalid characters
+								// Start new reasoning detail accumulation
 								reasoningDetailsAccumulator.set(key, {
 									type: detail.type,
 									text: detail.text,
@@ -213,29 +226,32 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 							}
 
 							// Yield text for display (still fragmented for live streaming)
+							// Only reasoning.text and reasoning.summary have displayable content
+							// reasoning.encrypted is intentionally skipped as it contains redacted content
 							let reasoningText: string | undefined
 							if (detail.type === "reasoning.text" && typeof detail.text === "string") {
 								reasoningText = detail.text
 							} else if (detail.type === "reasoning.summary" && typeof detail.summary === "string") {
 								reasoningText = detail.summary
 							}
-							// Note: reasoning.encrypted types are intentionally skipped as they contain redacted content
 
 							if (reasoningText) {
+								hasYieldedReasoningFromDetails = true
 								yield { type: "reasoning", text: reasoningText }
 							}
 						}
-					} else if ("reasoning" in delta && delta.reasoning && typeof delta.reasoning === "string") {
-						// Handle legacy reasoning format - only if reasoning_details is not present
-						yield {
-							type: "reasoning",
-							text: delta.reasoning,
+					}
+
+					// Handle top-level reasoning field for UI display.
+					// Skip if we've already yielded from reasoning_details to avoid duplicate display.
+					if ("reasoning" in delta && delta.reasoning && typeof delta.reasoning === "string") {
+						if (!hasYieldedReasoningFromDetails) {
+							yield { type: "reasoning", text: delta.reasoning }
 						}
 					} else if ("reasoning_content" in delta && typeof delta.reasoning_content === "string") {
 						// Also check for reasoning_content for backward compatibility
-						yield {
-							type: "reasoning",
-							text: delta.reasoning_content,
+						if (!hasYieldedReasoningFromDetails) {
+							yield { type: "reasoning", text: delta.reasoning_content }
 						}
 					}
 
@@ -272,7 +288,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 				}
 			}
 
-			// After streaming completes, store the accumulated reasoning_details
+			// After streaming completes, store ONLY the reasoning_details we received from the API.
 			if (reasoningDetailsAccumulator.size > 0) {
 				this.currentReasoningDetails = Array.from(reasoningDetailsAccumulator.values())
 			}
@@ -317,10 +333,10 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 			throw error
 		}
 	}
-	override async completePrompt(prompt: string, systemPrompt?: string, metadata?: any): Promise<string> {
+	override async completePrompt(prompt: string): Promise<string> {
 		// Update API key before making request to ensure we use the latest session token
-		this.client.apiKey = getSessionToken()
-		return super.completePrompt(prompt, systemPrompt, metadata)
+		this.client.apiKey = this.options.rooApiKey ?? getSessionToken()
+		return super.completePrompt(prompt)
 	}
 
 	private async loadDynamicModels(baseURL: string, apiKey?: string): Promise<void> {
@@ -360,7 +376,6 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 			supportsImages: false,
 			supportsReasoningEffort: false,
 			supportsPromptCache: true,
-			supportsNativeTools: false,
 			inputPrice: 0,
 			outputPrice: 0,
 			isFree: false,
@@ -386,7 +401,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		inputImage?: string,
 		apiMethod?: ImageGenerationApiMethod,
 	): Promise<ImageGenerationResult> {
-		const sessionToken = getSessionToken()
+		const sessionToken = this.options.rooApiKey ?? getSessionToken()
 
 		if (!sessionToken || sessionToken === "unauthenticated") {
 			return {

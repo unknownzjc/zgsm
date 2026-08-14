@@ -5,7 +5,6 @@ import { TodoItem } from "@roo-code/types"
 import { Task } from "../task/Task"
 import { getModeBySlug } from "../../shared/modes"
 import { formatResponse } from "../prompts/responses"
-import { t } from "../../i18n"
 import { parseMarkdownChecklist } from "./UpdateTodoListTool"
 import { Package } from "../../shared/package"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
@@ -20,17 +19,9 @@ interface NewTaskParams {
 export class NewTaskTool extends BaseTool<"new_task"> {
 	readonly name = "new_task" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): NewTaskParams {
-		return {
-			mode: params.mode || "",
-			message: params.message || "",
-			todos: params.todos,
-		}
-	}
-
 	async execute(params: NewTaskParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { mode, message, todos } = params
-		const { askApproval, handleError, pushToolResult, toolProtocol, toolCallId } = callbacks
+		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
 			// Validate required parameters.
@@ -60,10 +51,24 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 
 			const state = await provider.getState()
 
+			// Check if parent mode has taskMode restriction
+			const currentMode = getModeBySlug(state?.mode ?? "", state?.customModes)
+			if (currentMode?.taskMode && mode !== currentMode.taskMode) {
+				task.recordToolError("new_task")
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(
+					formatResponse.toolError(
+						`Mode '${currentMode.name}' only allows delegation to '${currentMode.taskMode}' mode. ` +
+							`Requested mode: '${mode}'.`,
+					),
+				)
+				return
+			}
+
 			// Use Package.name (dynamic at build time) as the VSCode configuration namespace.
 			// Supports multiple extension variants (e.g., stable/nightly) without hardcoded strings.
 			const requireTodos = vscode.workspace
-				.getConfiguration(Package.name)
+				.getConfiguration(Package.commandIDPrefix)
 				.get<boolean>("newTaskRequireTodos", false)
 
 			// Check if todos are required based on VSCode setting.
@@ -117,12 +122,6 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 				return
 			}
 
-			// Provider is guaranteed to be defined here due to earlier check.
-
-			if (task.enableCheckpoints) {
-				task.checkpointSave(true)
-			}
-
 			// Delegate parent and open child as sole active task
 			const child = await (provider as any).delegateParentAndOpenChild({
 				parentTaskId: task.taskId,
@@ -147,9 +146,9 @@ export class NewTaskTool extends BaseTool<"new_task"> {
 
 		const partialMessage = JSON.stringify({
 			tool: "newTask",
-			mode: this.removeClosingTag("mode", mode, block.partial),
-			content: this.removeClosingTag("message", message, block.partial),
-			todos: this.removeClosingTag("todos", todos, block.partial),
+			mode: mode ?? "",
+			content: message ?? "",
+			todos: todos,
 		})
 
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})

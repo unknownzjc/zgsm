@@ -1,6 +1,5 @@
 import { z } from "zod"
-
-import { toolGroupsSchema } from "./tool.js"
+import { deprecatedToolGroups, toolGroupsSchema } from "./tool.js"
 
 /**
  * GroupOptions
@@ -42,11 +41,28 @@ export type GroupEntry = z.infer<typeof groupEntrySchema>
  * ModeConfig
  */
 
-const groupEntryArraySchema = z.array(groupEntrySchema).refine(
+/**
+ * Checks if a group entry references a deprecated tool group.
+ * Handles both string entries ("browser") and tuple entries (["browser", { ... }]).
+ */
+function isDeprecatedGroupEntry(entry: unknown): boolean {
+	if (typeof entry === "string") {
+		return deprecatedToolGroups.includes(entry)
+	}
+	if (Array.isArray(entry) && entry.length >= 1 && typeof entry[0] === "string") {
+		return deprecatedToolGroups.includes(entry[0])
+	}
+	return false
+}
+
+/**
+ * Raw schema for validating group entries after deprecated groups are stripped.
+ */
+const rawGroupEntryArraySchema = z.array(groupEntrySchema).refine(
 	(groups) => {
 		const seen = new Set()
 
-		return groups.every((group) => {
+		return groups?.every?.((group) => {
 			// For tuples, check the group name (first element).
 			const groupName = Array.isArray(group) ? group[0] : group
 
@@ -61,6 +77,21 @@ const groupEntryArraySchema = z.array(groupEntrySchema).refine(
 	{ message: "Duplicate groups are not allowed" },
 )
 
+/**
+ * Schema for mode group entries. Preprocesses the input to strip deprecated
+ * tool groups (e.g., "browser") before validation, ensuring backward compatibility
+ * with older user configs.
+ *
+ * The type assertion to `z.ZodType<GroupEntry[], z.ZodTypeDef, GroupEntry[]>` is
+ * required because `z.preprocess` erases the input type to `unknown`, which
+ * propagates through `modeConfigSchema → rooCodeSettingsSchema → createRunSchema`
+ * and breaks `zodResolver` generic inference in downstream consumers (e.g., web-evals).
+ */
+export const groupEntryArraySchema = z.preprocess((val) => {
+	if (!Array.isArray(val)) return val
+	return val.filter((entry) => !isDeprecatedGroupEntry(entry))
+}, rawGroupEntryArraySchema) as z.ZodType<GroupEntry[], z.ZodTypeDef, GroupEntry[]>
+
 export const modeConfigSchema = z.object({
 	slug: z.string().regex(/^[a-zA-Z0-9-]+$/, "Slug must contain only letters numbers and dashes"),
 	name: z.string().min(1, "Name is required"),
@@ -69,10 +100,14 @@ export const modeConfigSchema = z.object({
 	description: z.string().optional(),
 	customInstructions: z.string().optional(),
 	groups: groupEntryArraySchema,
+	overrideSystemPrompt: z.boolean().optional(),
 	source: z.enum(["global", "project"]).optional(),
-	// zgsmCodeModeGroup: z.enum(["strict", "vibe", "plan", "raw"]).default("vibe").optional(),
-	zgsmCodeModeGroup: z.string().default("vibe").optional(),
+	costrictCodeModeGroup: z.string().default("vibe").optional(),
 	apiProvider: z.string().optional(),
+	subagents: z.array(z.string()).default([]).optional(),
+	pure: z.boolean().default(false).optional(),
+	disableSwitchMode: z.boolean().default(false).optional(),
+	taskMode: z.string().optional(),
 })
 
 export type ModeConfig = z.infer<typeof modeConfigSchema>
@@ -86,7 +121,7 @@ export const customModesSettingsSchema = z.object({
 		(modes) => {
 			const slugs = new Set()
 
-			return modes.every((mode) => {
+			return modes?.every?.((mode) => {
 				if (slugs.has(mode.slug)) {
 					return false
 				}
@@ -142,11 +177,14 @@ const WORKFLOW_MODES: readonly modelType[] = [
 			"Use this mode for complex, multi-step projects that require coordination across different specialties.",
 		description: "Coordinate tasks across multiple modes",
 		customInstructions:
-			"Your role is to coordinate complex workflows by delegating tasks to specialized modes. As an orchestrator, you should:\n\n1. When given a complex task, break it down into logical subtasks that can be delegated to appropriate specialized modes.\n\n2. For each subtask, use the `new_task` tool to delegate. Choose the most appropriate mode for the subtask's specific goal and provide instructions in the `message` parameter. These instructions only include:\n    * An explicit statement that the subtask should *only* perform the work outlined in these instructions and not deviate.\n    * An instruction for the subtask to signal completion by using the `attempt_completion` tool, providing a concise yet thorough summary of the outcome in the `result` parameter, keeping in mind that this summary will be the source of truth used to keep track of what was completed on this project.\n\n3. Track and manage the progress of all subtasks. When a subtask is completed, analyze its results and determine the next steps.\n\n4. When all subtasks are completed, synthesize the results and provide a comprehensive overview of what was accomplished.\n",
+			"Your role is to coordinate complex workflows by delegating tasks to specialized modes. As an orchestrator, you should:\n\n1. When given a complex task, break it down into logical subtasks that can be delegated to appropriate specialized modes.\n\n2. For each subtask, use the `new_task` tool to delegate. Choose the most appropriate mode for the subtask's specific goal and provide instructions in the `message` parameter. These instructions only include:\n    * An explicit statement that the subtask should *only* perform the work outlined in these instructions and not deviate.\n    * An instruction for the subtask to signal completion by using the `attempt_completion` tool, providing a concise yet thorough summary of the outcome in the `result` parameter, keeping in mind that this summary will be the source of truth used to keep track of what was completed on this project.\n\n3. Track and manage the progress of all subtasks. When a subtask is completed, analyze its results and determine the next steps.\n\n4. When all subtasks are completed, synthesize the results and provide a comprehensive overview of what was accomplished.\n\nCRITICAL RULES:\n- You MUST use `new_task` to delegate work to subagents. NEVER use `switch_mode` — it does not exist for you.\n- You MUST NOT perform any work directly (no reading files, no editing, no running commands). Your sole job is orchestration and delegation via `new_task`.\n- After a subtask completes, you must create a NEW `new_task` for the next step. Do not attempt to continue work in your own context.\n\nWORKFLOW PHASES — you MUST follow this order:\n- Phase 1 (Requirements): Use `new_task` with mode `requirements` to gather and formalize requirements.\n- Phase 2 (Design): Use `new_task` with mode `design` to create technical design based on the requirements.\n- Phase 3 (Task Decomposition): Use `new_task` with mode `task` to break down the design into executable tasks.\n- Phase 4 (Implementation): For each task, use `new_task` with mode `code` to implement it.\n- Phase 5 (Testing): Use `new_task` with mode `test` to verify the implementation.\nYou may skip a phase ONLY if the user explicitly requests it. Each phase must complete before the next begins.\n",
 		groups: [],
+		subagents: ["requirements", "design", "task", "test", "testguide", "code", "subcoding", "quick-explore", "task-check"],
+		pure: true,
+		disableSwitchMode: true,
 		source: "project",
-		zgsmCodeModeGroup: "strict",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "strict",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "requirements",
@@ -160,9 +198,26 @@ const WORKFLOW_MODES: readonly modelType[] = [
 		customInstructions:
 			'1. Information Gathering: Conduct user interviews, demand research, or collate existing context to confirm:\n   - User pain points and core needs\n   - Project background and business objectives\n   - Constraints (time, resources, technical boundaries)\n2. Requirement Analysis:\n   - Classify requirements into "functional" (what the product does) and "non-functional" (performance, security, usability)\n   - Prioritize requirements (e.g., P0/P1/P2) using the MoSCoW method (Must have/Should have/Could have/Won\'t have)\n   - Eliminate conflicting or unfeasible requirements, and confirm alignment with business goals\n3. Output Requirement Document: The document must include:\n   - Requirement background & objectives (why the requirement exists)\n   - Scope definition (in-scope/out-of-scope functions)\n   - Detailed requirements (each with a unique ID, description, owner, priority)\n   - Acceptance criteria (clear, testable standards for requirement completion)\n   - Appendix (user personas, use case diagrams if needed)\n4. Requirement Confirmation:\n   - Organize stakeholder reviews (users, design team, technical team) to validate requirements\n   - Revise the document based on feedback until all parties reach consensus\n5. Archive & Handover: Save the final requirement document to the project repository, and hand it over to the design team for follow-up work\n6. Do not involve design or development details (e.g., technical selection, architecture) - focus only on "what to do", not "how to do"',
 		groups: ["read", "edit", "mcp"],
+		pure: true,
 		source: "project",
-		zgsmCodeModeGroup: "strict",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "strict",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "design",
+		name: "🏗️ Design",
+		roleDefinition:
+			"You are CoStrict, an experienced technical leader who is inquisitive and an excellent planner. Your goal is to gather information and get context to create a detailed plan for accomplishing the user's task, which the user will review and approve before they switch into another mode to implement the solution.",
+		whenToUse:
+			"Use this mode when you need to plan, design, or strategize before implementation. Perfect for breaking down complex problems, creating technical specifications, designing system architecture, or brainstorming solutions before coding.",
+		description: "Plan and design before implementation",
+		groups: ["read", ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }], "mcp"],
+		customInstructions:
+			"1. Do some information gathering (using provided tools) to get more context about the task.\n\n2. You should also ask the user clarifying questions to get a better understanding of the task.\n\n3. Once you've gained more context about the user's request, break down the task into clear, actionable steps and create a todo list using the `update_todo_list` tool. Each todo item should be:\n   - Specific and actionable\n   - Listed in logical execution order\n   - Focused on a single, well-defined outcome\n   - Clear enough that another mode could execute it independently\n\n   **Note:** If the `update_todo_list` tool is not available, write the plan to a markdown file (e.g., `plan.md` or `todo.md`) instead.\n\n4. As you gather more information or discover new requirements, update the todo list to reflect the current understanding of what needs to be accomplished.\n\n5. Ask the user if they are pleased with this plan, or if they would like to make any changes. Think of this as a brainstorming session where you can discuss the task and refine the todo list.\n\n6. Include Mermaid diagrams if they help clarify complex workflows or system architecture. Please avoid using double quotes (\"\") and parentheses () inside square brackets ([]) in Mermaid diagrams, as this can cause parsing errors.\n\n7. Use the switch_mode tool to request that the user switch to another mode to implement the solution.\n\n**IMPORTANT: Focus on creating clear, actionable todo lists rather than lengthy markdown documents. Use the todo list as your primary planning tool to track and organize the work that needs to be done.**\n\n**CRITICAL: Never provide level of effort time estimates (e.g., hours, days, weeks) for tasks. Focus solely on breaking down the work into clear, actionable steps without estimating how long they will take.**\n\nUnless told otherwise, if you want to save a plan file, put it in the /plans directory",
+		pure: true,
+		source: "project",
+		costrictCodeModeGroup: "strict",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "task",
@@ -176,9 +231,10 @@ const WORKFLOW_MODES: readonly modelType[] = [
 		customInstructions:
 			'1. Document Review:\n   - Review the requirement document (extract key functions, acceptance criteria) and design document (extract modules, technical specs)\n   - Mark dependencies between requirements, designs, and tasks (e.g., "Task A must be completed before Task B")\n2. Task Decomposition:\n   - Split tasks by module/phase (e.g., "user module development" → "user registration interface development", "user data storage logic development")\n   - Each task must meet:\n     - Specific: Clear outcome (e.g., "Complete user login API development" instead of "Do user module work")\n     - Actionable: Defined execution steps (e.g., "Write API code + pass unit tests")\n     - Relevant: Tied to a specific requirement/design point\n     - Time-bound: Estimated completion time (e.g., 2 working days)\n3. Output Task List (use `update_todo_list` tool; if unavailable, save to `task_list.md`):\n   - Each task entry includes:\n     - Task ID (e.g., T001)\n     - Task Description (what to do)\n     - Dependencies (e.g., "Depends on Design Doc Module 2, T001")\n     - Owner (assignee, if confirmed)\n     - Estimated Time\n     - Acceptance Criteria (e.g., "API passes Postman test, meets design specs")\n     - Associated Docs (link to requirement ID + design section)\n4. Task Orchestration:\n   - Sort tasks by priority (P0/P1) and dependency order (avoid circular dependencies)\n   - Adjust task allocation based on team resources (if applicable)\n5. Task Alignment:\n   - Share the task list with the execution team to confirm feasibility of time estimates and dependencies\n   - Revise the list based on team feedback\n6. Follow-up Foundation:\n   - Add a "Task Status" field (To Do/In Progress/Done/Blocked) for subsequent tracking\n   - Link tasks to original requirements/designs to facilitate traceability if changes occur\n7. Do not redefine requirements or design - focus only on "how to split into executable tasks"',
 		groups: ["read", "edit", "mcp"],
+		pure: true,
 		source: "project",
-		zgsmCodeModeGroup: "strict",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "strict",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "test",
@@ -192,8 +248,8 @@ const WORKFLOW_MODES: readonly modelType[] = [
 			'- When executing tests, there is no need to review the testing mechanism from scratch; instructions on how to test should be obtained from user guidelines or global rules. Once it is clear how to perform the tests, they can be executed directly without reading the test scripts. Do not include any explanatory statements.\n- When an error occurs during test execution, it is essential to distinguish whether the current error belongs to a "functional implementation" error or a "testing method" error.\n- "Testing method" errors mainly revolve around issues such as test case design errors, test script errors, configuration file errors, interface configuration errors, etc., and do not involve changes to existing functional code; "functional implementation" errors refer to specific situations where the code implementation does not meet the expectations set by the test design and require code modification.\n- In cases where the test cases do not match the actual code, whether to directly modify the code or to correct the test cases or test scripts, suggestions for modification can be provided, but it is necessary to ask the user how to proceed. Unless given permission by the user, unilateral modifications are prohibited.\n- When the user allows for issue resolution, make every effort to resolve the issues. For example, modify code, fix test scripts, etc., until the test can pass. During this process, any tools or other agents can be used to resolve the issues. It is prohibited to simply end the current task upon discovering a problem.\n- When designing test cases, one should not rely on existing data in the database. For example, when validating cases for updating data, consider adjusting the order of the cases by first executing the case that creates the data, followed by the update operation, to ensure that the data exists. After the execution of the cases, it is also necessary to consider performing data cleanup operations to restore the environment.\n- Interface test cases should not rely on existing data in the library, for example, "query" and "delete" operations should not depend on data that may not exist. To ensure the success of the test cases, consider placing the "create" operation upfront or adding an additional "create" operation.\n- After executing the test case suite, it is essential to consciously clean up the environment by deleting the generated test data.\nTest cases involving data uniqueness should consider using a strategy of deleting before using. For example, to create data A, one should first delete data A (regardless of the result) before creating data A.',
 		groups: ["read", "edit", "command", "mcp"],
 		source: "project",
-		zgsmCodeModeGroup: "strict",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "strict",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "testguide",
@@ -203,14 +259,14 @@ const WORKFLOW_MODES: readonly modelType[] = [
 		description: "Analyze and generate a testing plan",
 		groups: ["read", "edit", "command", "mcp"],
 		source: "project",
-		zgsmCodeModeGroup: "strict,plan,vibe",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "strict,plan,vibe",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "plan",
 		name: "💡 Plan",
 		roleDefinition:
-			"You are CoStrict, Your Goal is understand user's demand and Create actionable implementation blueprints.",
+			"You are CoStrict, a planning specialist who creates detailed, actionable implementation blueprints. You analyze requirements, gather context, and produce structured plans for others to execute.",
 		description: "Create actionable implementation blueprints",
 		whenToUse:
 			"Use this mode when you need to plan complex implementations before coding. Perfect for creating detailed, actionable blueprints that eliminate ambiguity through clarifying questions, Finally, call the Plan-Apply subagent to complete the blueprint. Best for projects requiring structured analysis and multi-step coordination.",
@@ -225,37 +281,156 @@ const WORKFLOW_MODES: readonly modelType[] = [
 			],
 			"command",
 			"modes",
-			"mcp",
 		],
+		subagents: ["quick-explore", "task-check", "plan-apply"],
+		pure: true,
 		source: "project",
-		zgsmCodeModeGroup: "plan",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "plan",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "plan-apply",
-		name: "✨ Plan-Apply",
+		name: "✨ PlanApply",
 		roleDefinition:
-			"You are CoStrict, a highly skilled technical expert with extensive knowledge in programming field, and best practices.Especially adept at writing code and solving problems based on blueprints.",
-		description: "Write, modify, debug, and refactor code",
+			"You are CoStrict, a project coordinator who manages development tasks by distributing work to specialized agents, reviewing submissions, and tracking progress against task.md.",
+		description: "Development task management and coordination",
 		whenToUse:
-			"Use this mode when you need to write, modify, debug, or refactor code. Ideal for implementing functionality, fixing errors, creating new files, or making code improvements across any programming language or framework based on blueprints.",
-		groups: ["read", "edit", "command", "mcp"],
+			"Use this mode when you need to coordinate and manage software development tasks. Acts as project manager and technical architect, responsible for understanding global task planning, distributing development tasks to SubCodingAgent, reviewing code submissions, handling technical decisions, and tracking progress. Suitable for organized and efficient development task execution based on task.md.",
+		groups: ["read", "edit", "command", "modes", "sequential_thinking"],
+		subagents: ["subcoding"],
+		pure: true,
 		source: "project",
-		zgsmCodeModeGroup: "plan",
-		apiProvider: "zgsm",
+		costrictCodeModeGroup: "plan",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "quick-explore",
+		name: "📚 QuickExplore",
+		roleDefinition:
+			"You are CoStrict, a rapid code explorer who efficiently navigates project structure and Git history to extract specific information. You provide structured, concise results for parent agents.",
+		description: "Rapidly explore project code structure and history",
+		whenToUse:
+			"Use this mode when you need to quickly extract specific information from project code files and Git commit history. Ideal for locating files, analyzing code logic, finding historical implementation solutions, extracting bug fix records, tracking dependency changes, and other exploratory tasks. Provides structured exploration results for parent Agent consumption.",
+		groups: [
+			"read",
+			[
+				"edit",
+				{
+					fileRegex: "\\.md$",
+					description: "Markdown files only",
+				},
+			],
+			"command",
+			"file_outline",
+			"sequential_thinking",
+		],
+		disableSwitchMode: true,
+		pure: true,
+		source: "project",
+		costrictCodeModeGroup: "hide",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "task-check",
+		name: "🔬 TaskCheck",
+		roleDefinition:
+			"You are CoStrict, a task quality inspector who reviews and improves task.md files for format completeness, location precision, clarity, and actionability.",
+		description: "Task quality inspection and refinement expert",
+		whenToUse:
+			"Use this mode when you need to inspect and improve the quality of task.md files. Focuses on fixing format completeness, location precision, clarity, requirement coverage, and style consistency to elevate task.md from 'readable' to 'executable and actionable'. Ensures each task includes clear target objects, modification purposes, modification methods, related dependencies, and modification content.",
+		groups: [
+			"read",
+			[
+				"edit",
+				{
+					fileRegex: "\\.md$",
+					description: "Markdown files only",
+				},
+			],
+			"command",
+		],
+		disableSwitchMode: true,
+		pure: true,
+		source: "project",
+		costrictCodeModeGroup: "hide",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "subcoding",
+		name: "⌨️ SubCoding",
+		roleDefinition:
+			"You are CoStrict, a focused code implementation agent who executes specific development tasks following project conventions, making minimal and precise changes within assigned budgets.",
+		description: "Professional software development executor",
+		whenToUse:
+			"Use this mode when CodingAgent distributes specific development tasks. Acts as a developer in the development team, responsible for executing concrete code writing, modification, debugging, and refactoring work. Follows principles like understand-first-code-later, respect project architecture, minimal changes, and style consistency to efficiently complete assigned development tasks within budget.",
+		groups: ["read", "edit", "command", "sequential_thinking"],
+		disableSwitchMode: true,
+		pure: true,
+		source: "project",
+		costrictCodeModeGroup: "hide",
+		apiProvider: "costrict",
 	},
 	{
 		slug: "review",
 		name: "🔍 Review",
 		roleDefinition:
-			"You are CoStrict, a code review expert skilled at analyzing issues with business understanding. You identify potential logical defects, security risks, performance problems, and deviations from standards, providing clear, actionable improvement suggestions.",
+			"You are a code review specialist. Always use the 'review' skill via the Skill tool with default configuration to perform structured code reviews. The skill provides a 5-stage pipeline (target filtering, defect detection, adversarial validation, metadata management, report generation) that identifies static defects, security vulnerabilities, logical defects, and memory issues through data-flow-driven analysis. Do not switch to other modes to complete review tasks.",
 		whenToUse:
-			"Use this mode for code review tasks, including identifying bugs, security vulnerabilities, performance issues, code smells and style inconsistencies. It's ideal for analyzing pull requests, reviewing legacy code, checking for best practices compliance, and providing improvement suggestions.",
-		description: "Review code and identify potential issues",
-		groups: ["read", "mcp", "browser"],
+			"Use this mode for code review tasks such as defect scanning, PR/MR review, and code quality analysis. The review skill performs data-flow-driven analysis to detect static defects, security vulnerabilities, logical defects, and memory issues, with every finding traceable to file:line evidence.",
+		description:
+			"Structured code review with 5-stage pipeline for static, security, logic and memory defect detection",
+		groups: [
+			"read",
+			["edit", { fileRegex: "\\.(md|json)$", description: "Markdown and JSON files only" }],
+			"command",
+			"mcp",
+		],
+		disableSwitchMode: true,
+		costrictCodeModeGroup: "hide",
+		taskMode: "subreview",
 		source: "project",
-		zgsmCodeModeGroup: "strict,plan,vibe",
-		apiProvider: "zgsm",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "subreview",
+		name: "🔍 Sub Review",
+		roleDefinition:
+			"You are a code review subtask executor. Follow the assigned task objectives precisely to perform targeted file analysis, defect detection, validation, or context analysis as directed by the parent review or security-review task.",
+		whenToUse:
+			"Use this mode as a subtask executor for review and security-review tasks. It handles specific objectives delegated by the parent task, such as per-file defect detection, adversarial validation, sensitive operation identification, or context analysis.",
+		description: "Subtask executor for targeted file analysis, defect detection, validation, and context analysis",
+		groups: [
+			"read",
+			["edit", { fileRegex: "\\.(md|json)$", description: "Markdown and JSON files only" }],
+			"command",
+			"mcp",
+		],
+		disableSwitchMode: true,
+		pure: true,
+		costrictCodeModeGroup: "hide",
+		source: "project",
+		apiProvider: "costrict",
+	},
+	{
+		slug: "security-review",
+		name: "🔒 Security Review",
+		roleDefinition:
+			"You are a security code review specialist. Always use the 'security-review' skill via the Skill tool with default configuration to perform security audits. The skill provides a 6-step state machine (queue initialization, per-file audit, sensitive operation identification, context analysis, report merge) that identifies vulnerabilities through sink-based and logic-based threat exploration. Do not switch to other modes to complete security review tasks.",
+		whenToUse:
+			"Use this mode for security code audit tasks such as vulnerability scanning, security flaw detection, and penetration testing preparation. The security-review skill uses queue-driven file-by-file auditing with sensitive operation identification and context analysis to detect security threats.",
+		description:
+			"Security code review with queue-driven auditing and threat exploration for vulnerability detection",
+		groups: [
+			"read",
+			["edit", { fileRegex: "\\.(md|json)$", description: "Markdown and JSON files only" }],
+			"command",
+			"mcp",
+		],
+		disableSwitchMode: true,
+		costrictCodeModeGroup: "hide",
+		taskMode: "subreview",
+		source: "project",
+		apiProvider: "costrict",
 	},
 ]
 
@@ -271,8 +446,8 @@ export const DEFAULT_MODES: readonly modelType[] = [
 		whenToUse:
 			"Use this mode when you need to write, modify, or refactor code. Ideal for implementing features, fixing bugs, creating new files, or making code improvements across any programming language or framework.",
 		description: "Write, modify, and refactor code",
-		groups: ["read", "edit", "browser", "command", "mcp"],
-		zgsmCodeModeGroup: "strict,vibe,plan",
+		groups: ["read", "edit", "command", "mcp"],
+		costrictCodeModeGroup: "strict,vibe,plan",
 	},
 	{
 		slug: "architect",
@@ -282,8 +457,8 @@ export const DEFAULT_MODES: readonly modelType[] = [
 		whenToUse:
 			"Use this mode when you need to plan, design, or strategize before implementation. Perfect for breaking down complex problems, creating technical specifications, designing system architecture, or brainstorming solutions before coding.",
 		description: "Plan and design before implementation",
-		zgsmCodeModeGroup: "strict,vibe",
-		groups: ["read", ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }], "browser", "mcp"],
+		costrictCodeModeGroup: "vibe",
+		groups: ["read", ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }], "mcp"],
 		customInstructions:
 			"1. Do some information gathering (using provided tools) to get more context about the task.\n\n2. You should also ask the user clarifying questions to get a better understanding of the task.\n\n3. Once you've gained more context about the user's request, break down the task into clear, actionable steps and create a todo list using the `update_todo_list` tool. Each todo item should be:\n   - Specific and actionable\n   - Listed in logical execution order\n   - Focused on a single, well-defined outcome\n   - Clear enough that another mode could execute it independently\n\n   **Note:** If the `update_todo_list` tool is not available, write the plan to a markdown file (e.g., `plan.md` or `todo.md`) instead.\n\n4. As you gather more information or discover new requirements, update the todo list to reflect the current understanding of what needs to be accomplished.\n\n5. Ask the user if they are pleased with this plan, or if they would like to make any changes. Think of this as a brainstorming session where you can discuss the task and refine the todo list.\n\n6. Include Mermaid diagrams if they help clarify complex workflows or system architecture. Please avoid using double quotes (\"\") and parentheses () inside square brackets ([]) in Mermaid diagrams, as this can cause parsing errors.\n\n7. Use the switch_mode tool to request that the user switch to another mode to implement the solution.\n\n**IMPORTANT: Focus on creating clear, actionable todo lists rather than lengthy markdown documents. Use the todo list as your primary planning tool to track and organize the work that needs to be done.**\n\n**CRITICAL: Never provide level of effort time estimates (e.g., hours, days, weeks) for tasks. Focus solely on breaking down the work into clear, actionable steps without estimating how long they will take.**\n\nUnless told otherwise, if you want to save a plan file, put it in the /plans directory",
 	},
@@ -295,7 +470,7 @@ export const DEFAULT_MODES: readonly modelType[] = [
 		whenToUse:
 			"Use this mode when you need explanations, documentation, or answers to technical questions. Best for understanding concepts, analyzing existing code, getting recommendations, or learning about technologies without making changes.",
 		description: "Get answers and explanations",
-		groups: ["read", "browser", "mcp"],
+		groups: ["read", "mcp"],
 		customInstructions:
 			"You can analyze code, explain concepts, and access external resources. Always answer the user's questions thoroughly, and do not switch to implementing code unless explicitly requested by the user. Include Mermaid diagrams when they clarify your response.",
 	},
@@ -307,7 +482,7 @@ export const DEFAULT_MODES: readonly modelType[] = [
 		whenToUse:
 			"Use this mode when you're troubleshooting issues, investigating errors, or diagnosing problems. Specialized in systematic debugging, adding logging, analyzing stack traces, and identifying root causes before applying fixes.",
 		description: "Diagnose and fix software issues",
-		groups: ["read", "edit", "browser", "command", "mcp"],
+		groups: ["read", "edit", "command", "mcp"],
 		customInstructions:
 			"Reflect on 5-7 different possible sources of the problem, distill those down to 1-2 most likely sources, and then add logs to validate your assumptions. Explicitly ask the user to confirm the diagnosis before fixing the problem.",
 	},

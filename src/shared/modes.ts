@@ -7,6 +7,7 @@ import {
 	type ToolGroup,
 	type PromptComponent,
 	DEFAULT_MODES,
+	resolveI18nPrompt,
 } from "@roo-code/types"
 
 import { addCustomInstructions } from "../core/prompts/sections/custom-instructions"
@@ -14,7 +15,8 @@ import { addCustomInstructions } from "../core/prompts/sections/custom-instructi
 import { TOOL_GROUPS, ALWAYS_AVAILABLE_TOOLS } from "./tools"
 
 export type Mode = string
-export type ZgsmCodeMode = "vibe" | "strict" | "plan" | "raw"
+export type CostrictCodeMode = "vibe" | "strict" | "plan" | "raw"
+export type PromptTag = "systempromptmodified" | "rulesmodified" | "promptcustomized"
 
 // Helper to extract group name regardless of format
 export function getGroupName(group: GroupEntry): ToolGroup {
@@ -91,22 +93,59 @@ export function getAllModes(customModes?: ModeConfig[]): ModeConfig[] {
 	return allModes
 }
 
-// Filter modes based on zgsmCodeMode setting
-export function filterModesByZgsmCodeMode(
+// Filter modes based on costrictCodeMode setting
+export function filterModesByCostrictCodeMode(
 	modes: ModeConfig[],
-	zgsmCodeMode?: ZgsmCodeMode,
+	costrictCodeMode?: CostrictCodeMode,
 	apiProvider?: string,
 ): ModeConfig[] {
 	return modes.filter((mode) => {
-		if (apiProvider === "zgsm") {
-			const modelGroup = mode.zgsmCodeModeGroup ? mode.zgsmCodeModeGroup?.split(",") : []
+		if (apiProvider === "costrict") {
+			const modelGroup = mode.costrictCodeModeGroup ? mode.costrictCodeModeGroup?.split(",") : []
 
-			if (zgsmCodeMode === "vibe") return !mode.zgsmCodeModeGroup || modelGroup.includes(zgsmCodeMode)
-			return modelGroup.includes(zgsmCodeMode!)
+			if (costrictCodeMode === "vibe") return !mode.costrictCodeModeGroup || modelGroup.includes(costrictCodeMode)
+			return modelGroup.includes(costrictCodeMode!)
 		}
 
 		return !mode.apiProvider || mode.apiProvider === apiProvider
 	})
+}
+
+export function resolveCostrictCodeModeForMode(
+	mode: Mode,
+	currentCostrictCodeMode: CostrictCodeMode = "vibe",
+	customModes?: ModeConfig[],
+): CostrictCodeMode {
+	if (mode === "plan") {
+		return "plan"
+	}
+
+	if (mode === "strict") {
+		return "strict"
+	}
+
+	const targetMode = getModeBySlug(mode, customModes)
+	const modeGroups = targetMode?.costrictCodeModeGroup
+		?.split(",")
+		.map((group) => group.trim())
+		.filter((group): group is CostrictCodeMode => ["vibe", "plan", "strict", "raw"].includes(group))
+
+	if (modeGroups?.length === 1) {
+		return modeGroups[0]
+	}
+
+	return currentCostrictCodeMode
+}
+
+export function isProviderAllowedForCostrictCodeMode(
+	costrictCodeMode: CostrictCodeMode | undefined,
+	apiProvider: string | undefined,
+): boolean {
+	if (costrictCodeMode === "plan" || costrictCodeMode === "strict") {
+		return apiProvider === "costrict"
+	}
+
+	return true
 }
 
 // Check if a mode is custom or an override
@@ -127,7 +166,13 @@ export function findModeBySlug(slug: string, modes: readonly ModeConfig[] | unde
  * If no custom mode is found, the built-in mode is used with partial merging from promptComponent.
  * If neither is found, the default mode is used.
  */
-export function getModeSelection(mode: string, promptComponent?: PromptComponent, customModes?: ModeConfig[]) {
+export function getModeSelection(
+	mode: string,
+	promptComponent?: PromptComponent,
+	customModes?: ModeConfig[],
+	language?: string,
+	modelId?: string,
+) {
 	const customMode = findModeBySlug(mode, customModes)
 	const builtInMode = findModeBySlug(mode, modes)
 
@@ -140,13 +185,16 @@ export function getModeSelection(mode: string, promptComponent?: PromptComponent
 		}
 	}
 
-	// Otherwise, use built-in mode as base and merge with promptComponent
+	// Otherwise, use built-in mode as base and merge with promptComponent and i18n
 	const baseMode = builtInMode || modes[0] // fallback to default mode
 
+	// modelFamily is undefined for now, reserved for future extension
+	const i18n = resolveI18nPrompt(mode, language, undefined /* modelFamily */)
 	return {
-		roleDefinition: promptComponent?.roleDefinition || baseMode.roleDefinition || "",
-		baseInstructions: promptComponent?.customInstructions || baseMode.customInstructions || "",
-		description: baseMode.description || "",
+		roleDefinition: promptComponent?.roleDefinition || i18n?.roleDefinition || baseMode.roleDefinition || "",
+		baseInstructions:
+			promptComponent?.customInstructions || i18n?.customInstructions || baseMode.customInstructions || "",
+		description: baseMode.description ?? "",
 	}
 }
 
@@ -237,41 +285,103 @@ export async function getFullModeDetails(
 }
 
 // Helper function to safely get role definition
-export function getRoleDefinition(modeSlug: string, customModes?: ModeConfig[]): string {
+export function getRoleDefinition(modeSlug: string, customModes?: ModeConfig[], language?: string): string {
 	const mode = getModeBySlug(modeSlug, customModes)
 	if (!mode) {
 		console.warn(`No mode found for slug: ${modeSlug}`)
 		return ""
 	}
-	return mode.roleDefinition
+
+	// Do not apply i18n overrides for custom modes (including built-in overrides)
+	const customMode = findModeBySlug(modeSlug, customModes)
+	if (customMode) {
+		return mode.roleDefinition
+	}
+
+	const i18nPrompt = resolveI18nPrompt(modeSlug, language)
+	return i18nPrompt?.roleDefinition ?? mode.roleDefinition
 }
 
 // Helper function to safely get description
-export function getDescription(modeSlug: string, customModes?: ModeConfig[]): string {
+export function getDescription(modeSlug: string, customModes?: ModeConfig[], language?: string): string {
 	const mode = getModeBySlug(modeSlug, customModes)
 	if (!mode) {
 		console.warn(`No mode found for slug: ${modeSlug}`)
 		return ""
 	}
-	return mode.description ?? ""
+
+	// Do not apply i18n overrides for custom modes (including built-in overrides)
+	const customMode = findModeBySlug(modeSlug, customModes)
+	if (customMode) {
+		return mode.description ?? ""
+	}
+
+	const i18nPrompt = resolveI18nPrompt(modeSlug, language)
+	return i18nPrompt?.description ?? mode.description ?? ""
 }
 
 // Helper function to safely get whenToUse
-export function getWhenToUse(modeSlug: string, customModes?: ModeConfig[]): string {
+export function getWhenToUse(modeSlug: string, customModes?: ModeConfig[], language?: string): string {
 	const mode = getModeBySlug(modeSlug, customModes)
 	if (!mode) {
 		console.warn(`No mode found for slug: ${modeSlug}`)
 		return ""
 	}
-	return mode.whenToUse ?? ""
+
+	// Do not apply i18n overrides for custom modes (including built-in overrides)
+	const customMode = findModeBySlug(modeSlug, customModes)
+	if (customMode) {
+		return mode.whenToUse ?? ""
+	}
+
+	const i18nPrompt = resolveI18nPrompt(modeSlug, language)
+	return i18nPrompt?.whenToUse ?? mode.whenToUse ?? ""
 }
 
 // Helper function to safely get custom instructions
-export function getCustomInstructions(modeSlug: string, customModes?: ModeConfig[]): string {
+export function getCustomInstructions(modeSlug: string, customModes?: ModeConfig[], language?: string): string {
 	const mode = getModeBySlug(modeSlug, customModes)
 	if (!mode) {
 		console.warn(`No mode found for slug: ${modeSlug}`)
 		return ""
 	}
-	return mode.customInstructions ?? ""
+
+	// Do not apply i18n overrides for custom modes (including built-in overrides)
+	const customMode = findModeBySlug(modeSlug, customModes)
+	if (customMode) {
+		return mode.customInstructions ?? ""
+	}
+
+	const i18nPrompt = resolveI18nPrompt(modeSlug, language)
+	return i18nPrompt?.customInstructions ?? mode.customInstructions ?? ""
+}
+
+export function getPromptTagsForMode(
+	modeSlug: string,
+	customModePrompts?: CustomModePrompts,
+	customModes?: ModeConfig[],
+): PromptTag[] {
+	const baseMode = getModeBySlug(modeSlug, customModes) || modes.find((mode) => mode.slug === modeSlug) || modes[0]
+	const promptComponent = customModePrompts?.[modeSlug]
+	const promptTags = new Set<PromptTag>()
+
+	if (
+		promptComponent?.roleDefinition !== undefined &&
+		promptComponent.roleDefinition !== (baseMode.roleDefinition || "")
+	) {
+		promptTags.add("systempromptmodified")
+	}
+
+	if (
+		promptComponent?.customInstructions !== undefined &&
+		promptComponent.customInstructions !== (baseMode.customInstructions || "")
+	) {
+		promptTags.add("rulesmodified")
+	}
+
+	if (promptTags.size > 0) {
+		promptTags.add("promptcustomized")
+	}
+
+	return Array.from(promptTags)
 }

@@ -1,21 +1,10 @@
 import axios from "axios"
 import * as vscode from "vscode"
+import type { INotice, INoticesResponse } from "@roo-code/types"
 import { ClineProvider } from "../../webview/ClineProvider"
-import { ZgsmAuthConfig } from "../auth"
+import { CostrictAuthConfig } from "../auth"
 import { t } from "../../../i18n"
 import { getClientId } from "../../../utils/getClientId"
-
-export interface INotice {
-	title: string
-	type: "always" | "once"
-	content: string
-	timestamp: number
-	expired: number
-}
-
-export interface INoticesResponse {
-	notices: INotice[]
-}
 
 export class NotificationService {
 	private provider: ClineProvider | null = null
@@ -38,16 +27,21 @@ export class NotificationService {
 		if (this.isInitialized) {
 			return
 		}
-		// Fetch immediately on initialization
+		this.isInitialized = true
+		// Start periodic fetching and defer the initial network request so activation is not blocked.
+		this.startPeriodicFetch()
+		setTimeout(() => {
+			void this.fetchAndProcessNotices("initialization")
+		}, 1000)
+	}
+
+	private async fetchAndProcessNotices(source: string): Promise<void> {
 		try {
-			this.isInitialized = true
 			const response = await this.fetchNotices()
 			await this.processAndSendNotices(response.notices || [])
 		} catch (error) {
-			console.error("Failed to fetch notices during initialization:", error)
+			console.warn(`Failed to fetch notices during ${source}:`, error)
 		}
-		// Start periodic fetching
-		this.startPeriodicFetch()
 	}
 
 	/**
@@ -57,13 +51,8 @@ export class NotificationService {
 		// Clear existing timer if any
 		this.stopPeriodicFetch()
 		// Set up interval to fetch every hour
-		this.fetchTimer = setInterval(async () => {
-			try {
-				const response = await this.fetchNotices()
-				await this.processAndSendNotices(response.notices || [])
-			} catch (error) {
-				console.error("Failed to fetch notices periodically:", error)
-			}
+		this.fetchTimer = setInterval(() => {
+			void this.fetchAndProcessNotices("periodic refresh")
 		}, this.FETCH_INTERVAL)
 	}
 
@@ -82,22 +71,17 @@ export class NotificationService {
 	 * @returns Promise<INoticesResponse> Remote notices data
 	 */
 	public async fetchNotices(): Promise<INoticesResponse> {
-		try {
-			if (!this.provider) {
-				throw new Error("NotificationService not initialized")
-			}
-			const { language, apiConfiguration } = await this.provider.getState()
-			const baseUrl = apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
-			const response = await axios.get(`${baseUrl}/costrict/announcement/announcement_${language}.json`, {
-				headers: {
-					"zgsm-request-id": getClientId(),
-				},
-			})
-			return response.data
-		} catch (error) {
-			console.error("Failed to fetch remote notices:", error)
-			throw error
+		if (!this.provider) {
+			throw new Error("NotificationService not initialized")
 		}
+		const { language, apiConfiguration } = await this.provider.getState()
+		const baseUrl = apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()
+		const response = await axios.get(`${baseUrl}/costrict-static/announcement/announcement_${language}.json`, {
+			headers: {
+				"zgsm-request-id": getClientId(),
+			},
+		})
+		return response.data
 	}
 
 	/**
@@ -113,7 +97,7 @@ export class NotificationService {
 		const alwaysNotices = notices.filter((notice) => notice.type === "always")
 		if (alwaysNotices.length > 0) {
 			await this.provider.postMessageToWebview({
-				type: "zgsmNotices",
+				type: "costrictNotices",
 				notices: alwaysNotices,
 			})
 		}

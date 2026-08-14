@@ -4,14 +4,14 @@ import {
 	type ProviderSettings,
 	type OrganizationAllowList,
 	type ProviderName,
+	type RouterModels,
 	modelIdKeysByProvider,
 	isProviderName,
+	isRetiredProvider,
 	isDynamicProvider,
 	isFauxProvider,
 	isCustomProvider,
 } from "@roo-code/types"
-
-import type { RouterModels } from "@roo/api"
 
 export function validateApiConfiguration(
 	apiConfiguration: ProviderSettings,
@@ -38,15 +38,10 @@ export function validateApiConfiguration(
 
 function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): string | undefined {
 	switch (apiConfiguration.apiProvider) {
-		case "zgsm":
-			return validateZgsmBaseUrl(apiConfiguration.zgsmBaseUrl)
+		case "costrict":
+			return validateCostrictBaseUrl(apiConfiguration.costrictBaseUrl || (window as any).COSTRICT_BASE_URL)
 		case "openrouter":
 			if (!apiConfiguration.openRouterApiKey) {
-				return i18next.t("settings:validation.apiKey")
-			}
-			break
-		case "unbound":
-			if (!apiConfiguration.unboundApiKey) {
 				return i18next.t("settings:validation.apiKey")
 			}
 			break
@@ -55,8 +50,8 @@ function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): stri
 				return i18next.t("settings:validation.apiKey")
 			}
 			break
-		case "deepinfra":
-			if (!apiConfiguration.deepInfraApiKey) {
+		case "unbound":
+			if (!apiConfiguration.unboundApiKey) {
 				return i18next.t("settings:validation.apiKey")
 			}
 			break
@@ -84,9 +79,6 @@ function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): stri
 			if (!apiConfiguration.geminiApiKey) {
 				return i18next.t("settings:validation.apiKey")
 			}
-			break
-		case "gemini-cli":
-			// OAuth-based provider, no API key validation needed
 			break
 		case "openai-native":
 			if (!apiConfiguration.openAiNativeApiKey) {
@@ -118,31 +110,8 @@ function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): stri
 				return i18next.t("settings:validation.modelSelector")
 			}
 			break
-		case "huggingface":
-			if (!apiConfiguration.huggingFaceApiKey) {
-				return i18next.t("settings:validation.apiKey")
-			}
-			if (!apiConfiguration.huggingFaceModelId) {
-				return i18next.t("settings:validation.modelId")
-			}
-			break
-		case "cerebras":
-			if (!apiConfiguration.cerebrasApiKey) {
-				return i18next.t("settings:validation.apiKey")
-			}
-			break
 		case "fireworks":
 			if (!apiConfiguration.fireworksApiKey) {
-				return i18next.t("settings:validation.apiKey")
-			}
-			break
-		case "io-intelligence":
-			if (!apiConfiguration.ioIntelligenceApiKey) {
-				return i18next.t("settings:validation.apiKey")
-			}
-			break
-		case "featherless":
-			if (!apiConfiguration.featherlessApiKey) {
 				return i18next.t("settings:validation.apiKey")
 			}
 			break
@@ -158,6 +127,41 @@ function validateModelsAndKeysProvided(apiConfiguration: ProviderSettings): stri
 			break
 		case "baseten":
 			if (!apiConfiguration.basetenApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "mimo":
+			if (!apiConfiguration.mimoApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "zai":
+			if (!apiConfiguration.zaiApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "sambanova":
+			if (!apiConfiguration.sambaNovaApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "poe":
+			if (!apiConfiguration.poeApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "moonshot":
+			if (!apiConfiguration.moonshotApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "deepseek":
+			if (!apiConfiguration.deepSeekApiKey) {
+				return i18next.t("settings:validation.apiKey")
+			}
+			break
+		case "minimax":
+			if (!apiConfiguration.minimaxApiKey) {
 				return i18next.t("settings:validation.apiKey")
 			}
 			break
@@ -192,7 +196,8 @@ function validateProviderAgainstOrganizationSettings(
 		}
 
 		if (!providerConfig.allowAll) {
-			const modelId = getModelIdForProvider(apiConfiguration, provider)
+			const activeProvider = isRetiredProvider(provider) ? undefined : provider
+			const modelId = activeProvider ? getModelIdForProvider(apiConfiguration, activeProvider) : undefined
 			const allowedModels = providerConfig.models || []
 
 			if (modelId && !allowedModels.includes(modelId)) {
@@ -271,7 +276,7 @@ function validateDynamicProviderModelId(
 
 	const models = routerModels?.[provider]
 
-	if (provider !== "zgsm" && models && Object.keys(models).length > 1 && !Object.keys(models).includes(modelId)) {
+	if (provider !== "costrict" && models && Object.keys(models).length > 1 && !Object.keys(models).includes(modelId)) {
 		return i18next.t("settings:validation.modelAvailability", { modelId })
 	}
 
@@ -326,7 +331,7 @@ export function validateApiConfigurationExcludingModelErrors(
 		organizationAllowList,
 	)
 
-	// Inly return organization errors if they're not model-specific.
+	// Only return organization errors if they're not model-specific.
 	if (organizationAllowListError && organizationAllowListError.code === "PROVIDER_NOT_ALLOWED") {
 		return organizationAllowListError.message
 	}
@@ -346,10 +351,9 @@ export const isValidUrl = (url: string) => {
 		return false
 	}
 }
-
-export function validateZgsmBaseUrl(zgsmBaseUrl?: string): string | undefined {
-	zgsmBaseUrl = zgsmBaseUrl?.trim()
-	if (!zgsmBaseUrl || isValidUrl(zgsmBaseUrl)) {
+export function validateCostrictBaseUrl(costrictBaseUrl?: string): string | undefined {
+	costrictBaseUrl = costrictBaseUrl?.trim()
+	if (!costrictBaseUrl || isValidUrl(costrictBaseUrl)) {
 		return undefined
 	}
 

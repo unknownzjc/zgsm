@@ -9,7 +9,6 @@ import OpenAI from "openai"
 import { VercelAiGatewayHandler } from "../vercel-ai-gateway"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { vercelAiGatewayDefaultModelId, VERCEL_AI_GATEWAY_DEFAULT_TEMPERATURE } from "@roo-code/types"
-import { Package } from "../../../shared/package"
 
 // Mock dependencies
 vitest.mock("openai")
@@ -52,6 +51,7 @@ vitest.mock("../fetchers/modelCache", () => ({
 			},
 		})
 	}),
+	getModelsFromCache: vitest.fn().mockReturnValue(undefined),
 }))
 
 vitest.mock("../../transform/caching/vercel-ai-gateway", () => ({
@@ -95,11 +95,12 @@ describe("VercelAiGatewayHandler", () => {
 		expect(OpenAI).toHaveBeenCalledWith({
 			baseURL: "https://ai-gateway.vercel.sh/v1",
 			apiKey: mockOptions.vercelAiGatewayApiKey,
-			defaultHeaders: expect.objectContaining({
-				"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
-				"X-Costrict-Version": Package.version,
-				"X-Title": "Costrict",
-			}),
+			defaultHeaders: {
+				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+				"X-Title": "Roo Code",
+				"User-Agent": expect.any(String),
+				"X-Costrict-Version": expect.any(String),
+			},
 		})
 	})
 
@@ -315,7 +316,6 @@ describe("VercelAiGatewayHandler", () => {
 				const messageGenerator = handler.createMessage("test prompt", [], {
 					taskId: "test-task-id",
 					tools: testTools,
-					toolProtocol: "native",
 				})
 				await messageGenerator.next()
 
@@ -339,7 +339,6 @@ describe("VercelAiGatewayHandler", () => {
 				const messageGenerator = handler.createMessage("test prompt", [], {
 					taskId: "test-task-id",
 					tools: testTools,
-					toolProtocol: "native",
 					tool_choice: "auto",
 				})
 				await messageGenerator.next()
@@ -351,13 +350,12 @@ describe("VercelAiGatewayHandler", () => {
 				)
 			})
 
-			it("should set parallel_tool_calls when toolProtocol is native", async () => {
+			it("should set parallel_tool_calls when parallelToolCalls is enabled", async () => {
 				const handler = new VercelAiGatewayHandler(mockOptions)
 
 				const messageGenerator = handler.createMessage("test prompt", [], {
 					taskId: "test-task-id",
 					tools: testTools,
-					toolProtocol: "native",
 					parallelToolCalls: true,
 				})
 				await messageGenerator.next()
@@ -369,19 +367,19 @@ describe("VercelAiGatewayHandler", () => {
 				)
 			})
 
-			it("should default parallel_tool_calls to false", async () => {
+			it("should include parallel_tool_calls: true by default", async () => {
 				const handler = new VercelAiGatewayHandler(mockOptions)
 
 				const messageGenerator = handler.createMessage("test prompt", [], {
 					taskId: "test-task-id",
 					tools: testTools,
-					toolProtocol: "native",
 				})
 				await messageGenerator.next()
 
 				expect(mockCreate).toHaveBeenCalledWith(
 					expect.objectContaining({
-						parallel_tool_calls: false,
+						tools: expect.any(Array),
+						parallel_tool_calls: true,
 					}),
 				)
 			})
@@ -445,7 +443,6 @@ describe("VercelAiGatewayHandler", () => {
 				const stream = handler.createMessage("test prompt", [], {
 					taskId: "test-task-id",
 					tools: testTools,
-					toolProtocol: "native",
 				})
 
 				const chunks = []
@@ -521,7 +518,9 @@ describe("VercelAiGatewayHandler", () => {
 					temperature: VERCEL_AI_GATEWAY_DEFAULT_TEMPERATURE,
 					max_completion_tokens: 64000,
 				}),
-				{ signal: undefined },
+				expect.objectContaining({
+					signal: undefined,
+				}),
 			)
 		})
 
@@ -536,9 +535,15 @@ describe("VercelAiGatewayHandler", () => {
 
 			expect(mockCreate).toHaveBeenCalledWith(
 				expect.objectContaining({
+					model: "anthropic/claude-sonnet-4",
+					messages: [{ role: "user", content: "Test prompt" }],
+					stream: false,
 					temperature: customTemp,
+					max_completion_tokens: 64000,
 				}),
-				{ signal: undefined },
+				expect.objectContaining({
+					signal: undefined,
+				}),
 			)
 		})
 
@@ -585,9 +590,15 @@ describe("VercelAiGatewayHandler", () => {
 
 			expect(mockCreate).toHaveBeenCalledWith(
 				expect.objectContaining({
+					model: "anthropic/claude-sonnet-4",
+					messages: [{ role: "user", content: "Test" }],
+					stream: false,
 					temperature: 0.9,
+					max_completion_tokens: 64000,
 				}),
-				{ signal: undefined },
+				expect.objectContaining({
+					signal: undefined,
+				}),
 			)
 		})
 	})

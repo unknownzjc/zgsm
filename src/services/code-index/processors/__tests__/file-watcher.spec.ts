@@ -31,13 +31,15 @@ vi.mock("../../../glob/ignore-utils", () => ({
 }))
 
 // Mock os
-vi.mock("os", () => ({
+vi.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	tmpdir: vi.fn(() => "/tmp"),
 	homedir: vi.fn(() => "/home/user"),
 }))
 
 // Mock path
-vi.mock("path", () => ({
+vi.mock("path", async (importOriginal) => ({
+	...(await importOriginal()),
 	join: vi.fn((...paths) => paths.join("/")),
 	sep: "/",
 }))
@@ -50,7 +52,7 @@ vi.mock("vscode", async (importOriginal) => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},

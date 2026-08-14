@@ -1,4 +1,6 @@
-import React, { memo, useState } from "react"
+import React, { memo, useState, useMemo } from "react"
+import { ArrowLeft, Archive, ArchiveRestore } from "lucide-react"
+import { vscode } from "@/utils/vscode"
 import { DeleteTaskDialog } from "./DeleteTaskDialog"
 import { BatchDeleteTaskDialog } from "./BatchDeleteTaskDialog"
 import { Virtuoso } from "react-virtuoso"
@@ -19,14 +21,17 @@ import { useAppTranslation } from "@/i18n/TranslationContext"
 
 import { Tab, TabContent, TabHeader } from "../common/Tab"
 import { useTaskSearch } from "./useTaskSearch"
+import { useGroupedTasks } from "./useGroupedTasks"
+import { countAllSubtasks } from "./types"
 import TaskItem from "./TaskItem"
 import prettyBytes from "pretty-bytes"
+import TaskGroupItem from "./TaskGroupItem"
 
 type HistoryViewProps = {
 	onDone: () => void
 }
 
-type SortOption = "newest" | "oldest" | "mostExpensive" | "mostTokens" | "mostRelevant"
+type SortOption = "newest" | "oldest" | "mostExpensive" | "mostTokens" | "largestSize" | "mostRelevant"
 
 const HistoryView = ({ onDone }: HistoryViewProps) => {
 	const {
@@ -42,10 +47,29 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 	} = useTaskSearch()
 	const { t } = useAppTranslation()
 
+	// Use grouped tasks hook
+	const { groups, flatTasks, toggleExpand, isSearchMode } = useGroupedTasks(tasks, searchQuery)
+
 	const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null)
+	const [deleteSubtaskCount, setDeleteSubtaskCount] = useState<number>(0)
 	const [isSelectionMode, setIsSelectionMode] = useState(false)
 	const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
 	const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState<boolean>(false)
+
+	// Get subtask count for a task (recursive total)
+	const getSubtaskCount = useMemo(() => {
+		const countMap = new Map<string, number>()
+		for (const group of groups) {
+			countMap.set(group.parent.id, countAllSubtasks(group.subtasks))
+		}
+		return (taskId: string) => countMap.get(taskId) || 0
+	}, [groups])
+
+	// Handle delete with subtask count
+	const handleDelete = (taskId: string) => {
+		setDeleteTaskId(taskId)
+		setDeleteSubtaskCount(getSubtaskCount(taskId))
+	}
 
 	// Toggle selection mode
 	const toggleSelectionMode = () => {
@@ -83,11 +107,44 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 	return (
 		<Tab>
 			<TabHeader className="flex flex-col gap-2">
-				<div className="flex justify-between items-center">
-					<h3 className="text-vscode-foreground m-0">
-						{t("history:history")}({prettyBytes(taskCacheSize)})
-					</h3>
-					<div className="flex gap-2">
+				<div className="flex items-center justify-between gap-2">
+					<div className="flex items-center gap-2">
+						<Button
+							variant="ghost"
+							className="px-1.5 -ml-2"
+							onClick={onDone}
+							aria-label={t("history:done")}
+							data-testid="history-done-button">
+							<ArrowLeft />
+							<span className="sr-only">{t("history:done")}</span>
+						</Button>
+						<h3 className="text-vscode-foreground m-0">
+							{t("history:history")}({prettyBytes(taskCacheSize)})
+						</h3>
+					</div>
+					<div className="flex items-center gap-1">
+						<StandardTooltip content={t("history:backupTasks")}>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="px-1.5"
+								onClick={() => vscode.postMessage({ type: "backupTasks" })}
+								data-testid="backup-tasks-button"
+								aria-label={t("history:backupTasks")}>
+								<Archive className="w-4 h-4" />
+							</Button>
+						</StandardTooltip>
+						<StandardTooltip content={t("history:restoreTasks")}>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="px-1.5"
+								onClick={() => vscode.postMessage({ type: "restoreTasks" })}
+								data-testid="restore-tasks-button"
+								aria-label={t("history:restoreTasks")}>
+								<ArchiveRestore className="w-4 h-4" />
+							</Button>
+						</StandardTooltip>
 						<StandardTooltip
 							content={
 								isSelectionMode
@@ -104,7 +161,6 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 								{isSelectionMode ? t("history:exitSelection") : t("history:selectionMode")}
 							</Button>
 						</StandardTooltip>
-						<Button onClick={onDone}>{t("history:done")}</Button>
 					</div>
 				</div>
 				<div className="flex flex-col gap-2">
@@ -187,6 +243,12 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 										{t("history:mostTokens")}
 									</div>
 								</SelectItem>
+								<SelectItem value="largestSize" data-testid="select-largest-size">
+									<div className="flex items-center gap-2">
+										<span className="codicon codicon-database" />
+										{t("history:largestSize")}
+									</div>
+								</SelectItem>
 								<SelectItem
 									value="mostRelevant"
 									disabled={!searchQuery}
@@ -227,30 +289,61 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 			</TabHeader>
 
 			<TabContent className="px-2 py-0">
-				<Virtuoso
-					className="flex-1 overflow-y-scroll"
-					data={tasks}
-					data-testid="virtuoso-container"
-					initialTopMostItemIndex={0}
-					components={{
-						List: React.forwardRef((props, ref) => (
-							<div {...props} ref={ref} data-testid="virtuoso-item-list" />
-						)),
-					}}
-					itemContent={(_index, item) => (
-						<TaskItem
-							key={item.id}
-							item={item}
-							variant="full"
-							showWorkspace={showAllWorkspaces}
-							isSelectionMode={isSelectionMode}
-							isSelected={selectedTaskIds.includes(item.id)}
-							onToggleSelection={toggleTaskSelection}
-							onDelete={setDeleteTaskId}
-							className="m-2"
-						/>
-					)}
-				/>
+				{isSearchMode && flatTasks ? (
+					// Search mode: flat list with subtask prefix
+					<Virtuoso
+						className="flex-1 overflow-y-scroll"
+						data={flatTasks}
+						data-testid="virtuoso-container"
+						initialTopMostItemIndex={0}
+						components={{
+							List: React.forwardRef((props, ref) => (
+								<div {...props} ref={ref} data-testid="virtuoso-item-list" />
+							)),
+						}}
+						itemContent={(_index, item) => (
+							<TaskItem
+								key={item.id}
+								item={item}
+								variant="full"
+								showWorkspace={showAllWorkspaces}
+								isSelectionMode={isSelectionMode}
+								isSelected={selectedTaskIds.includes(item.id)}
+								onToggleSelection={toggleTaskSelection}
+								onDelete={handleDelete}
+								className="m-2"
+							/>
+						)}
+					/>
+				) : (
+					// Grouped mode: task groups with expandable subtasks
+					<Virtuoso
+						className="flex-1 overflow-y-scroll"
+						data={groups}
+						data-testid="virtuoso-container"
+						initialTopMostItemIndex={0}
+						components={{
+							List: React.forwardRef((props, ref) => (
+								<div {...props} ref={ref} data-testid="virtuoso-item-list" />
+							)),
+						}}
+						itemContent={(_index, group) => (
+							<TaskGroupItem
+								key={group.parent.id}
+								group={group}
+								variant="full"
+								showWorkspace={showAllWorkspaces}
+								isSelectionMode={isSelectionMode}
+								isSelected={selectedTaskIds.includes(group.parent.id)}
+								onToggleSelection={toggleTaskSelection}
+								onDelete={handleDelete}
+								onToggleExpand={() => toggleExpand(group.parent.id)}
+								onToggleSubtaskExpand={toggleExpand}
+								className="m-2"
+							/>
+						)}
+					/>
+				)}
 			</TabContent>
 
 			{/* Fixed action bar at bottom - only shown in selection mode with selected items */}
@@ -278,7 +371,17 @@ const HistoryView = ({ onDone }: HistoryViewProps) => {
 
 			{/* Delete dialog */}
 			{deleteTaskId && (
-				<DeleteTaskDialog taskId={deleteTaskId} onOpenChange={(open) => !open && setDeleteTaskId(null)} open />
+				<DeleteTaskDialog
+					taskId={deleteTaskId}
+					subtaskCount={deleteSubtaskCount}
+					onOpenChange={(open) => {
+						if (!open) {
+							setDeleteTaskId(null)
+							setDeleteSubtaskCount(0)
+						}
+					}}
+					open
+				/>
 			)}
 
 			{/* Batch delete dialog */}

@@ -164,14 +164,135 @@ export function copyWasms(srcDir: string, distDir: string): void {
 	})
 
 	console.log(`[copyWasms] Copied ${wasmFiles.length} tree-sitter language wasms to ${distDir}`)
+
+	// Copy esbuild-wasm files for custom tool transpilation (cross-platform).
+	copyEsbuildWasmFiles(nodeModulesDir, distDir)
+
+	// Copy @roo-code/types package for custom tool compilation.
+	// Note: @roo-code/types is built with zod bundled in, so we don't need to copy zod separately.
+	copyTypesPackage(srcDir, distDir)
+}
+
+/**
+ * Copy esbuild-wasm files to the dist/bin directory.
+ *
+ * This function copies the esbuild-wasm CLI and WASM binary, which provides
+ * a cross-platform esbuild implementation that works on all platforms.
+ *
+ * Files copied:
+ * - bin/esbuild (Node.js CLI script)
+ * - esbuild.wasm (WASM binary)
+ * - wasm_exec_node.js (Go WASM runtime for Node.js)
+ * - wasm_exec.js (Go WASM runtime dependency)
+ */
+function copyEsbuildWasmFiles(nodeModulesDir: string, distDir: string): void {
+	const esbuildWasmDir = path.join(nodeModulesDir, "esbuild-wasm")
+
+	if (!fs.existsSync(esbuildWasmDir)) {
+		throw new Error(`Directory does not exist: ${esbuildWasmDir}`)
+	}
+
+	// Create bin directory in dist.
+	const binDir = path.join(distDir, "bin")
+	fs.mkdirSync(binDir, { recursive: true })
+
+	// Files to copy - the esbuild CLI script expects wasm_exec_node.js and esbuild.wasm
+	// to be one directory level up from the bin directory (i.e., in distDir directly).
+	// wasm_exec_node.js requires wasm_exec.js, so we need to copy that too.
+	const filesToCopy = [
+		{ src: path.join(esbuildWasmDir, "bin", "esbuild"), dest: path.join(binDir, "esbuild") },
+		{ src: path.join(esbuildWasmDir, "esbuild.wasm"), dest: path.join(distDir, "esbuild.wasm") },
+		{ src: path.join(esbuildWasmDir, "wasm_exec_node.js"), dest: path.join(distDir, "wasm_exec_node.js") },
+		{ src: path.join(esbuildWasmDir, "wasm_exec.js"), dest: path.join(distDir, "wasm_exec.js") },
+	]
+
+	for (const { src, dest } of filesToCopy) {
+		fs.copyFileSync(src, dest)
+
+		// Make CLI executable.
+		if (src.endsWith("esbuild")) {
+			try {
+				fs.chmodSync(dest, 0o755)
+			} catch {
+				// Ignore chmod errors on Windows.
+			}
+		}
+	}
+
+	console.log(`[copyWasms] Copied ${filesToCopy.length} esbuild-wasm files to ${distDir}`)
+}
+
+/**
+ * Copy @roo-code/types package files for custom tool compilation.
+ *
+ * This function copies the compiled @roo-code/types package so that custom tools
+ * can import it during runtime compilation. This enables users to write custom
+ * tools that use TypeScript and Zod schemas even after the extension is packaged.
+ *
+ * Files copied:
+ * - dist/index.js (ESM version)
+ * - dist/index.js.map (source map)
+ * - dist/index.d.ts (TypeScript definitions)
+ * - dist/index.cjs (CommonJS version)
+ * - dist/index.d.cts (CommonJS type definitions)
+ */
+function copyTypesPackage(srcDir: string, distDir: string): void {
+	// Find the types package - try multiple locations
+	const possiblePaths = [
+		// Monorepo packages directory (relative to src)
+		path.join(srcDir, "..", "packages", "types"),
+		// Parent's packages directory
+		path.join(srcDir, "..", "..", "packages", "types"),
+	]
+
+	let typesPackageDir: string | null = null
+	for (const possiblePath of possiblePaths) {
+		if (fs.existsSync(possiblePath)) {
+			typesPackageDir = possiblePath
+			break
+		}
+	}
+
+	if (!typesPackageDir) {
+		throw new Error("Could not find @roo-code/types package directory")
+	}
+
+	const typesDistDir = path.join(typesPackageDir, "dist")
+	if (!fs.existsSync(typesDistDir)) {
+		throw new Error(`@roo-code/types dist directory does not exist: ${typesDistDir}. Run 'pnpm build' first.`)
+	}
+
+	// Create packages/types/dist directory structure in dist
+	const targetDir = path.join(distDir, "packages", "types", "dist")
+	fs.mkdirSync(targetDir, { recursive: true })
+
+	// Files to copy (exclude sourcemap files in production to reduce bundle size)
+	const filesToCopy = ["index.js", "index.d.ts", "index.cjs", "index.d.cts"]
+
+	let copiedCount = 0
+	for (const file of filesToCopy) {
+		const srcFile = path.join(typesDistDir, file)
+		const destFile = path.join(targetDir, file)
+
+		if (fs.existsSync(srcFile)) {
+			fs.copyFileSync(srcFile, destFile)
+			copiedCount++
+		}
+	}
+
+	if (copiedCount === 0) {
+		throw new Error(`No files copied from @roo-code/types dist directory: ${typesDistDir}`)
+	}
+
+	console.log(`[copyWasms] Copied ${copiedCount} @roo-code/types files to ${targetDir}`)
 }
 
 export function copyLocales(srcDir: string, distDir: string): void {
 	const destDir = path.join(distDir, "i18n", "locales")
-	const zgsmDestDir = path.join(distDir, "i18n", "costrict-i18n", "locales")
+	const costrictDestDir = path.join(distDir, "i18n", "costrict-i18n", "locales")
 	const dirs = [
 		[destDir, path.join(srcDir, "i18n", "locales")],
-		[zgsmDestDir, path.join(srcDir, "i18n", "costrict-i18n", "locales")],
+		[costrictDestDir, path.join(srcDir, "i18n", "costrict-i18n", "locales")],
 	] as Array<[string, string]>
 
 	for (const dirInfo of dirs) {

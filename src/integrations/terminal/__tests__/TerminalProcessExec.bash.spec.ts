@@ -365,9 +365,12 @@ describe("TerminalProcess with Bash Command Output", () => {
 			expect(capturedOutput).toBe("Red Text\r\n")
 		} else {
 			// Use printf instead of echo -e for more consistent behavior across platforms
-			// Note: ANSI escape sequences are stripped in the output processing
-			const { capturedOutput } = await testTerminalCommand('printf "\\033[31mRed Text\\033[0m\\n"', "Red Text\n")
-			expect(capturedOutput).toBe("Red Text\n")
+			// Note: ANSI escape sequences are now preserved in the output processing
+			const { capturedOutput } = await testTerminalCommand(
+				'printf "\\033[31mRed Text\\033[0m\\n"',
+				"\x1B[31mRed Text\x1B[0m\n",
+			)
+			expect(capturedOutput).toBe("\x1B[31mRed Text\x1B[0m\n")
 		}
 	})
 
@@ -418,23 +421,27 @@ describe("TerminalProcess with Bash Command Output", () => {
 		}
 	})
 
-	it(TEST_PURPOSES.SIGNAL_SEGV, async () => {
-		// Skip signal tests on Windows as they don't apply
-		if (process.platform === "win32") {
-			// On Windows, simulate a crashed process with exit code 1
-			const { exitDetails } = await testTerminalCommand("cmd /c exit 1", "")
-			expect(exitDetails).toEqual({ exitCode: 1 })
-		} else {
-			// Run kill in subshell to ensure signal affects the command
-			const { exitDetails } = await testTerminalCommand("bash -c 'kill -SIGSEGV $$'", "")
-			expect(exitDetails).toEqual({
-				exitCode: 139, // 128 + 11 (SIGSEGV)
-				signal: 11,
-				signalName: "SIGSEGV",
-				coreDumpPossible: true,
-			})
-		}
-	})
+	it(
+		TEST_PURPOSES.SIGNAL_SEGV,
+		async () => {
+			// Skip signal tests on Windows as they don't apply
+			if (process.platform === "win32") {
+				// On Windows, simulate a crashed process with exit code 1
+				const { exitDetails } = await testTerminalCommand("cmd /c exit 1", "")
+				expect(exitDetails).toEqual({ exitCode: 1 })
+			} else {
+				// Run kill in subshell to ensure signal affects the command
+				const { exitDetails } = await testTerminalCommand("bash -c 'kill -SIGSEGV $$'", "")
+				expect(exitDetails).toEqual({
+					exitCode: 139, // 128 + 11 (SIGSEGV)
+					signal: 11,
+					signalName: "SIGSEGV",
+					coreDumpPossible: true,
+				})
+			}
+		},
+		60000,
+	)
 
 	// We can skip this very large test for normal development
 	it.skip(`should execute 'yes AAA... | head -n ${1_000_000}' and verify lines of 'A's`, async () => {

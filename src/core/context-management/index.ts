@@ -3,10 +3,11 @@ import crypto from "crypto"
 
 import { TelemetryService } from "@roo-code/telemetry"
 
-import { ApiHandler } from "../../api"
+import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
 import { MAX_CONDENSE_THRESHOLD, MIN_CONDENSE_THRESHOLD, summarizeConversation, SummarizeResponse } from "../condense"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
+import { RooIgnoreController } from "../ignore/RooIgnoreController"
 
 /**
  * Context Management
@@ -95,7 +96,7 @@ export function truncateConversation(messages: ApiMessage[], fracToRemove: numbe
 	const indicesToTruncate = new Set(visibleIndices.slice(1, messagesToRemove + 1))
 
 	// Tag messages that are being "truncated" (hidden from API calls)
-	const taggedMessages = messages.map((msg, index) => {
+	const taggedMessages = messages?.map((msg, index) => {
 		if (indicesToTruncate.has(index)) {
 			return { ...msg, truncationParent: truncationId }
 		}
@@ -146,6 +147,16 @@ export type WillManageContextOptions = {
 	profileThresholds: Record<string, number>
 	currentProfileId: string
 	lastMessageTokens: number
+	/**
+	 * The model's maxTokens value from model.info.maxTokens.
+	 * Used to ensure context management triggers early enough when using models with large max output tokens.
+	 */
+	modelMaxTokens?: number | null
+	/**
+	 * The user's configured maxTokens value from settings.modelMaxTokens.
+	 * Used to ensure context management triggers early enough for user-configured output limits.
+	 */
+	settingsMaxTokens?: number | null
 }
 
 /**
@@ -166,18 +177,29 @@ export function willManageContext({
 	profileThresholds,
 	currentProfileId,
 	lastMessageTokens,
+	modelMaxTokens,
+	settingsMaxTokens,
 }: WillManageContextOptions): boolean {
+	// Use a conservative reservedTokens calculation by taking the maximum of all possible values.
+	// This ensures context management triggers early enough when using models with large max output tokens
+	// (e.g., GPT-5 with 32K output tokens) to avoid "token count exceeds maximum context length" errors.
+	// See: https://github.com/RooVetGit/Roo-Cline/issues/XXX
+	const effectiveReservedTokens = Math.max(
+		maxTokens ?? 0,
+		modelMaxTokens ?? 0,
+		settingsMaxTokens ?? 0,
+		ANTHROPIC_DEFAULT_MAX_TOKENS,
+	)
+
 	if (!autoCondenseContext) {
 		// When auto-condense is disabled, only truncation can occur
-		const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
 		const prevContextTokens = totalTokens + lastMessageTokens
-		const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
+		const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - effectiveReservedTokens
 		return prevContextTokens > allowedTokens
 	}
 
-	const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
 	const prevContextTokens = totalTokens + lastMessageTokens
-	const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - reservedTokens
+	const allowedTokens = contextWindow * (1 - TOKEN_BUFFER_PERCENTAGE) - effectiveReservedTokens
 
 	// Determine the effective threshold to use
 	let effectiveThreshold = autoCondenseContextPercent
@@ -216,10 +238,28 @@ export type ContextManagementOptions = {
 	systemPrompt: string
 	taskId: string
 	customCondensingPrompt?: string
-	condensingApiHandler?: ApiHandler
 	profileThresholds: Record<string, number>
 	currentProfileId: string
-	useNativeTools?: boolean
+	/** Optional metadata to pass through to the condensing API call (tools, taskId, etc.) */
+	metadata?: ApiHandlerCreateMessageMetadata
+	/** Optional environment details string to include in the condensed summary */
+	environmentDetails?: string
+	/** Optional array of file paths read by Roo during the task (will be folded via tree-sitter) */
+	filesReadByRoo?: string[]
+	/** Optional current working directory for resolving file paths (required if filesReadByRoo is provided) */
+	cwd?: string
+	/** Optional controller for file access validation */
+	rooIgnoreController?: RooIgnoreController
+	/**
+	 * The model's maxTokens value from model.info.maxTokens.
+	 * Used to ensure context management triggers early enough when using models with large max output tokens.
+	 */
+	modelMaxTokens?: number | null
+	/**
+	 * The user's configured maxTokens value from settings.modelMaxTokens.
+	 * Used to ensure context management triggers early enough for user-configured output limits.
+	 */
+	settingsMaxTokens?: number | null
 }
 
 export type ContextManagementResult = SummarizeResponse & {
@@ -246,15 +286,30 @@ export async function manageContext({
 	systemPrompt,
 	taskId,
 	customCondensingPrompt,
-	condensingApiHandler,
 	profileThresholds,
 	currentProfileId,
-	useNativeTools,
+	metadata,
+	environmentDetails,
+	filesReadByRoo,
+	cwd,
+	rooIgnoreController,
+	modelMaxTokens,
+	settingsMaxTokens,
 }: ContextManagementOptions): Promise<ContextManagementResult> {
 	let error: string | undefined
+	let errorDetails: string | undefined
 	let cost = 0
-	// Calculate the maximum tokens reserved for response
-	const reservedTokens = maxTokens || ANTHROPIC_DEFAULT_MAX_TOKENS
+
+	// Use a conservative reservedTokens calculation by taking the maximum of all possible values.
+	// This ensures context management triggers early enough when using models with large max output tokens
+	// (e.g., GPT-5 with 32K output tokens) to avoid "token count exceeds maximum context length" errors.
+	// See: https://github.com/RooVetGit/Roo-Cline/issues/XXX
+	const reservedTokens = Math.max(
+		maxTokens ?? 0,
+		modelMaxTokens ?? 0,
+		settingsMaxTokens ?? 0,
+		ANTHROPIC_DEFAULT_MAX_TOKENS,
+	)
 
 	// Estimate tokens for the last message (which is always a user message)
 	const lastMessage = messages[messages.length - 1]
@@ -294,19 +349,22 @@ export async function manageContext({
 		const contextPercent = (100 * prevContextTokens) / contextWindow
 		if (contextPercent >= effectiveThreshold || prevContextTokens > allowedTokens) {
 			// Attempt to intelligently condense the context
-			const result = await summarizeConversation(
+			const result = await summarizeConversation({
 				messages,
 				apiHandler,
 				systemPrompt,
 				taskId,
-				prevContextTokens,
-				true, // automatic trigger
+				isAutomaticTrigger: true,
 				customCondensingPrompt,
-				condensingApiHandler,
-				useNativeTools,
-			)
+				metadata,
+				environmentDetails,
+				filesReadByRoo,
+				cwd,
+				rooIgnoreController,
+			})
 			if (result.error) {
 				error = result.error
+				errorDetails = result.errorDetails
 				cost = result.cost
 			} else {
 				return { ...result, prevContextTokens }
@@ -349,11 +407,12 @@ export async function manageContext({
 			summary: "",
 			cost,
 			error,
+			errorDetails,
 			truncationId: truncationResult.truncationId,
 			messagesRemoved: truncationResult.messagesRemoved,
 			newContextTokensAfterTruncation,
 		}
 	}
 	// No truncation or condensation needed
-	return { messages, summary: "", cost, prevContextTokens, error }
+	return { messages, summary: "", cost, prevContextTokens, error, errorDetails }
 }

@@ -1,9 +1,10 @@
 // npx vitest core/mentions/__tests__/index.spec.ts
 
+import * as fs from "fs/promises"
 import * as vscode from "vscode"
 
-import { parseMentions } from "../index"
-import { UrlContentFetcher } from "../../../services/browser/UrlContentFetcher"
+import { extractTextFromFileWithMetadata } from "../../../integrations/misc/extract-text"
+import { parseMentions, MAX_MENTION_CONTEXT_CHARS } from "../index"
 
 // Mock vscode
 vi.mock("vscode", async (importOriginal) => ({
@@ -16,6 +17,12 @@ vi.mock("vscode", async (importOriginal) => ({
 			show: vi.fn(),
 		}),
 	},
+	extensions: {
+		getExtension: vi.fn().mockReturnValue({
+			extensionUri: { fsPath: "/test/extension/path" },
+		}),
+		all: [],
+	},
 }))
 
 // Mock i18n
@@ -23,143 +30,97 @@ vi.mock("../../../i18n", () => ({
 	t: vi.fn((key: string) => key),
 }))
 
-describe("parseMentions - URL error handling", () => {
-	let mockUrlContentFetcher: UrlContentFetcher
-	let consoleErrorSpy: any
+vi.mock("fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("fs/promises")>()
+	return {
+		...actual,
+		stat: vi.fn(),
+	}
+})
 
+vi.mock("../../../integrations/misc/extract-text", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../integrations/misc/extract-text")>()
+	return {
+		...actual,
+		extractTextFromFileWithMetadata: vi.fn(),
+	}
+})
+
+describe("parseMentions - URL mention handling", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-		consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-
-		mockUrlContentFetcher = {
-			launchBrowser: vi.fn(),
-			urlToMarkdown: vi.fn(),
-			closeBrowser: vi.fn(),
-		} as any
 	})
 
-	it("should handle timeout errors with appropriate message", async () => {
-		const timeoutError = new Error("Navigation timeout of 30000 ms exceeded")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(timeoutError)
+	it("should replace URL mentions with quoted URL reference", async () => {
+		const result = await parseMentions("Check @https://example.com", "/test")
 
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
+		// URL mentions are now replaced with a quoted reference (no fetching)
+		expect(result.text).toContain("'https://example.com'")
+	})
+})
 
-		expect(consoleErrorSpy).toHaveBeenCalledWith("Error fetching URL https://example.com:", timeoutError)
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: Navigation timeout of 30000 ms exceeded")
+describe("parseMentions - mention context budget", () => {
+	const tempCwd = "/tmp/parse-mentions-budget-tests"
+
+	beforeEach(async () => {
+		vi.clearAllMocks()
+		await fs.rm(tempCwd, { recursive: true, force: true })
+		await fs.mkdir(`${tempCwd}/src`, { recursive: true })
+		await fs.writeFile(`${tempCwd}/src/a.ts`, "export const a = 1")
+		await fs.writeFile(`${tempCwd}/src/b.ts`, "export const b = 2")
+		await fs.writeFile(`${tempCwd}/src/first.ts`, "export const first = true")
+		await fs.writeFile(`${tempCwd}/src/second.ts`, "export const second = true")
 	})
 
-	it("should handle DNS resolution errors", async () => {
-		const dnsError = new Error("net::ERR_NAME_NOT_RESOLVED")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(dnsError)
-
-		const result = await parseMentions("Check @https://nonexistent.example", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: net::ERR_NAME_NOT_RESOLVED")
+	afterEach(async () => {
+		await fs.rm(tempCwd, { recursive: true, force: true })
 	})
 
-	it("should handle network disconnection errors", async () => {
-		const networkError = new Error("net::ERR_INTERNET_DISCONNECTED")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(networkError)
+	it("should append a budget notice when later file mentions exceed the total mention budget", async () => {
+		const largeContent = "x".repeat(Math.floor(MAX_MENTION_CONTEXT_CHARS * 0.75))
+		vi.mocked(extractTextFromFileWithMetadata)
+			.mockResolvedValueOnce({
+				content: largeContent,
+				totalLines: 10,
+				returnedLines: 10,
+				wasTruncated: false,
+			})
+			.mockResolvedValueOnce({
+				content: largeContent,
+				totalLines: 10,
+				returnedLines: 10,
+				wasTruncated: false,
+			})
 
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
+		const result = await parseMentions("Review @/src/a.ts and @/src/b.ts", tempCwd)
 
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: net::ERR_INTERNET_DISCONNECTED")
+		expect(result.contentBlocks).toHaveLength(2)
+		expect(result.contentBlocks[0]).toMatchObject({
+			type: "file",
+			path: "src/a.ts",
+		})
+		expect(result.contentBlocks[1].content).toContain("[mention_budget_notice]")
+		expect(result.contentBlocks[1].content).toContain("Included within budget:\n- @src/a.ts")
+		expect(result.contentBlocks[1].content).toContain("Omitted due to budget:\n- @src/b.ts")
 	})
 
-	it("should handle 403 Forbidden errors", async () => {
-		const forbiddenError = new Error("403 Forbidden")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(forbiddenError)
+	it("should keep included file mentions in user mention order while applying the budget", async () => {
+		vi.mocked(extractTextFromFileWithMetadata)
+			.mockResolvedValueOnce({
+				content: "alpha",
+				totalLines: 1,
+				returnedLines: 1,
+				wasTruncated: false,
+			})
+			.mockResolvedValueOnce({
+				content: "beta",
+				totalLines: 1,
+				returnedLines: 1,
+				wasTruncated: false,
+			})
 
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
+		const result = await parseMentions("Inspect @/src/first.ts then @/src/second.ts", tempCwd)
 
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: 403 Forbidden")
-	})
-
-	it("should handle 404 Not Found errors", async () => {
-		const notFoundError = new Error("404 Not Found")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(notFoundError)
-
-		const result = await parseMentions("Check @https://example.com/missing", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: 404 Not Found")
-	})
-
-	it("should handle generic errors with fallback message", async () => {
-		const genericError = new Error("Some unexpected error")
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(genericError)
-
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content: Some unexpected error")
-	})
-
-	it("should handle non-Error objects thrown", async () => {
-		const nonErrorObject = { code: "UNKNOWN", details: "Something went wrong" }
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockRejectedValue(nonErrorObject)
-
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("common:errors.url_fetch_error_with_url")
-		expect(result).toContain("Error fetching content:")
-	})
-
-	it("should handle browser launch errors correctly", async () => {
-		const launchError = new Error("Failed to launch browser")
-		vi.mocked(mockUrlContentFetcher.launchBrowser).mockRejectedValue(launchError)
-
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-			"Error fetching content for https://example.com: Failed to launch browser",
-		)
-		expect(result).toContain("Error fetching content: Failed to launch browser")
-		// Should not attempt to fetch URL if browser launch failed
-		expect(mockUrlContentFetcher.urlToMarkdown).not.toHaveBeenCalled()
-	})
-
-	it("should handle browser launch errors without message property", async () => {
-		const launchError = "String error"
-		vi.mocked(mockUrlContentFetcher.launchBrowser).mockRejectedValue(launchError)
-
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-			"Error fetching content for https://example.com: String error",
-		)
-		expect(result).toContain("Error fetching content: String error")
-	})
-
-	it("should successfully fetch URL content when no errors occur", async () => {
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown).mockResolvedValue("# Example Content\n\nThis is the content.")
-
-		const result = await parseMentions("Check @https://example.com", "/test", mockUrlContentFetcher)
-
-		expect(vscode.window.showErrorMessage).not.toHaveBeenCalled()
-		expect(result).toContain('<url_content url="https://example.com">')
-		expect(result).toContain("# Example Content\n\nThis is the content.")
-		expect(result).toContain("</url_content>")
-	})
-
-	it("should handle multiple URLs with mixed success and failure", async () => {
-		vi.mocked(mockUrlContentFetcher.urlToMarkdown)
-			.mockResolvedValueOnce("# First Site")
-			.mockRejectedValueOnce(new Error("timeout"))
-
-		const result = await parseMentions(
-			"Check @https://example1.com and @https://example2.com",
-			"/test",
-			mockUrlContentFetcher,
-		)
-
-		expect(result).toContain('<url_content url="https://example1.com">')
-		expect(result).toContain("# First Site")
-		expect(result).toContain('<url_content url="https://example2.com">')
-		expect(result).toContain("Error fetching content: timeout")
+		expect(result.contentBlocks.map((block) => block.path)).toEqual(["src/first.ts", "src/second.ts"])
 	})
 })

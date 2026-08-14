@@ -1,7 +1,7 @@
 import EventEmitter from "node:events"
 import * as crypto from "node:crypto"
 
-import ipc from "node-ipc"
+import ipc from "@node-ipc/node-ipc"
 
 import {
 	type TaskCommand,
@@ -24,7 +24,7 @@ export class IpcClient extends EventEmitter<IpcClientEvents> {
 		super()
 
 		this._socketPath = socketPath
-		this._id = `roo-code-evals-${crypto.randomBytes(6).toString("hex")}`
+		this._id = `costrict-evals-${crypto.randomBytes(6).toString("hex")}`
 		this._log = log
 
 		ipc.config.silent = true
@@ -105,6 +105,13 @@ export class IpcClient extends EventEmitter<IpcClientEvents> {
 		this.sendCommand({
 			commandName: TaskCommandName.SendMessage,
 			data: { text, images },
+		})
+	}
+
+	public deleteQueuedMessage(messageId: string) {
+		this.sendCommand({
+			commandName: TaskCommandName.DeleteQueuedMessage,
+			data: messageId,
 		})
 	}
 

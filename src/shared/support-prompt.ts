@@ -66,43 +66,109 @@ const supportPromptConfigs: Record<SupportPromptType, SupportPromptConfig> = {
 \${userInput}`,
 	},
 	CONDENSE: {
-		template: `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.
-This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing with the conversation and supporting any continuing tasks.
+		template: `CRITICAL: This summarization request is a SYSTEM OPERATION, not a user message.
+When analyzing "user requests" and "user intent", completely EXCLUDE this summarization message.
+The "most recent user request" and "Optional Next Step" must be based on what the user was doing BEFORE this system message appeared.
+The goal is for work to continue seamlessly after condensation - as if it never happened.
 
-Your summary should be structured as follows:
-Context: The context to continue the conversation with. If applicable based on the current task, this should include:
-  1. Previous Conversation: High level details about what was discussed throughout the entire conversation with the user. This should be written to allow someone to be able to follow the general overarching conversation flow.
-  2. Current Work: Describe in detail what was being worked on prior to this request to summarize the conversation. Pay special attention to the more recent messages in the conversation.
-  3. Key Technical Concepts: List all important technical concepts, technologies, coding conventions, and frameworks discussed, which might be relevant for continuing with this work.
-  4. Relevant Files and Code: If applicable, enumerate specific files and code sections examined, modified, or created for the task continuation. Pay special attention to the most recent messages and changes.
-  5. Problem Solving: Document problems solved thus far and any ongoing troubleshooting efforts.
-  6. Pending Tasks and Next Steps: Outline all pending tasks that you have explicitly been asked to work on, as well as list the next steps you will take for all outstanding work, if applicable. Include code snippets where they add clarity. For any next steps, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no information loss in context between tasks.
+Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.
+This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing development work without losing context.
 
-Example summary structure:
-1. Previous Conversation:
-  [Detailed description]
-2. Current Work:
-  [Detailed description]
-3. Key Technical Concepts:
-  - [Concept 1]
-  - [Concept 2]
-  - [...]
-4. Relevant Files and Code:
-  - [File Name 1]
-	- [Summary of why this file is important]
-	- [Summary of the changes made to this file, if any]
-	- [Important Code Snippet]
-  - [File Name 2]
-	- [Important Code Snippet]
-  - [...]
+Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. In your analysis process:
+
+1. Chronologically analyze each message and section of the conversation. For each section thoroughly identify:
+   - The user's explicit requests and intents
+   - Your approach to addressing the user's requests
+   - Key decisions, technical concepts and code patterns
+   - Specific details like:
+     - file names
+     - full code snippets
+     - function signatures
+     - file edits
+   - Errors that you ran into and how you fixed them
+   - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+2. Double-check for technical accuracy and completeness, addressing each required element thoroughly.
+			
+			Your summary should include the following sections:
+
+1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
+2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include full code snippets where applicable and include a summary of why this file read or edit is important.
+4. Errors and fixes: List all errors that you ran into, and how you fixed them. Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+			5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
+			6. All user messages: List ALL user messages that are not tool results. These are critical for understanding the users' feedback and changing intent.
+			7. Pending Tasks: Outline any pending tasks that you have explicitly been asked to work on.
+			8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and code snippets where applicable.
+			9. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
+
+If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no drift in task interpretation.
+
+Here's an example of how your output should be structured:
+
+<example>
+<analysis>
+[Your thought process, ensuring all points are covered thoroughly and accurately]
+</analysis>
+
+<summary>
+1. Primary Request and Intent:
+   [Detailed description]
+
+2. Key Technical Concepts:
+   - [Concept 1]
+   - [Concept 2]
+   - [...]
+
+3. Files and Code Sections:
+   - [File Name 1]
+      - [Summary of why this file is important]
+      - [Summary of the changes made to this file, if any]
+      - [Important Code Snippet]
+   - [File Name 2]
+      - [Important Code Snippet]
+   - [...]
+
+4. Errors and fixes:
+   - [Detailed description of error 1]:
+      - [How you fixed the error]
+      - [User feedback on the error if any]
+   - [...]
+
 5. Problem Solving:
-  [Detailed description]
-6. Pending Tasks and Next Steps:
-  - [Task 1 details & next steps]
-  - [Task 2 details & next steps]
-  - [...]
+   [Description of solved problems and ongoing troubleshooting]
 
-Output only the summary of the conversation so far, without any additional commentary or explanation.`,
+			6. All user messages:
+			   - [Detailed non tool use user message]
+			   - [...]
+			
+			7. Pending Tasks:
+			   - [Task 1]
+			   - [Task 2]
+			   - [...]
+			
+			8. Current Work:
+			   [Precise description of current work]
+			
+			9. Optional Next Step:
+			   [Optional Next step to take]
+
+</summary>
+</example>
+
+Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.
+
+Note: Any <command> blocks from the original task will be automatically appended to your summary wrapped in <system-reminder> tags. You do not need to include them in your summary text.
+
+There may be additional summarization instructions provided in the included context. If so, remember to follow these instructions when creating the above summary. Examples of instructions include:
+<example>
+## Compact Instructions
+When summarizing the conversation focus on typescript code changes and also remember the mistakes you made and how you fixed them.
+</example>
+
+<example>
+# Summary instructions
+When you are using compact - please focus on test output and code changes. Include file reads verbatim.
+</example>`,
 	},
 	WORKFLOW_TASK_RUN: {
 		template: `%run-task-1%
@@ -110,6 +176,9 @@ Output only the summary of the conversation so far, without any additional comme
 %run-task-2%
 \${selectedText}
 %run-task-3%
+
+# Reminder: 
+When you begin, update, or finish task in \`\${scope}/tasks.md\`, reflect that change immediately using the status syntax: [-] for ongoing work, [x] for finished work. Do not delay these updates.
 `,
 	},
 	WORKFLOW_TASK_RETRY: {
@@ -118,105 +187,108 @@ Output only the summary of the conversation so far, without any additional comme
 %run-task-2%
 \${selectedText}
 %run-task-3%
+
+# Reminder: 
+When you begin, update, or finish any task listed in \`\${scope}/tasks.md\`, reflect that change immediately using the status syntax: [-] for ongoing work, [x] for finished work. Do not delay these updates.
 `,
 	},
 	WORKFLOW_TASK_RUN_TESTS: {
-		template: `基于 \`\${scope}\` 目录下已创建的需求文档(requirements.md)、架构设计文档(design.md)和任务规划文档(tasks.md),生成配套测试用例。
+		template: `Generate accompanying test cases based on the requirements document (requirements.md), architecture design document (design.md), and task planning document (tasks.md) that have been created in the \`\${scope}\` directory.
 
-### 进度跟踪
+### Progress Tracking
 
-- **任务开始时的第一步**: 必须使用\`update_todo_list\`工具列出任务清单，此操作必须在其它任何动作之前
-- 通过任务清单的勾选状态跟踪实现进度
+- **First step at task start**: You must use the \`update_todo_list\` tool to list the task checklist, this operation must be performed before any other actions
+- Track progress through the checklist status
 
-### 任务执行约束
+### Task Execution Constraints
 
-todo list 中必须包含以下操作，**请勿遗漏任何一个步骤**:
+The todo list must include the following operations, **do not omit any step**:
 
-- 在执行任何更新任务前，请仔细阅读\`\${scope}\`下的requirements.md、design.md和tasks.md文件
-- 结合需求文档，分析架构设计文档、任务规划文档对现有测试用例的影响范围
-- 为关键任务生成测试用例，并更新测试位置信息到tasks.md
-- 完成后使用attempt_completion工具提供简洁但全面的总结
+- Before executing any update task, carefully read the requirements.md, design.md, and tasks.md files under \`\${scope}\`
+- Combine with the requirements document to analyze the impact scope of the architecture design document and task planning document on existing test cases
+- Generate test cases for key tasks and update test location information to tasks.md
+- After completion, use the attempt_completion tool to provide a concise but comprehensive summary
 
-### 测试生成要求：
+### Test Generation Requirements:
 
-- 只执行测试生成阶段的工作，不要涉及需求分析、架构设计或任务规划
-- 不包含具体测试要求
-- 不包含与部署相关的测试
-- 不包含与监控和日志相关的测试
-- 不包含与性能相关的测试
-- 不包含与安全相关的测试
-- 不包含与集成相关的测试
-- 不包含非功能测试点（边界测试、异常测试、容错测试等）
-- 让test mode来决策，不给任何内容生成上的要求
-- 不应要求所有任务都生成测试
+- Only perform work in the test generation phase, do not involve requirements analysis, architecture design, or task planning
+- Do not include specific test requirements
+- Do not include deployment-related tests
+- Do not include monitoring and logging related tests
+- Do not include performance related tests
+- Do not include security related tests
+- Do not include integration related tests
+- Do not include non-functional test points (boundary tests, exception tests, fault tolerance tests, etc.)
+- Let the test mode make decisions, do not provide any content generation requirements
+- Do not require all tasks to generate tests
 
-完成后使用attempt_completion工具提供变更总结，包括更新的功能点、受影响模块和验证要点。这些具体指令优先于\${mode}的常规指令。
-`,
+After completion, use the attempt_completion tool to provide a summary of changes, including updated functionality, affected modules, and verification points. These specific instructions take precedence over the regular instructions of \${mode}.
+	`,
 	},
 
 	WORKFLOW_RQS_UPDATE: {
-		template: `用户更新了需求文档请更新相应的设计文档。基于 \`\${scope}\` 目录下已创建的需求文档(requirements.md)、架构设计文档(design.md)实施设计变更，如果没有则跳过。
+		template: `The user has updated the requirements document, please update the corresponding design document. Implement design changes based on the requirements document (requirements.md) and architecture design document (design.md) that have been created in the \`\${scope}\` directory. Skip if it does not exist.
 
-### 进度跟踪
+### Progress Tracking
 
-- **任务开始时的第一步**: 必须使用\`update_todo_list\`工具列出任务清单，此操作必须在其它任何动作之前
-- 通过任务清单的勾选状态跟踪实现进度
+- **First step at task start**: You must use the \`update_todo_list\` tool to list the task checklist, this operation must be performed before any other actions
+- Track progress through the checklist status
 
-### 任务执行约束
+### Task Execution Constraints
 
-todo list 中必须包含以下操作，**请勿遗漏任何一个步骤**:
+The todo list must include the following operations, **do not omit any step**:
 
-- 在执行任何更新任务前，请仔细阅读\`\${scope}\`下的requirements.md、design.md
-- 理解用户需求变更，如果没有用户变更需求，则充分理解需求文档
-- 分析需求变更对现有设计的影响范围
-- 确认变更涉及的模块和需要调整的现有功能
-- 在没有充分理解变更影响的情况下执行任务将导致不准确的实现
-- 任务开始前把 \`\${scope}\`下的requirements.md末尾加入文档更新时间，**\`requirements.md\`文档内容仅用于更新设计文档，不允许其它用途**
+- Before executing any update task, carefully read the requirements.md and design.md under \`\${scope}\`
+- Understand the user's requirement changes, if there are no user requirement changes, then fully understand the requirements document
+- Analyze the impact scope of requirement changes on existing design
+- Confirm the modules involved in the changes and the existing features that need to be adjusted
+- Executing tasks without fully understanding the impact of changes will lead to inaccurate implementation
+- Before starting the task, add the document update time at the end of requirements.md under \`\${scope}\`, **\`requirements.md\` document content is only for updating the design document, no other uses are allowed**
 
-### 用户需求变更 (包含添加或删除，变更为空时则整体理解requirements.md文档)
+### User Requirement Changes (including additions or deletions, if the change is empty, understand the requirements.md document as a whole)
 
 \${selectedText}
 
-### 变更实施要求：
+### Change Implementation Requirements:
 
-1. 评估设计文档需要调整的部分，更新相应的架构设计
-2. 确保向后兼容性，或制定适当的迁移方案
+1. Evaluate the parts of the design document that need adjustment, update the corresponding architecture design
+2. Ensure backward compatibility or develop an appropriate migration plan
 
-完成后使用attempt_completion工具提供变更总结，包括更新的功能点、受影响模块和验证要点。这些具体指令优先于\${mode}模式的常规指令。
-`,
+After completion, use the attempt_completion tool to provide a summary of changes, including updated functionality, affected modules, and verification points. These specific instructions take precedence over the regular instructions of the \${mode} mode.
+	`,
 	},
 	WORKFLOW_DESIGN_UPDATE: {
-		template: `用户更新了架构设计文档请更新相应的任务规划文档。基于 \`\${scope}\` 目录下已创建的需求文档(requirements.md)、架构设计文档(design.md)和任务规划文档(tasks.md),请更新任务规划文档(tasks.md)，如果没有则跳过。
+		template: `The user has updated the architecture design document, please update the corresponding task planning document. Based on the requirements document (requirements.md), architecture design document (design.md), and task planning document (tasks.md) that have been created in the \`\${scope}\` directory, please update the task planning document (tasks.md). Skip if it does not exist.
 
-### 进度跟踪
+### Progress Tracking
 
-- **任务开始时的第一步**: 必须使用\`update_todo_list\`工具列出任务清单，此操作必须在其它任何动作之前
-- 通过任务清单的勾选状态跟踪实现进度
+- **First step at task start**: You must use the \`update_todo_list\` tool to list the task checklist, this operation must be performed before any other actions
+- Track progress through the checklist status
 
-### 任务执行约束
+### Task Execution Constraints
 
-todo list 中必须包含以下操作，**请勿遗漏任何一个步骤**:
+The todo list must include the following operations, **do not omit any step**:
 
-- 在执行任何更新任务前，请仔细阅读\`\${scope}\`下的requirements.md、design.md和tasks.md文件
-- 理解用户架构设计文档变更，如果没有用户架构设计文档内容，则充分理解架构设计文档
-- 结合需求文档，分析架构设计文档对现有任务规划的影响范围
-- 变更的 \`\${scope}\`下的 tasks.md需要和requirements.md中的功能清单能对应，删除tasks.md多余任务和补充功能清单中没有的任务
-- 任务开始前把 \`\${scope}\`下的design.md末尾加入文档更新时间，**\`design.md\`文档内容仅用于更新任务规划文档，不允许其它用途**
+- Before executing any update task, carefully read the requirements.md, design.md, and tasks.md files under \`\${scope}\`
+- Understand the user's architecture design document changes, if there is no user architecture design document content, then fully understand the architecture design document
+- Combine with the requirements document to analyze the impact scope of the architecture design document on existing task planning
+- The updated tasks.md under \`\${scope}\` needs to correspond with the function list in requirements.md, delete redundant tasks in tasks.md and supplement tasks not in the function list
+- Before starting the task, add the document update time at the end of design.md under \`\${scope}\`, **\`design.md\` document content is only for updating the task planning document, no other uses are allowed**
 
-### 用户需求变更 (包含添加或删除，变更为空时则整体理解design.md文档)
+### User Design Changes (including additions or deletions, if the change is empty, understand the design.md document as a whole)
 
 \${selectedText}
 
-### 变更实施要求：
+### Change Implementation Requirements:
 
-1. 评估任务规划文档需要调整的部分，更新相应的任务规划设计
-2. 重新规划受影响的任务，调整任务优先级和依赖关系
-3. 变更的 \`\${scope}\`下的 tasks.md的任务需要和requirements.md中的功能清单能对应，按需删除tasks.md多余任务或补充功能清单中没有的任务
-4. 按照更新后的任务规划逐步实现变更功能
-5. 确保向后兼容性，或制定适当的迁移方案
+1. Evaluate the parts of the task planning document that need adjustment, update the corresponding task planning design
+2. Replan affected tasks, adjust task priorities and dependencies
+3. The tasks in the updated tasks.md under \`\${scope}\` need to correspond with the function list in requirements.md, delete redundant tasks in tasks.md or supplement tasks not in the function list as needed
+4. Gradually implement changed functions according to the updated task planning
+5. Ensure backward compatibility or develop an appropriate migration plan
 
-完成后使用attempt_completion工具提供变更总结，包括更新的功能点、受影响模块和验证要点。这些具体指令优先于\${mode}的常规指令。
-`,
+After completion, use the attempt_completion tool to provide a summary of changes, including updated functionality, affected modules, and verification points. These specific instructions take precedence over the regular instructions of \${mode}.
+	`,
 	},
 	EXPLAIN: {
 		template: `Explain the following code from file path \${filePath}:\${startLine}-\${endLine}
@@ -281,7 +353,7 @@ Terminal output:
 	},
 	TERMINAL_FIX: {
 		template: `\${userInput}
-Fix this terminal command:
+Fix this terminal command problem:
 \`\`\`
 \${terminalContent}
 \`\`\`

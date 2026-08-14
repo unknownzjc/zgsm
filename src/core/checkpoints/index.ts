@@ -1,15 +1,16 @@
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
 
+import type { ClineApiReqInfo } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { Task } from "../task/Task"
 
 import { getWorkspacePath } from "../../utils/path"
+import { isPathWithin } from "../../utils/pathUtils"
 import { checkGitInstalled } from "../../utils/git"
 import { t } from "../../i18n"
 
-import { ClineApiReqInfo } from "../../shared/ExtensionMessage"
 import { getApiMetrics } from "../../shared/getApiMetrics"
 
 import { DIFF_VIEW_URI_SCHEME } from "../../integrations/editor/DiffViewProvider"
@@ -30,8 +31,18 @@ async function updateCospecMetadataForCheckpoint(
 		return
 	}
 	const fileName = path.basename(editFilePath)
-	const cospecDir = path.join(workspaceDir, path.dirname(editFilePath))
-	const fileAbsPath = path.join(workspaceDir, editFilePath)
+	const fileAbsPath = path.resolve(workspaceDir, editFilePath)
+	// Guard against path traversal: isCoworkflowDocument can be bypassed with a
+	// path like ".cospec/../../<target>/.cospec/requirements.md" (it only checks
+	// that a .cospec segment exists somewhere). Verify the resolved path stays
+	// within the checkpoint's workspace dir before reading/writing metadata.
+	// This helper is a non-interactive metadata recorder (it also runs in the
+	// tool-denial path), so outside-workspace targets are silently skipped —
+	// outside-workspace files are not meant to get cospec metadata.
+	if (!isPathWithin(fileAbsPath, workspaceDir)) {
+		return
+	}
+	const cospecDir = path.dirname(fileAbsPath)
 	const metadata = await CospecMetadataManager.getMetadataOrDefault(cospecDir)
 	Object.assign(metadata, {
 		[fileName.replace(".md", "")]: {

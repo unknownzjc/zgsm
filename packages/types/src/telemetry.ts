@@ -78,6 +78,7 @@ export enum TelemetryEventName {
 	ERROR = "Error",
 	TELEMETRY_SETTINGS_CHANGED = "Telemetry Settings Changed",
 	MODEL_CACHE_EMPTY_RESPONSE = "Model Cache Empty Response",
+	READ_FILE_LEGACY_FORMAT_USED = "Read File Legacy Format Used",
 }
 
 /**
@@ -208,6 +209,7 @@ export const rooCodeTelemetryEventSchema = z.discriminatedUnion("type", [
 			TelemetryEventName.TAB_SHOWN,
 			TelemetryEventName.MODE_SETTINGS_CHANGED,
 			TelemetryEventName.CUSTOM_MODE_CREATED,
+			TelemetryEventName.READ_FILE_LEGACY_FORMAT_USED,
 		]),
 		properties: telemetryPropertiesSchema,
 	}),
@@ -480,5 +482,59 @@ export function extractApiProviderErrorProperties(error: ApiProviderError): Reco
 		modelId: error.modelId,
 		operation: error.operation,
 		...(error.errorCode !== undefined && { errorCode: error.errorCode }),
+	}
+}
+
+/**
+ * Reason why the consecutive mistake limit was reached.
+ */
+export type ConsecutiveMistakeReason = "no_tools_used" | "tool_repetition" | "unknown"
+
+/**
+ * Error class for "Roo is having trouble" consecutive mistake scenarios.
+ * Triggered when the task reaches the configured consecutive mistake limit.
+ * Used for structured exception tracking via PostHog.
+ */
+export class ConsecutiveMistakeError extends Error {
+	constructor(
+		message: string,
+		public readonly taskId: string,
+		public readonly consecutiveMistakeCount: number,
+		public readonly consecutiveMistakeLimit: number,
+		public readonly reason: ConsecutiveMistakeReason = "unknown",
+		public readonly provider?: string,
+		public readonly modelId?: string,
+	) {
+		super(message)
+		this.name = "ConsecutiveMistakeError"
+	}
+}
+
+/**
+ * Type guard to check if an error is a ConsecutiveMistakeError.
+ * Used by telemetry to automatically extract structured properties.
+ */
+export function isConsecutiveMistakeError(error: unknown): error is ConsecutiveMistakeError {
+	return (
+		error instanceof Error &&
+		error.name === "ConsecutiveMistakeError" &&
+		"taskId" in error &&
+		"consecutiveMistakeCount" in error &&
+		"consecutiveMistakeLimit" in error
+	)
+}
+
+/**
+ * Extracts properties from a ConsecutiveMistakeError for telemetry.
+ * Returns the structured properties that can be merged with additionalProperties.
+ */
+export function extractConsecutiveMistakeErrorProperties(error: ConsecutiveMistakeError): Record<string, unknown> {
+	return {
+		taskId: error.taskId,
+		consecutiveMistakeCount: error.consecutiveMistakeCount,
+		consecutiveMistakeLimit: error.consecutiveMistakeLimit,
+		reason: error.reason,
+		...(error.provider !== undefined && { provider: error.provider }),
+		...(error.modelId !== undefined && { modelId: error.modelId }),
 	}
 }

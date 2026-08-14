@@ -1,9 +1,10 @@
 import * as jschardet from "jschardet"
-import * as iconv from "iconv-lite"
+import iconv from "iconv-lite"
 import { isBinaryFile } from "isbinaryfile"
 import fs from "fs/promises"
 import path from "path"
 import { createLogger } from "./logger"
+import { getSupportedBinaryFormats } from "../integrations/misc/extract-text"
 
 // Common binary file extension list
 export const BINARY_EXTENSIONS = new Set([
@@ -154,7 +155,7 @@ export async function detectEncoding(fileBuffer: Buffer, fileExtension?: string,
 		}
 	} else {
 		// 3. Only check if it's a binary file when encoding detection fails
-		if (fileExtension) {
+		if (fileExtension && !getSupportedBinaryFormats().includes(fileExtension)) {
 			const isBinary = await isBinaryFile(fileBuffer).catch(() => false)
 			if (isBinary) {
 				throw new Error(`Cannot read text for file type: ${fileExtension}`)
@@ -216,6 +217,7 @@ export async function detectFileEncoding(filePath: string): Promise<string> {
 export async function isBinaryFileWithEncodingDetection(filePath: string, size?: number): Promise<boolean> {
 	try {
 		const fileExtension = path.extname(filePath).toLowerCase()
+		if (getSupportedBinaryFormats().includes(fileExtension)) return false
 		// 1. First check file extension
 		if (BINARY_EXTENSIONS.has(fileExtension)) {
 			return true
@@ -242,7 +244,6 @@ export async function isBinaryFileWithEncodingDetection(filePath: string, size?:
 	} catch (error) {
 		// File read error, assume it's binary
 		return false
-		return true
 	}
 }
 
@@ -258,7 +259,7 @@ export async function writeFileWithEncodingPreservation(filePath: string, conten
 	let finalEncoding = (await detectFileEncoding(filePath)) as BufferEncoding
 
 	// If original file is UTF-8 or does not exist, write directly
-	if (!finalEncoding || ["utf-8", "utf8", "ascii"].includes(finalEncoding.toLocaleLowerCase())) {
+	if (!finalEncoding || ["utf-8", "utf8", "ascii"].includes(finalEncoding.toLowerCase())) {
 		finalEncoding = "utf8"
 		await retry(() => safeWriteFile(filePath, content, finalEncoding))
 	} else {
@@ -267,7 +268,7 @@ export async function writeFileWithEncodingPreservation(filePath: string, conten
 		await retry(() => safeWriteFile(filePath, encodedBuffer))
 	}
 
-	createLogger().info(`[write] ${filePath} encoding with ${finalEncoding}`)
+	createLogger().debug(`[write] ${filePath} encoding with ${finalEncoding}`)
 }
 
 async function safeWriteFile(filePath: string, data: Buffer | string, encoding?: BufferEncoding) {

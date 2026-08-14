@@ -2,8 +2,27 @@ import * as fs from "fs/promises"
 import * as fsSync from "fs"
 import * as path from "path"
 import * as lockfile from "proper-lockfile"
-import Disassembler from "stream-json/Disassembler"
-import Stringer from "stream-json/Stringer"
+import { JsonStreamStringify } from "json-stream-stringify"
+
+export type ExdevFallbackStrategy = "error" | "copy-unlink"
+
+/**
+ * Options for safeWriteJson function
+ */
+export interface SafeWriteJsonOptions {
+	/**
+	 * Whether to pretty-print the JSON output with indentation.
+	 * When true, uses tab characters for indentation.
+	 * When false or undefined, outputs compact JSON.
+	 * @default false
+	 */
+	prettyPrint?: boolean
+	/**
+	 * Strategy to use when rename fails with EXDEV.
+	 * @default "error"
+	 */
+	onExdev?: ExdevFallbackStrategy
+}
 
 /**
  * Safely writes JSON data to a file.
@@ -12,14 +31,17 @@ import Stringer from "stream-json/Stringer"
  * - Writes to a temporary file first.
  * - If the target file exists, it's backed up before being replaced.
  * - Attempts to roll back and clean up in case of errors.
+ * - Supports pretty-printing with indentation while maintaining streaming efficiency.
  *
  * @param {string} filePath - The absolute path to the target file.
  * @param {any} data - The data to serialize to JSON and write.
+ * @param {SafeWriteJsonOptions} options - Optional configuration for JSON formatting.
  * @returns {Promise<void>}
  */
 
-async function safeWriteJson(filePath: string, data: any): Promise<void> {
+async function safeWriteJson(filePath: string, data: any, options?: SafeWriteJsonOptions): Promise<void> {
 	const absoluteFilePath = path.resolve(filePath)
+	const exdevFallbackStrategy = options?.onExdev ?? "error"
 	let releaseLock = async () => {} // Initialized to a no-op
 
 	// For directory creation
@@ -75,7 +97,7 @@ async function safeWriteJson(filePath: string, data: any): Promise<void> {
 			`.${path.basename(absoluteFilePath)}.new_${Date.now()}_${Math.random().toString(36).substring(2)}.tmp`,
 		)
 
-		await _streamDataToFile(actualTempNewFilePath, data)
+		await _streamDataToFile(actualTempNewFilePath, data, options?.prettyPrint)
 
 		// Step 2: Check if the target file exists. If so, rename it to a backup path.
 		try {
@@ -86,7 +108,7 @@ async function safeWriteJson(filePath: string, data: any): Promise<void> {
 				path.dirname(absoluteFilePath),
 				`.${path.basename(absoluteFilePath)}.bak_${Date.now()}_${Math.random().toString(36).substring(2)}.tmp`,
 			)
-			await fs.rename(absoluteFilePath, actualTempBackupFilePath)
+			await safeRename(absoluteFilePath, actualTempBackupFilePath, exdevFallbackStrategy)
 		} catch (accessError: any) {
 			// Explicitly type accessError
 			if (accessError.code !== "ENOENT") {
@@ -98,7 +120,7 @@ async function safeWriteJson(filePath: string, data: any): Promise<void> {
 
 		// Step 3: Rename the new temporary file to the target file path.
 		// This is the main "commit" step.
-		await fs.rename(actualTempNewFilePath, absoluteFilePath)
+		await safeRename(actualTempNewFilePath, absoluteFilePath, exdevFallbackStrategy)
 
 		// If we reach here, the new file is successfully in place.
 		// The original actualTempNewFilePath is now the main file, so we shouldn't try to clean it up as "temp".
@@ -129,7 +151,7 @@ async function safeWriteJson(filePath: string, data: any): Promise<void> {
 		// Attempt rollback if a backup was made
 		if (backupFileToRollbackOrCleanupWithinCatch) {
 			try {
-				await fs.rename(backupFileToRollbackOrCleanupWithinCatch, absoluteFilePath)
+				await safeRename(backupFileToRollbackOrCleanupWithinCatch, absoluteFilePath, exdevFallbackStrategy)
 				// Mark as handled, prevent later unlink of this path
 				actualTempBackupFilePath = null
 			} catch (rollbackError) {
@@ -178,57 +200,44 @@ async function safeWriteJson(filePath: string, data: any): Promise<void> {
 	}
 }
 
+async function safeRename(src: string, dst: string, exdevFallbackStrategy: ExdevFallbackStrategy): Promise<void> {
+	try {
+		await fs.rename(src, dst)
+	} catch (err: any) {
+		if (err?.code === "EXDEV" && exdevFallbackStrategy === "copy-unlink") {
+			await fs.copyFile(src, dst)
+			await fs.unlink(src)
+			return
+		}
+		throw err
+	}
+}
+
 /**
  * Helper function to stream JSON data to a file.
  * @param targetPath The path to write the stream to.
  * @param data The data to stream.
+ * @param prettyPrint Whether to format the JSON with indentation.
  * @returns Promise<void>
  */
-async function _streamDataToFile(targetPath: string, data: any): Promise<void> {
+async function _streamDataToFile(targetPath: string, data: any, prettyPrint = false): Promise<void> {
 	// Stream data to avoid high memory usage for large JSON objects.
 	const fileWriteStream = fsSync.createWriteStream(targetPath, { encoding: "utf8" })
-	const disassembler = Disassembler.disassembler()
-	// Output will be compact JSON as standard Stringer is used.
-	const stringer = Stringer.stringer()
+
+	// JsonStreamStringify traverses the object and streams tokens directly
+	// The 'spaces' parameter adds indentation during streaming, not via a separate pass
+	// Convert undefined to null for valid JSON serialization (undefined is not valid JSON)
+	const stringifyStream = new JsonStreamStringify(
+		data === undefined ? null : data,
+		undefined, // replacer
+		prettyPrint ? "\t" : undefined, // spaces for indentation
+	)
 
 	return new Promise<void>((resolve, reject) => {
-		let errorOccurred = false
-		const handleError = (_streamName: string) => (err: Error) => {
-			if (!errorOccurred) {
-				errorOccurred = true
-				if (!fileWriteStream.destroyed) {
-					fileWriteStream.destroy(err)
-				}
-				reject(err)
-			}
-		}
-
-		disassembler.on("error", handleError("Disassembler"))
-		stringer.on("error", handleError("Stringer"))
-		fileWriteStream.on("error", (err: Error) => {
-			if (!errorOccurred) {
-				errorOccurred = true
-				reject(err)
-			}
-		})
-
-		fileWriteStream.on("finish", () => {
-			if (!errorOccurred) {
-				resolve()
-			}
-		})
-
-		disassembler.pipe(stringer).pipe(fileWriteStream)
-
-		// stream-json's Disassembler might error if `data` is undefined.
-		// JSON.stringify(undefined) would produce the string "undefined" if it's the root value.
-		// Writing 'null' is a safer JSON representation for a root undefined value.
-		if (data === undefined) {
-			disassembler.write(null)
-		} else {
-			disassembler.write(data)
-		}
-		disassembler.end()
+		stringifyStream.on("error", reject)
+		fileWriteStream.on("error", reject)
+		fileWriteStream.on("finish", resolve)
+		stringifyStream.pipe(fileWriteStream)
 	})
 }
 

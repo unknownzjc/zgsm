@@ -10,7 +10,6 @@ import {
 	anthropicModels,
 	ANTHROPIC_DEFAULT_MAX_TOKENS,
 	ApiProviderError,
-	TOOL_PROTOCOL,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
@@ -19,12 +18,15 @@ import type { ApiHandlerOptions } from "../../shared/api"
 import { ApiStream } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 import { filterNonAnthropicBlocks } from "../transform/anthropic-filter"
-import { resolveToolProtocol } from "../../utils/resolveToolProtocol"
+import { handleProviderError } from "./utils/error-handler"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 import { calculateApiCostAnthropic } from "../../shared/cost"
-import { convertOpenAIToolsToAnthropic } from "../../core/prompts/tools/native-tools/converters"
+import {
+	convertOpenAIToolsToAnthropic,
+	convertOpenAIToolChoiceToAnthropic,
+} from "../../core/prompts/tools/native-tools/converters"
 
 export class AnthropicHandler extends BaseProvider implements SingleCompletionHandler {
 	private options: ApiHandlerOptions
@@ -62,35 +64,27 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		// Filter out non-Anthropic blocks (reasoning, thoughtSignature, etc.) before sending to the API
 		const sanitizedMessages = filterNonAnthropicBlocks(messages)
 
-		// Add 1M context beta flag if enabled for Claude Sonnet 4 and 4.5
+		// Add 1M context beta flag if enabled for supported models (Claude Sonnet 4/4.5/4.6, Opus 4.6)
 		if (
-			(modelId === "claude-sonnet-4-20250514" || modelId === "claude-sonnet-4-5") &&
+			(modelId === "claude-sonnet-4-20250514" ||
+				modelId === "claude-sonnet-4-5" ||
+				modelId === "claude-sonnet-4-6" ||
+				modelId === "claude-opus-4-6") &&
 			this.options.anthropicBeta1MContext
 		) {
 			betas.push("context-1m-2025-08-07")
 		}
 
-		// Enable native tools by default using resolveToolProtocol (which checks model's defaultToolProtocol)
-		// This matches OpenRouter's approach of always including tools when provided
-		// Also exclude tools when tool_choice is "none" since that means "don't use tools"
-		const model = this.getModel()
-		const toolProtocol = resolveToolProtocol(this.options, model.info)
-		const shouldIncludeNativeTools =
-			metadata?.tools &&
-			metadata.tools.length > 0 &&
-			toolProtocol === TOOL_PROTOCOL.NATIVE &&
-			metadata?.tool_choice !== "none"
-
-		const nativeToolParams = shouldIncludeNativeTools
-			? {
-					tools: convertOpenAIToolsToAnthropic(metadata.tools!),
-					tool_choice: this.convertOpenAIToolChoice(metadata.tool_choice, metadata.parallelToolCalls),
-				}
-			: {}
+		const nativeToolParams = {
+			tools: convertOpenAIToolsToAnthropic(metadata?.tools ?? []),
+			tool_choice: convertOpenAIToolChoiceToAnthropic(metadata?.tool_choice, metadata?.parallelToolCalls),
+		}
 
 		switch (modelId) {
+			case "claude-sonnet-4-6":
 			case "claude-sonnet-4-5":
 			case "claude-sonnet-4-20250514":
+			case "claude-opus-4-6":
 			case "claude-opus-4-5-20251101":
 			case "claude-opus-4-1-20250805":
 			case "claude-opus-4-20250514":
@@ -153,8 +147,10 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 							// Then check for models that support prompt caching
 							switch (modelId) {
+								case "claude-sonnet-4-6":
 								case "claude-sonnet-4-5":
 								case "claude-sonnet-4-20250514":
+								case "claude-opus-4-6":
 								case "claude-opus-4-5-20251101":
 								case "claude-opus-4-1-20250805":
 								case "claude-opus-4-20250514":
@@ -341,8 +337,14 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
 		let info: ModelInfo = anthropicModels[id]
 
-		// If 1M context beta is enabled for Claude Sonnet 4 or 4.5, update the model info
-		if ((id === "claude-sonnet-4-20250514" || id === "claude-sonnet-4-5") && this.options.anthropicBeta1MContext) {
+		// If 1M context beta is enabled for supported models, update the model info
+		if (
+			(id === "claude-sonnet-4-20250514" ||
+				id === "claude-sonnet-4-5" ||
+				id === "claude-sonnet-4-6" ||
+				id === "claude-opus-4-6") &&
+			this.options.anthropicBeta1MContext
+		) {
 			// Use the tier pricing for 1M context
 			const tier = info.tiers?.[0]
 			if (tier) {
@@ -362,6 +364,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			modelId: id,
 			model: info,
 			settings: this.options,
+			defaultTemperature: 0,
 		})
 
 		// The `:thinking` suffix indicates that the model is a "Hybrid"
@@ -374,49 +377,6 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 			betas: id === "claude-3-7-sonnet-20250219:thinking" ? ["output-128k-2025-02-19"] : undefined,
 			...params,
 		}
-	}
-
-	/**
-	 * Converts OpenAI tool_choice to Anthropic ToolChoice format
-	 * @param toolChoice - OpenAI tool_choice parameter
-	 * @param parallelToolCalls - When true, allows parallel tool calls. When false (default), disables parallel tool calls.
-	 */
-	private convertOpenAIToolChoice(
-		toolChoice: OpenAI.Chat.ChatCompletionCreateParams["tool_choice"],
-		parallelToolCalls?: boolean,
-	): Anthropic.Messages.MessageCreateParams["tool_choice"] | undefined {
-		// Anthropic allows parallel tool calls by default. When parallelToolCalls is false or undefined,
-		// we disable parallel tool use to ensure one tool call at a time.
-		const disableParallelToolUse = !parallelToolCalls
-
-		if (!toolChoice) {
-			// Default to auto with parallel tool use control
-			return { type: "auto", disable_parallel_tool_use: disableParallelToolUse }
-		}
-
-		if (typeof toolChoice === "string") {
-			switch (toolChoice) {
-				case "none":
-					return undefined // Anthropic doesn't have "none", just omit tools
-				case "auto":
-					return { type: "auto", disable_parallel_tool_use: disableParallelToolUse }
-				case "required":
-					return { type: "any", disable_parallel_tool_use: disableParallelToolUse }
-				default:
-					return { type: "auto", disable_parallel_tool_use: disableParallelToolUse }
-			}
-		}
-
-		// Handle object form { type: "function", function: { name: string } }
-		if (typeof toolChoice === "object" && "function" in toolChoice) {
-			return {
-				type: "tool",
-				name: toolChoice.function.name,
-				disable_parallel_tool_use: disableParallelToolUse,
-			}
-		}
-
-		return { type: "auto", disable_parallel_tool_use: disableParallelToolUse }
 	}
 
 	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any) {
@@ -433,7 +393,9 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 					messages: [{ role: "user", content: prompt }],
 					stream: false,
 				},
-				{ signal: metadata?.signal },
+				{
+					signal: metadata?.signal,
+				},
 			)
 		} catch (error) {
 			TelemetryService.instance.captureException(

@@ -6,16 +6,12 @@ import {
 	anthropicModels,
 	basetenModels,
 	bedrockModels,
-	cerebrasModels,
 	deepSeekModels,
-	doubaoModels,
-	featherlessModels,
 	fireworksModels,
 	geminiModels,
-	groqModels,
-	ioIntelligenceModels,
 	mistralModels,
 	moonshotModels,
+	openAiCodexModels,
 	openAiNativeModels,
 	qwenCodeModels,
 	sambaNovaModels,
@@ -24,6 +20,7 @@ import {
 	xaiModels,
 	internationalZAiModels,
 	minimaxModels,
+	mimoModels,
 	getClaudeCodeModels,
 } from "./providers/index.js"
 
@@ -31,7 +28,7 @@ import {
  * constants
  */
 
-export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 3
+export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 5
 
 /**
  * DynamicProvider
@@ -40,17 +37,14 @@ export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 3
  */
 
 export const dynamicProviders = [
-	"zgsm",
+	"costrict",
 	"openrouter",
 	"vercel-ai-gateway",
-	"huggingface",
 	"litellm",
-	"deepinfra",
-	"io-intelligence",
 	"requesty",
-	"unbound",
 	// "roo",
-	"chutes",
+	"unbound",
+	"poe",
 ] as const
 
 export type DynamicProvider = (typeof dynamicProviders)[number]
@@ -122,18 +116,15 @@ export const providerNames = [
 	"anthropic",
 	"bedrock",
 	"baseten",
-	"cerebras",
 	"claude-code",
-	"doubao",
 	"deepseek",
-	"featherless",
 	"fireworks",
 	"gemini",
-	"gemini-cli",
-	"groq",
 	"mistral",
 	"moonshot",
 	"minimax",
+	"mimo",
+	"openai-codex",
 	"openai-native",
 	"qwen-code",
 	"roo",
@@ -151,13 +142,39 @@ export const isProviderName = (key: unknown): key is ProviderName =>
 	typeof key === "string" && providerNames.includes(key as ProviderName)
 
 /**
+ * RetiredProviderName
+ */
+
+export const retiredProviderNames = [
+	"cerebras",
+	"chutes",
+	"deepinfra",
+	"doubao",
+	"featherless",
+	"groq",
+	"huggingface",
+	"io-intelligence",
+] as const
+
+export const retiredProviderNamesSchema = z.enum(retiredProviderNames)
+
+export type RetiredProviderName = z.infer<typeof retiredProviderNamesSchema>
+
+export const isRetiredProvider = (value: string): value is RetiredProviderName =>
+	retiredProviderNames.includes(value as RetiredProviderName)
+
+export const providerNamesWithRetiredSchema = z.union([providerNamesSchema, retiredProviderNamesSchema])
+
+export type ProviderNameWithRetired = z.infer<typeof providerNamesWithRetiredSchema>
+
+/**
  * ProviderSettingsEntry
  */
 
 export const providerSettingsEntrySchema = z.object({
 	id: z.string(),
 	name: z.string(),
-	apiProvider: providerNamesSchema.optional(),
+	apiProvider: providerNamesWithRetiredSchema.optional(),
 	modelId: z.string().optional(),
 })
 
@@ -170,9 +187,7 @@ export type ProviderSettingsEntry = z.infer<typeof providerSettingsEntrySchema>
 const baseProviderSettingsSchema = z.object({
 	//
 	includeMaxTokens: z.boolean().optional(),
-	diffEnabled: z.boolean().optional(),
 	todoListEnabled: z.boolean().optional(),
-	fuzzyMatchThreshold: z.number().optional(),
 	modelTemperature: z.number().nullish(),
 	rateLimitSeconds: z.number().optional(),
 	consecutiveMistakeLimit: z.number().min(0).optional(),
@@ -185,9 +200,6 @@ const baseProviderSettingsSchema = z.object({
 
 	// Model verbosity.
 	verbosity: verbosityLevelsSchema.optional(),
-
-	// Tool protocol override for this profile.
-	toolProtocol: z.enum(["xml", "native"]).optional(),
 })
 
 // Several of the providers share common model config properties.
@@ -195,17 +207,16 @@ const apiModelIdProviderModelSchema = baseProviderSettingsSchema.extend({
 	apiModelId: z.string().optional(),
 })
 
-const zgsmSchema = apiModelIdProviderModelSchema.extend({
-	zgsmAccessToken: z.string().optional(),
-	zgsmRefreshToken: z.string().optional(),
-	zgsmState: z.string().optional(),
-	zgsmBaseUrl: z.string().optional(),
-	zgsmModelId: z.string().optional(),
-	zgsmApiKeyUpdatedAt: z.string().optional(),
-	zgsmApiKeyExpiredAt: z.string().optional(),
-	useZgsmCustomConfig: z.boolean().optional(),
-	zgsmCodebaseIndexEnabled: z.boolean().optional(),
-	zgsmAiCustomModelInfo: modelInfoSchema.nullish(),
+const costrictSchema = apiModelIdProviderModelSchema.extend({
+	costrictAccessToken: z.string().optional(),
+	costrictRefreshToken: z.string().optional(),
+	costrictState: z.string().optional(),
+	costrictBaseUrl: z.string().optional(),
+	costrictModelId: z.string().optional(),
+	costrictApiKeyUpdatedAt: z.string().optional(),
+	costrictApiKeyExpiredAt: z.string().optional(),
+	useCostrictCustomConfig: z.boolean().optional(),
+	costrictAiCustomModelInfo: modelInfoSchema.nullish(),
 })
 
 const anthropicSchema = apiModelIdProviderModelSchema.extend({
@@ -222,7 +233,6 @@ const openRouterSchema = baseProviderSettingsSchema.extend({
 	openRouterModelId: z.string().optional(),
 	openRouterBaseUrl: z.string().optional(),
 	openRouterSpecificProvider: z.string().optional(),
-	openRouterUseMiddleOutTransform: z.boolean().optional(),
 })
 
 const bedrockSchema = apiModelIdProviderModelSchema.extend({
@@ -250,14 +260,12 @@ const vertexSchema = apiModelIdProviderModelSchema.extend({
 	vertexJsonCredentials: z.string().optional(),
 	vertexProjectId: z.string().optional(),
 	vertexRegion: z.string().optional(),
-	enableUrlContext: z.boolean().optional(),
-	enableGrounding: z.boolean().optional(),
+	vertex1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
 })
 
 const openAiSchema = baseProviderSettingsSchema.extend({
 	openAiBaseUrl: z.string().optional(),
 	openAiApiKey: z.string().optional(),
-	openAiLegacyFormat: z.boolean().optional(),
 	openAiR1FormatEnabled: z.boolean().optional(),
 	openAiModelId: z.string().optional(),
 	openAiCustomModelInfo: modelInfoSchema.nullish(),
@@ -296,13 +304,10 @@ const lmStudioSchema = baseProviderSettingsSchema.extend({
 const geminiSchema = apiModelIdProviderModelSchema.extend({
 	geminiApiKey: z.string().optional(),
 	googleGeminiBaseUrl: z.string().optional(),
-	enableUrlContext: z.boolean().optional(),
-	enableGrounding: z.boolean().optional(),
 })
 
-const geminiCliSchema = apiModelIdProviderModelSchema.extend({
-	geminiCliOAuthPath: z.string().optional(),
-	geminiCliProjectId: z.string().optional(),
+const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
+	// No additional settings needed - uses OAuth authentication
 })
 
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({
@@ -323,15 +328,9 @@ const deepSeekSchema = apiModelIdProviderModelSchema.extend({
 	deepSeekApiKey: z.string().optional(),
 })
 
-const deepInfraSchema = apiModelIdProviderModelSchema.extend({
-	deepInfraBaseUrl: z.string().optional(),
-	deepInfraApiKey: z.string().optional(),
-	deepInfraModelId: z.string().optional(),
-})
-
-const doubaoSchema = apiModelIdProviderModelSchema.extend({
-	doubaoBaseUrl: z.string().optional(),
-	doubaoApiKey: z.string().optional(),
+const poeSchema = apiModelIdProviderModelSchema.extend({
+	poeApiKey: z.string().optional(),
+	poeBaseUrl: z.string().optional(),
 })
 
 const moonshotSchema = apiModelIdProviderModelSchema.extend({
@@ -348,9 +347,16 @@ const minimaxSchema = apiModelIdProviderModelSchema.extend({
 	minimaxApiKey: z.string().optional(),
 })
 
-const unboundSchema = baseProviderSettingsSchema.extend({
-	unboundApiKey: z.string().optional(),
-	unboundModelId: z.string().optional(),
+const mimoSchema = apiModelIdProviderModelSchema.extend({
+	mimoBaseUrl: z
+		.union([
+			z.literal("https://api.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-cn.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-sgp.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-ams.xiaomimimo.com/v1"),
+		])
+		.optional(),
+	mimoApiKey: z.string().optional(),
 })
 
 const requestySchema = baseProviderSettingsSchema.extend({
@@ -360,6 +366,10 @@ const requestySchema = baseProviderSettingsSchema.extend({
 })
 
 const humanRelaySchema = baseProviderSettingsSchema
+const unboundSchema = baseProviderSettingsSchema.extend({
+	unboundApiKey: z.string().optional(),
+	unboundModelId: z.string().optional(),
+})
 
 const fakeAiSchema = baseProviderSettingsSchema.extend({
 	fakeAi: z.unknown().optional(),
@@ -369,29 +379,11 @@ const xaiSchema = apiModelIdProviderModelSchema.extend({
 	xaiApiKey: z.string().optional(),
 })
 
-const groqSchema = apiModelIdProviderModelSchema.extend({
-	groqApiKey: z.string().optional(),
-})
-
-const huggingFaceSchema = baseProviderSettingsSchema.extend({
-	huggingFaceApiKey: z.string().optional(),
-	huggingFaceModelId: z.string().optional(),
-	huggingFaceInferenceProvider: z.string().optional(),
-})
-
-const chutesSchema = apiModelIdProviderModelSchema.extend({
-	chutesApiKey: z.string().optional(),
-})
-
 const litellmSchema = baseProviderSettingsSchema.extend({
 	litellmBaseUrl: z.string().optional(),
 	litellmApiKey: z.string().optional(),
 	litellmModelId: z.string().optional(),
 	litellmUsePromptCache: z.boolean().optional(),
-})
-
-const cerebrasSchema = apiModelIdProviderModelSchema.extend({
-	cerebrasApiKey: z.string().optional(),
 })
 
 const sambaNovaSchema = apiModelIdProviderModelSchema.extend({
@@ -411,21 +403,13 @@ const fireworksSchema = apiModelIdProviderModelSchema.extend({
 	fireworksApiKey: z.string().optional(),
 })
 
-const featherlessSchema = apiModelIdProviderModelSchema.extend({
-	featherlessApiKey: z.string().optional(),
-})
-
-const ioIntelligenceSchema = apiModelIdProviderModelSchema.extend({
-	ioIntelligenceModelId: z.string().optional(),
-	ioIntelligenceApiKey: z.string().optional(),
-})
-
 const qwenCodeSchema = apiModelIdProviderModelSchema.extend({
 	qwenCodeOauthPath: z.string().optional(),
 })
 
 const rooSchema = apiModelIdProviderModelSchema.extend({
-	// No additional fields needed - uses cloud authentication.
+	// Can use cloud authentication or provide an API key (cli).
+	rooApiKey: z.string().optional(),
 })
 
 const vercelAiGatewaySchema = baseProviderSettingsSchema.extend({
@@ -442,7 +426,7 @@ const defaultSchema = z.object({
 })
 
 export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProvider", [
-	zgsmSchema.merge(z.object({ apiProvider: z.literal("zgsm") })),
+	costrictSchema.merge(z.object({ apiProvider: z.literal("costrict") })),
 	anthropicSchema.merge(z.object({ apiProvider: z.literal("anthropic") })),
 	claudeCodeSchema.merge(z.object({ apiProvider: z.literal("claude-code") })),
 	openRouterSchema.merge(z.object({ apiProvider: z.literal("openrouter") })),
@@ -453,30 +437,24 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	vsCodeLmSchema.merge(z.object({ apiProvider: z.literal("vscode-lm") })),
 	lmStudioSchema.merge(z.object({ apiProvider: z.literal("lmstudio") })),
 	geminiSchema.merge(z.object({ apiProvider: z.literal("gemini") })),
-	geminiCliSchema.merge(z.object({ apiProvider: z.literal("gemini-cli") })),
+	openAiCodexSchema.merge(z.object({ apiProvider: z.literal("openai-codex") })),
 	openAiNativeSchema.merge(z.object({ apiProvider: z.literal("openai-native") })),
 	mistralSchema.merge(z.object({ apiProvider: z.literal("mistral") })),
 	deepSeekSchema.merge(z.object({ apiProvider: z.literal("deepseek") })),
-	deepInfraSchema.merge(z.object({ apiProvider: z.literal("deepinfra") })),
-	doubaoSchema.merge(z.object({ apiProvider: z.literal("doubao") })),
+	poeSchema.merge(z.object({ apiProvider: z.literal("poe") })),
 	moonshotSchema.merge(z.object({ apiProvider: z.literal("moonshot") })),
 	minimaxSchema.merge(z.object({ apiProvider: z.literal("minimax") })),
-	unboundSchema.merge(z.object({ apiProvider: z.literal("unbound") })),
+	mimoSchema.merge(z.object({ apiProvider: z.literal("mimo") })),
 	requestySchema.merge(z.object({ apiProvider: z.literal("requesty") })),
 	humanRelaySchema.merge(z.object({ apiProvider: z.literal("human-relay") })),
+	unboundSchema.merge(z.object({ apiProvider: z.literal("unbound") })),
 	fakeAiSchema.merge(z.object({ apiProvider: z.literal("fake-ai") })),
 	xaiSchema.merge(z.object({ apiProvider: z.literal("xai") })),
-	groqSchema.merge(z.object({ apiProvider: z.literal("groq") })),
 	basetenSchema.merge(z.object({ apiProvider: z.literal("baseten") })),
-	huggingFaceSchema.merge(z.object({ apiProvider: z.literal("huggingface") })),
-	chutesSchema.merge(z.object({ apiProvider: z.literal("chutes") })),
 	litellmSchema.merge(z.object({ apiProvider: z.literal("litellm") })),
-	cerebrasSchema.merge(z.object({ apiProvider: z.literal("cerebras") })),
 	sambaNovaSchema.merge(z.object({ apiProvider: z.literal("sambanova") })),
 	zaiSchema.merge(z.object({ apiProvider: z.literal("zai") })),
 	fireworksSchema.merge(z.object({ apiProvider: z.literal("fireworks") })),
-	featherlessSchema.merge(z.object({ apiProvider: z.literal("featherless") })),
-	ioIntelligenceSchema.merge(z.object({ apiProvider: z.literal("io-intelligence") })),
 	qwenCodeSchema.merge(z.object({ apiProvider: z.literal("qwen-code") })),
 	rooSchema.merge(z.object({ apiProvider: z.literal("roo") })),
 	vercelAiGatewaySchema.merge(z.object({ apiProvider: z.literal("vercel-ai-gateway") })),
@@ -484,10 +462,12 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 ])
 
 export const providerSettingsSchema = z.object({
-	apiProvider: providerNamesSchema.optional(),
-	...zgsmSchema.shape,
-	...anthropicSchema.shape,
+	// apiProvider: providerNamesSchema.optional(),
+	// ...anthropicSchema.shape,
+	apiProvider: providerNamesWithRetiredSchema.optional(),
+	...costrictSchema.shape,
 	...claudeCodeSchema.shape,
+	...anthropicSchema.shape,
 	...openRouterSchema.shape,
 	...bedrockSchema.shape,
 	...vertexSchema.shape,
@@ -496,30 +476,24 @@ export const providerSettingsSchema = z.object({
 	...vsCodeLmSchema.shape,
 	...lmStudioSchema.shape,
 	...geminiSchema.shape,
-	...geminiCliSchema.shape,
+	...openAiCodexSchema.shape,
 	...openAiNativeSchema.shape,
 	...mistralSchema.shape,
 	...deepSeekSchema.shape,
-	...deepInfraSchema.shape,
-	...doubaoSchema.shape,
+	...poeSchema.shape,
 	...moonshotSchema.shape,
 	...minimaxSchema.shape,
-	...unboundSchema.shape,
+	...mimoSchema.shape,
 	...requestySchema.shape,
 	...humanRelaySchema.shape,
+	...unboundSchema.shape,
 	...fakeAiSchema.shape,
 	...xaiSchema.shape,
-	...groqSchema.shape,
 	...basetenSchema.shape,
-	...huggingFaceSchema.shape,
-	...chutesSchema.shape,
 	...litellmSchema.shape,
-	...cerebrasSchema.shape,
 	...sambaNovaSchema.shape,
 	...zaiSchema.shape,
 	...fireworksSchema.shape,
-	...featherlessSchema.shape,
-	...ioIntelligenceSchema.shape,
 	...qwenCodeSchema.shape,
 	...rooSchema.shape,
 	...vercelAiGatewaySchema.shape,
@@ -552,20 +526,17 @@ export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
  */
 
 export const modelIdKeys = [
-	"zgsmModelId",
+	"costrictModelId",
 	"apiModelId",
 	"openRouterModelId",
 	"openAiModelId",
 	"ollamaModelId",
 	"lmStudioModelId",
 	"lmStudioDraftModelId",
-	"unboundModelId",
 	"requestyModelId",
+	"unboundModelId",
 	"litellmModelId",
-	"huggingFaceModelId",
-	"ioIntelligenceModelId",
 	"vercelAiGatewayModelId",
-	"deepInfraModelId",
 ] as const satisfies readonly (keyof ProviderSettings)[]
 
 export type ModelIdKey = (typeof modelIdKeys)[number]
@@ -585,38 +556,32 @@ export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
 	isProviderName(key) && !isInternalProvider(key) && !isCustomProvider(key) && !isFauxProvider(key)
 
 export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
-	zgsm: "zgsmModelId",
+	costrict: "costrictModelId",
 	anthropic: "apiModelId",
 	"claude-code": "apiModelId",
 	openrouter: "openRouterModelId",
 	bedrock: "apiModelId",
 	vertex: "apiModelId",
+	"openai-codex": "apiModelId",
 	"openai-native": "openAiModelId",
 	ollama: "ollamaModelId",
 	lmstudio: "lmStudioModelId",
 	gemini: "apiModelId",
-	"gemini-cli": "apiModelId",
 	mistral: "apiModelId",
 	moonshot: "apiModelId",
 	minimax: "apiModelId",
+	mimo: "apiModelId",
 	deepseek: "apiModelId",
-	deepinfra: "deepInfraModelId",
-	doubao: "apiModelId",
+	poe: "apiModelId",
 	"qwen-code": "apiModelId",
-	unbound: "unboundModelId",
 	requesty: "requestyModelId",
+	unbound: "unboundModelId",
 	xai: "apiModelId",
-	groq: "apiModelId",
 	baseten: "apiModelId",
-	chutes: "apiModelId",
 	litellm: "litellmModelId",
-	huggingface: "huggingFaceModelId",
-	cerebras: "apiModelId",
 	sambanova: "apiModelId",
 	zai: "apiModelId",
 	fireworks: "apiModelId",
-	featherless: "apiModelId",
-	"io-intelligence": "ioIntelligenceModelId",
 	roo: "apiModelId",
 	"vercel-ai-gateway": "vercelAiGatewayModelId",
 }
@@ -650,7 +615,7 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 	return "openai"
 }
 
-export interface ZgsmUserInfo {
+export interface CostrictUserInfo {
 	name?: string
 	email?: string
 	picture?: string
@@ -666,11 +631,11 @@ export interface ZgsmUserInfo {
  */
 
 export const MODELS_BY_PROVIDER: Record<
-	Exclude<ProviderName, "fake-ai" | "human-relay" | "gemini-cli" | "openai">,
+	Exclude<ProviderName, "fake-ai" | "human-relay" | "openai">,
 	{ id: ProviderName; label: string; models: string[] }
 > = {
-	zgsm: {
-		id: "zgsm",
+	costrict: {
+		id: "costrict",
 		label: "CoStrict",
 		models: [],
 	},
@@ -684,22 +649,11 @@ export const MODELS_BY_PROVIDER: Record<
 		label: "Amazon Bedrock",
 		models: Object.keys(bedrockModels),
 	},
-	cerebras: {
-		id: "cerebras",
-		label: "Cerebras",
-		models: Object.keys(cerebrasModels),
-	},
 	"claude-code": { id: "claude-code", label: "Claude Code", models: Object.keys(getClaudeCodeModels()) },
 	deepseek: {
 		id: "deepseek",
 		label: "DeepSeek",
 		models: Object.keys(deepSeekModels),
-	},
-	doubao: { id: "doubao", label: "Doubao", models: Object.keys(doubaoModels) },
-	featherless: {
-		id: "featherless",
-		label: "Featherless",
-		models: Object.keys(featherlessModels),
 	},
 	fireworks: {
 		id: "fireworks",
@@ -710,12 +664,6 @@ export const MODELS_BY_PROVIDER: Record<
 		id: "gemini",
 		label: "Google Gemini",
 		models: Object.keys(geminiModels),
-	},
-	groq: { id: "groq", label: "Groq", models: Object.keys(groqModels) },
-	"io-intelligence": {
-		id: "io-intelligence",
-		label: "IO Intelligence",
-		models: Object.keys(ioIntelligenceModels),
 	},
 	mistral: {
 		id: "mistral",
@@ -732,13 +680,23 @@ export const MODELS_BY_PROVIDER: Record<
 		label: "MiniMax",
 		models: Object.keys(minimaxModels),
 	},
+	mimo: {
+		id: "mimo",
+		label: "Xiaomi MiMo",
+		models: Object.keys(mimoModels),
+	},
+	"openai-codex": {
+		id: "openai-codex",
+		label: "OpenAI - ChatGPT Plus/Pro",
+		models: Object.keys(openAiCodexModels),
+	},
 	"openai-native": {
 		id: "openai-native",
 		label: "OpenAI",
 		models: Object.keys(openAiNativeModels),
 	},
 	"qwen-code": { id: "qwen-code", label: "Qwen Code", models: Object.keys(qwenCodeModels) },
-	roo: { id: "roo", label: "Roo Code Cloud", models: [] },
+	roo: { id: "roo", label: "Roo Code Router", models: [] },
 	sambanova: {
 		id: "sambanova",
 		label: "SambaNova",
@@ -759,14 +717,12 @@ export const MODELS_BY_PROVIDER: Record<
 	baseten: { id: "baseten", label: "Baseten", models: Object.keys(basetenModels) },
 
 	// Dynamic providers; models pulled from remote APIs.
-	huggingface: { id: "huggingface", label: "Hugging Face", models: [] },
+	poe: { id: "poe", label: "Poe", models: [] },
 	litellm: { id: "litellm", label: "LiteLLM", models: [] },
 	openrouter: { id: "openrouter", label: "OpenRouter", models: [] },
 	requesty: { id: "requesty", label: "Requesty", models: [] },
 	unbound: { id: "unbound", label: "Unbound", models: [] },
-	deepinfra: { id: "deepinfra", label: "DeepInfra", models: [] },
 	"vercel-ai-gateway": { id: "vercel-ai-gateway", label: "Vercel AI Gateway", models: [] },
-	chutes: { id: "chutes", label: "Chutes AI", models: [] },
 
 	// Local providers; models discovered from localhost endpoints.
 	lmstudio: { id: "lmstudio", label: "LM Studio", models: [] },

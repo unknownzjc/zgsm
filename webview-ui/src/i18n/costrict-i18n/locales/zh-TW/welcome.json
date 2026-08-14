@@ -1,5 +1,5 @@
 {
-	"getZgsmApiKey": "登入 CoStrict",
+	"getCostrictApiKey": "登入 CoStrict",
 	"greeting": "你好，我是 CoStrict！",
 	"introduction": "<strong>CoStrict 嚴肅開發的AI智慧夥伴</strong>，開源免費，可私有化部署，重視效果可控、品質為先，提供AI Agent、AI CodeReview、AI Completion三大核心能力，登入即可體驗。",
 	"telemetry": {
@@ -17,5 +17,14 @@
 		"description": "嚴肅編程，遵從「計畫制定→分步實施」流程。適用於漸進式開發和任務管理，確保專案有序推進。"
 	},
 	"developmentMode": "開發模式",
-	"commonFeatures": "常用功能"
+	"commonFeatures": "常用功能",
+	"providerSignup": {
+		"rooCloudProvider": "CoStrict 提供商",
+		"rooCloudDescription": "使用 CoStrict 最簡單的方式。低成本精選的免費和付費模型組合",
+		"learnMore": "瞭解更多",
+		"useAnotherProvider": "使用其他提供商",
+		"useAnotherProviderDescription": "輸入 API 金鑰即可開始。",
+		"noApiKeys": "不想處理金鑰？選擇 CoStrict 提供商吧。",
+		"getStarted": "開始使用"
+	}
 }

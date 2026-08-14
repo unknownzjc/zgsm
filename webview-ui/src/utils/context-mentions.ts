@@ -1,7 +1,6 @@
 import { Fzf } from "fzf"
 
-import type { ModeConfig } from "@roo-code/types"
-import type { Command } from "@roo/ExtensionMessage"
+import type { ModeConfig, Command, CostrictCodeMode } from "@roo-code/types"
 
 import { mentionRegex } from "@roo/context-mentions"
 
@@ -129,6 +128,7 @@ export function getContextMenuOptions(
 	dynamicSearchResults: SearchResult[] = [],
 	modes?: ModeConfig[],
 	commands?: Command[],
+	costrictCodeMode?: CostrictCodeMode,
 ): ContextMenuQueryItem[] {
 	// Handle slash commands for modes and commands
 	// Only process as slash command if the query itself starts with "/" (meaning we're typing a slash command)
@@ -176,9 +176,18 @@ export function getContextMenuOptions(
 		}
 
 		// Add mode suggestions second
-		if (modes?.length) {
+		const _modes = (modes ?? []).filter((v) => {
+			if (v.costrictCodeModeGroup) {
+				if (v.costrictCodeModeGroup === "hide") return false
+				if (!v.costrictCodeModeGroup?.split(",").includes(costrictCodeMode!)) return false
+			}
+
+			return true
+		})
+
+		if (_modes?.length) {
 			// Create searchable strings array for fzf
-			const searchableItems = modes.map((mode) => ({
+			const searchableItems = _modes.map((mode) => ({
 				original: mode,
 				searchStr: mode.name,
 			}))
@@ -196,7 +205,7 @@ export function getContextMenuOptions(
 						slashCommand: `/${result.item.original.slug}`,
 						description: getModeDescription(result.item.original),
 					}))
-				: modes.map((mode) => ({
+				: _modes.map((mode) => ({
 						type: ContextMenuOptionType.Mode,
 						value: mode.slug,
 						slashCommand: `/${mode.slug}`,
@@ -368,9 +377,16 @@ export function getContextMenuOptions(
 export function shouldShowContextMenu(text: string, position: number): boolean {
 	const beforeCursor = text.slice(0, position)
 
-	// Check if we're in a slash command context (at the beginning and no space yet)
-	if (text.startsWith("/") && !text.includes(" ") && position <= text.length) {
-		return true
+	// Check if we're in a slash command context.
+	// The "/" must be at the start of the text, and only the segment between the "/" and
+	// the cursor counts as the command query. Checking just that segment (instead of the
+	// whole text) lets the menu appear even when there is other content (with spaces)
+	// after the cursor - e.g. typing "/" before existing "hello world".
+	if (text.startsWith("/")) {
+		const slashCommandPart = text.slice(1, position)
+		if (!slashCommandPart.includes(" ") && position <= text.length) {
+			return true
+		}
 	}
 
 	// Check for @ mention context

@@ -1,18 +1,22 @@
 {
 	"extension": {
-		"name": "Roo Code",
+		"name": "CoStrict",
 		"description": "A whole dev team of AI agents in your editor."
 	},
 	"number_format": {
 		"thousand_suffix": "k",
-		"million_suffix": "m",
-		"billion_suffix": "b"
+		"million_suffix": "M",
+		"billion_suffix": "B"
 	},
 	"welcome": "Welcome, {{name}}! You have {{count}} notifications.",
 	"items": {
 		"zero": "No items",
 		"one": "One item",
 		"other": "{{count}} items"
+	},
+	"select": "Select",
+	"dialogs": {
+		"selectCheckpointStorageFolder": "Select Custom Storage Path"
 	},
 	"confirmation": {
 		"reset_state": "Are you sure you want to reset all state and secret storage in the extension? This cannot be undone.",
@@ -65,7 +69,7 @@
 		"condense_not_enough_messages": "Not enough messages to condense context",
 		"condensed_recently": "Context was condensed recently; skipping this attempt",
 		"condense_handler_invalid": "API handler for condensing context is invalid",
-		"condense_context_grew": "Context size increased during condensing; skipping this attempt",
+		"condense_api_failed": "Condensing API call failed: {{message}}",
 		"url_timeout": "The website took too long to load (timeout). This could be due to a slow connection, heavy website, or the site being temporarily unavailable. You can try again later or check if the URL is correct.",
 		"url_not_found": "The website address could not be found. Please check if the URL is correct and try again.",
 		"no_internet": "No internet connection. Please check your network connection and try again.",
@@ -83,16 +87,6 @@
 		"share_task_not_found": "Task not found or access denied.",
 		"mode_import_failed": "Failed to import mode: {{error}}",
 		"delete_rules_folder_failed": "Failed to delete rules folder: {{rulesFolderPath}}. Error: {{error}}",
-		"geminiCli": {
-			"oauthLoadFailed": "Failed to load OAuth credentials. Please authenticate first: {{error}}",
-			"tokenRefreshFailed": "Failed to refresh OAuth token: {{error}}",
-			"onboardingTimeout": "Onboarding operation timed out after 60 seconds. Please try again later.",
-			"projectDiscoveryFailed": "Could not discover project ID. Make sure you're authenticated with 'gemini auth'.",
-			"rateLimitExceeded": "Rate limit exceeded. Free tier limits have been reached.",
-			"badRequest": "Bad request: {{details}}",
-			"apiError": "Gemini CLI API error: {{error}}",
-			"completionError": "Gemini CLI completion error: {{error}}"
-		},
 		"command_not_found": "Command '{{name}}' not found",
 		"open_command_file": "Failed to open command file",
 		"delete_command": "Failed to delete command",
@@ -125,20 +119,30 @@
 			"thinking_complete_safety": "(Thinking complete, but output was blocked due to safety settings.)",
 			"thinking_complete_recitation": "(Thinking complete, but output was blocked due to recitation check.)"
 		},
-		"cerebras": {
-			"authenticationFailed": "Cerebras API authentication failed. Please check your API key is valid and not expired.",
-			"accessForbidden": "Cerebras API access forbidden. Your API key may not have access to the requested model or feature.",
-			"rateLimitExceeded": "Cerebras API rate limit exceeded. Please wait before making another request.",
-			"serverError": "Cerebras API server error ({{status}}). Please try again later.",
-			"genericError": "Cerebras API Error ({{status}}): {{message}}",
-			"noResponseBody": "Cerebras API Error: No response body",
-			"completionError": "Cerebras completion error: {{error}}"
-		},
 		"roo": {
-			"authenticationRequired": "Roo provider requires cloud authentication. Please sign in to Roo Code Cloud."
+			"authenticationRequired": "CoStrict provider requires cloud authentication. Please sign in to CoStrict Cloud."
+		},
+		"openAiCodex": {
+			"notAuthenticated": "Not authenticated with OpenAI Codex. Please sign in using the OpenAI Codex OAuth flow.",
+			"invalidRequest": "Invalid request to Codex API. Please check your input parameters.",
+			"authenticationFailed": "Authentication failed. Please re-authenticate with OpenAI Codex.",
+			"accessDenied": "Access denied. Your ChatGPT subscription may not include Codex access.",
+			"endpointNotFound": "Codex API endpoint not found.",
+			"rateLimitExceeded": "Rate limit exceeded. Please try again later.",
+			"serviceError": "OpenAI Codex service error. Please try again later.",
+			"genericError": "Codex API error ({{status}})",
+			"noResponseBody": "Codex API error: No response body",
+			"connectionFailed": "Failed to connect to Codex API: {{message}}",
+			"unexpectedConnectionError": "Unexpected error connecting to Codex API",
+			"apiError": "Codex API error: {{message}}",
+			"responseFailed": "Response failed: {{message}}",
+			"streamProcessingError": "Error processing response stream: {{message}}",
+			"unexpectedStreamError": "Unexpected error processing response stream",
+			"completionError": "OpenAI Codex completion error: {{message}}"
 		},
 		"api": {
-			"invalidKeyInvalidChars": "API key contains invalid characters."
+			"invalidKeyInvalidChars": "API key contains invalid characters.",
+			"apiRequestFailed": "API request failed ({{status}})"
 		},
 		"unexpected_api_response": "Unexpected API Response: The language model did not provide any assistant messages. This may indicate an issue with the API or the model's output.",
 		"manual_url_empty": "Please enter a valid callback URL",
@@ -150,7 +154,7 @@
 	"warnings": {
 		"no_terminal_content": "No terminal content selected",
 		"missing_task_files": "This task's files are missing. Would you like to remove it from the task list?",
-		"auto_import_failed": "Failed to auto-import RooCode settings: {{error}}"
+		"auto_import_failed": "Failed to auto-import CoStrict settings: {{error}}"
 	},
 	"info": {
 		"no_changes": "No changes found.",
@@ -159,7 +163,7 @@
 		"custom_storage_path_set": "Custom storage path set: {{path}}",
 		"default_storage_path": "Reverted to using default storage path",
 		"settings_imported": "Settings imported successfully.",
-		"auto_import_success": "RooCode settings automatically imported from {{filename}}",
+		"auto_import_success": "CoStrict settings automatically imported from {{filename}}",
 		"share_link_copied": "Share link copied to clipboard",
 		"organization_share_link_copied": "Organization share link copied to clipboard!",
 		"public_share_link_copied": "Public share link copied to clipboard!",
@@ -187,7 +191,8 @@
 	},
 	"interruption": {
 		"responseInterruptedByUser": "Response interrupted by user",
-		"responseInterruptedByApiError": "Response interrupted by API error"
+		"responseInterruptedByApiError": "Response interrupted by API error",
+		"streamTerminatedByProvider": "Provider ended the request"
 	},
 	"storage": {
 		"prompt_custom_path": "Enter custom conversation history storage path, leave empty to use default location",
@@ -196,7 +201,7 @@
 		"enter_valid_path": "Please enter a valid path"
 	},
 	"input": {
-		"task_prompt": "What should Roo do?",
+		"task_prompt": "What should CoStrict do?",
 		"task_placeholder": "Type your task here"
 	},
 	"customModes": {
@@ -223,8 +228,8 @@
 	},
 	"mdm": {
 		"errors": {
-			"cloud_auth_required": "Your organization requires Roo Code Cloud authentication. Please sign in to continue.",
-			"organization_mismatch": "You must be authenticated with your organization's Roo Code Cloud account.",
+			"cloud_auth_required": "Your organization requires CoStrict Cloud authentication. Please sign in to continue.",
+			"organization_mismatch": "You must be authenticated with your organization's CoStrict Cloud account.",
 			"verification_failed": "Unable to verify organization authentication."
 		},
 		"info": {
@@ -247,5 +252,18 @@
 	"docsLink": {
 		"label": "Docs",
 		"url": "https://docs.roocode.com"
+	},
+	"smartMistakeDetector": {
+		"errorCountNearLimit": "Error count near limit ({{count}} errors, weighted score: {{weightedScore}}/{{baseLimit}})",
+		"warningHighErrorCount": "Warning: High error count, please check operations ({{count}} errors, weighted score: {{weightedScore}}/{{baseLimit}})",
+		"multipleErrorsDetected": "Note: Multiple errors have occurred ({{count}} times)",
+		"noErrorRecords": "No error records currently",
+		"errorAnalysisReport": "Error analysis report (last {{minutes}} minutes):\n",
+		"totalErrorCount": "- Total errors: {{count}}\n",
+		"weightedScore": "- Weighted score: {{score}}\n",
+		"errorTypeDistribution": "- Error type distribution:\n",
+		"errorTypeItem": "  • {{type}}: {{count}} times\n",
+		"severityDistribution": "- Severity distribution:\n",
+		"severityItem": "  • {{severity}}: {{count}} times\n"
 	}
 }

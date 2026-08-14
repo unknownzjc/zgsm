@@ -14,11 +14,11 @@ export const RateLimitSecondsControl = ({ value, onChange }: RateLimitSecondsCon
 		<div className="flex flex-col gap-1">
 			<label className="block font-medium mb-1">{t("settings:providers.rateLimitSeconds.label")}</label>
 			<div className="flex items-center gap-2">
-				<Slider value={[value]} min={1} max={60} step={1} onValueChange={(newValue) => onChange(newValue[0])} />
+				<Slider value={[value]} min={0} max={60} step={1} onValueChange={(newValue) => onChange(newValue[0])} />
 				<span className="w-10">{value}s</span>
 			</div>
 			<div className="text-sm text-vscode-descriptionForeground">
-				{t("settings:providers.rateLimitSeconds.description", { value: value || 0 })}
+				{t("settings:providers.rateLimitSeconds.description", { value: value ?? 0 })}
 			</div>
 		</div>
 	)

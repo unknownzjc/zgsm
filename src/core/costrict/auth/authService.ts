@@ -1,46 +1,55 @@
 import * as vscode from "vscode"
 import { jwtDecode } from "jwt-decode"
-import { ZgsmAuthStorage } from "./authStorage"
-import { ZgsmAuthApi } from "./authApi"
-import { ZgsmAuthConfig } from "./authConfig"
-import type { ProviderSettings, ZgsmUserInfo } from "@roo-code/types"
+import { CostrictAuthStorage } from "./authStorage"
+import { CostrictAuthApi } from "./authApi"
+import { CostrictAuthConfig } from "./authConfig"
+import type { ProviderSettings, CostrictUserInfo } from "@roo-code/types"
 import type { ClineProvider } from "../../webview/ClineProvider"
-import { getParams, retryWrapper } from "../../../utils/zgsmUtils"
+import { getParams, retryWrapper } from "../../../utils/costrictUtils"
 import { joinUrl } from "../../../utils/joinUrl"
-import { ZgsmAuthStatus, ZgsmAuthTokens, ZgsmLoginState, LoginTokenResponse } from "./types"
+import { CostrictAuthStatus, CostrictAuthTokens, CostrictLoginState, LoginTokenResponse } from "./types"
 import { generateNewSessionClientId, getClientId } from "../../../utils/getClientId"
-import { sendZgsmLogout } from "./ipc/client"
+import { sendCostrictLogout } from "./ipc/client"
+import { readCostrictAccessToken } from "../runtime-config"
+import { pickFresher, type CostrictTokenPair } from "../runtime-config/pickFresher"
 import { CompletionStatusBar } from "../auto-complete"
 import { t } from "../../../i18n"
 
 let _loginState = ""
 
-export class ZgsmAuthService {
-	private static instance: ZgsmAuthService
+export type CostrictStartupAuthSource = "secret" | "file"
+
+export interface CostrictStartupAuthTokens {
+	tokens: CostrictAuthTokens
+	source: CostrictStartupAuthSource
+}
+
+export class CostrictAuthService {
+	private static instance: CostrictAuthService
 	private static hasStatusBarLoginTip = false
 	private static clineProvider: ClineProvider
 
-	private loginStateTmp: ZgsmLoginState | undefined
+	private loginStateTmp: CostrictLoginState | undefined
 	private waitLoginPollingInterval?: NodeJS.Timeout
 	private tokenRefreshInterval?: NodeJS.Timeout
 	private startLoginTokenPollInterval?: NodeJS.Timeout
 	private disposed = false
-	private userInfo = {} as ZgsmUserInfo
+	private userInfo = {} as CostrictUserInfo
 	private statusBar = CompletionStatusBar.getInstance()
 
 	public static setProvider(clineProvider: ClineProvider): void {
-		ZgsmAuthService.clineProvider = clineProvider
+		CostrictAuthService.clineProvider = clineProvider
 	}
 
-	public static getInstance(): ZgsmAuthService {
-		if (!ZgsmAuthService.instance) {
-			if (!ZgsmAuthService.clineProvider) {
-				throw new Error("ZgsmAuthService not initialized")
+	public static getInstance(): CostrictAuthService {
+		if (!CostrictAuthService.instance) {
+			if (!CostrictAuthService.clineProvider) {
+				throw new Error("CostrictAuthService not initialized")
 			}
 
-			ZgsmAuthService.instance = new ZgsmAuthService()
+			CostrictAuthService.instance = new CostrictAuthService()
 		}
-		return ZgsmAuthService.instance
+		return CostrictAuthService.instance
 	}
 
 	/**
@@ -48,16 +57,16 @@ export class ZgsmAuthService {
 	 * @internal
 	 */
 	public static _resetForTesting(): void {
-		ZgsmAuthService.instance = undefined!
+		CostrictAuthService.instance = undefined!
 	}
 
 	/**
 	 * Get API configuration
 	 */
 	private async getApiConfiguration(): Promise<ProviderSettings> {
-		if (ZgsmAuthService.clineProvider) {
+		if (CostrictAuthService.clineProvider) {
 			try {
-				const state = await ZgsmAuthService.clineProvider.getState()
+				const state = await CostrictAuthService.clineProvider.getState()
 				return state.apiConfiguration
 			} catch (error) {
 				console.error("Failed to get API configuration:", error)
@@ -66,16 +75,16 @@ export class ZgsmAuthService {
 
 		// Return default configuration
 		return {
-			apiProvider: "zgsm",
+			apiProvider: "costrict",
 			apiKey: "",
-			zgsmBaseUrl: ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl(),
+			costrictBaseUrl: CostrictAuthConfig.getInstance().getDefaultLoginBaseUrl(),
 		}
 	}
 
 	/**
 	 * Start login process
 	 */
-	async startLogin(): Promise<ZgsmLoginState> {
+	async startLogin(): Promise<CostrictLoginState> {
 		this.stopWaitLoginPolling()
 		this.stopRefreshToken()
 		this.stopStartLoginTokenPoll()
@@ -84,7 +93,10 @@ export class ZgsmAuthService {
 		_loginState = this.loginStateTmp!.state
 		// Build login URL
 		const loginUrl = await this.buildLoginUrl(this.loginStateTmp)
-
+		// Copy login URL to clipboard so users can paste it manually if needed
+		void vscode.env.clipboard.writeText(loginUrl).then(() => {
+			vscode.window.showInformationMessage(t("common:login_url_copied"))
+		})
 		// Open login page in default browser
 		await vscode.env.openExternal(vscode.Uri.parse(loginUrl))
 
@@ -119,7 +131,7 @@ export class ZgsmAuthService {
 					return
 				}
 
-				ZgsmAuthApi.getInstance()
+				CostrictAuthApi.getInstance()
 					.getRefreshUserToken("", this.getMachineId(), state)
 					.then((result) => {
 						if (result.data?.access_token && result.data?.refresh_token && result.data?.state === state) {
@@ -141,7 +153,7 @@ export class ZgsmAuthService {
 	/**
 	 * Start polling login status
 	 */
-	private async startWaitLoginPolling(loginState: ZgsmLoginState & ZgsmAuthTokens): Promise<void> {
+	private async startWaitLoginPolling(loginState: CostrictLoginState & CostrictAuthTokens): Promise<void> {
 		const maxAttempt = 60
 		let attempt = 0
 		const pollLoginState = async () => {
@@ -152,7 +164,7 @@ export class ZgsmAuthService {
 			try {
 				const { data, success } = await retryWrapper(
 					"pollLoginState",
-					() => ZgsmAuthApi.getInstance().getUserLoginState(loginState.state, loginState.access_token),
+					() => CostrictAuthApi.getInstance().getUserLoginState(loginState.state, loginState.access_token),
 					undefined,
 					0,
 				)
@@ -161,12 +173,12 @@ export class ZgsmAuthService {
 					success &&
 					data?.state &&
 					data.state === this.loginStateTmp?.state &&
-					data?.status === ZgsmAuthStatus.LOGGED_IN
+					data?.status === CostrictAuthStatus.LOGGED_IN
 				) {
 					// Login successful, save tokens
-					await ZgsmAuthStorage.getInstance().saveTokens(loginState)
+					await CostrictAuthStorage.getInstance().saveTokens(loginState)
 					// After successful login, save login status locally
-					await ZgsmAuthStorage.getInstance().saveLoginState(loginState)
+					await CostrictAuthStorage.getInstance().saveLoginState(loginState)
 					// Stop polling
 					this.stopWaitLoginPolling()
 
@@ -193,7 +205,7 @@ export class ZgsmAuthService {
 			// Set polling interval (check every 5 seconds)
 			this.waitLoginPollingInterval = setTimeout(
 				pollLoginState,
-				ZgsmAuthConfig.getInstance().getWaitLoginPollingInterval(),
+				CostrictAuthConfig.getInstance().getWaitLoginPollingInterval(),
 			)
 		}
 
@@ -241,7 +253,7 @@ export class ZgsmAuthService {
 					vscode.window.showErrorMessage("Token refresh failed, please login again")
 				}
 			},
-			ZgsmAuthConfig.getInstance().getTokenRefreshInterval(refreshToken),
+			CostrictAuthConfig.getInstance().getTokenRefreshInterval(refreshToken),
 			refreshToken,
 			machineId,
 			state,
@@ -251,10 +263,15 @@ export class ZgsmAuthService {
 	/**
 	 * Refresh token
 	 */
-	async refreshToken(refreshToken: string, machineId: string, state: string, auto = true): Promise<ZgsmAuthTokens> {
+	async refreshToken(
+		refreshToken: string,
+		machineId: string,
+		state: string,
+		auto = true,
+	): Promise<CostrictAuthTokens> {
 		try {
 			const { success, data, message } = await retryWrapper("refreshToken", () =>
-				ZgsmAuthApi.getInstance().getRefreshUserToken(refreshToken, machineId, state),
+				CostrictAuthApi.getInstance().getRefreshUserToken(refreshToken, machineId, state),
 			)
 
 			if (
@@ -265,7 +282,7 @@ export class ZgsmAuthService {
 				this.loginStateTmp?.state === data.state
 			) {
 				// Update saved tokens
-				await ZgsmAuthStorage.getInstance().saveTokens(data)
+				await CostrictAuthStorage.getInstance().saveTokens(data)
 
 				// Update refresh timer
 				if (auto) {
@@ -283,28 +300,89 @@ export class ZgsmAuthService {
 	}
 
 	async getTokens() {
-		return await ZgsmAuthStorage.getInstance().getTokens()
+		return await CostrictAuthStorage.getInstance().getTokens()
 	}
-	async saveTokens(tokens: ZgsmAuthTokens) {
-		return await ZgsmAuthStorage.getInstance().saveTokens(tokens)
+	async saveTokens(tokens: CostrictAuthTokens) {
+		return await CostrictAuthStorage.getInstance().saveTokens(tokens)
 	}
 
 	/**
-	 * Check login status on plugin startup
+	 * Resolve the token pair that should be used during plugin startup.
+	 *
+	 * SecretStorage owns the local `state`; auth.json may own fresher tokens after
+	 * an external runtime/CLI/other-window refresh. Returning the final token set
+	 * here keeps activate.ts focused on startup side effects instead of duplicating
+	 * storage reads and freshness checks.
+	 */
+	async getStartupAuthTokens(): Promise<CostrictStartupAuthTokens | null> {
+		const secretTokens = await this.getStoredTokensForStartup()
+		const secretPair = this.toValidTokenPair(secretTokens)
+		const filePair = this.readValidFileTokenPair()
+		const winner = pickFresher(secretPair, filePair)
+
+		if (!winner || !secretTokens?.state) {
+			return null
+		}
+
+		if (filePair && winner === filePair) {
+			return {
+				source: "file",
+				tokens: { ...filePair, state: secretTokens.state },
+			}
+		}
+
+		if (!secretPair) {
+			return null
+		}
+
+		return {
+			source: "secret",
+			tokens: { ...secretPair, state: secretTokens.state },
+		}
+	}
+
+	/**
+	 * Check login status on plugin startup.
 	 */
 	async checkLoginStatusOnStartup(): Promise<boolean> {
+		return (await this.getStartupAuthTokens()) !== null
+	}
+
+	private async getStoredTokensForStartup(): Promise<CostrictAuthTokens | null> {
 		try {
-			const tokens = await ZgsmAuthStorage.getInstance().getTokens()
-
-			if (!tokens?.access_token || !tokens?.refresh_token) {
-				return false
-			}
-
-			const jwt = jwtDecode(tokens?.refresh_token) as any
-
-			return jwt.exp * 1000 > Date.now()
+			return await CostrictAuthStorage.getInstance().getTokens()
 		} catch (error) {
 			console.error("Failed to check login status on startup:", error)
+			return null
+		}
+	}
+
+	private readValidFileTokenPair(): CostrictTokenPair | null {
+		try {
+			return this.toValidTokenPair(readCostrictAccessToken())
+		} catch {
+			return null
+		}
+	}
+
+	private toValidTokenPair(
+		tokens?: { access_token?: string; refresh_token?: string } | null,
+	): CostrictTokenPair | null {
+		if (!tokens?.access_token || !tokens.refresh_token || !this.isRefreshTokenValid(tokens.refresh_token)) {
+			return null
+		}
+
+		return {
+			access_token: tokens.access_token,
+			refresh_token: tokens.refresh_token,
+		}
+	}
+
+	private isRefreshTokenValid(refreshToken: string): boolean {
+		try {
+			const jwt = jwtDecode(refreshToken) as any
+			return jwt.exp * 1000 > Date.now()
+		} catch {
 			return false
 		}
 	}
@@ -313,7 +391,7 @@ export class ZgsmAuthService {
 	 * Get current token
 	 */
 	async getCurrentAccessToken(): Promise<string | null> {
-		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
+		const tokens = await CostrictAuthStorage.getInstance().getTokens()
 		return tokens?.access_token || null
 	}
 
@@ -331,16 +409,16 @@ export class ZgsmAuthService {
 			await this.onLogout()
 		}
 		// Clear stored login information
-		await ZgsmAuthStorage.getInstance().clearAllLoginState()
+		await CostrictAuthStorage.getInstance().clearAllLoginState()
 		if (!auto) {
-			sendZgsmLogout(generateNewSessionClientId())
+			sendCostrictLogout(generateNewSessionClientId())
 		}
 	}
 
 	/**
 	 * Generate login state parameters
 	 */
-	private generateLoginState(): ZgsmLoginState {
+	private generateLoginState(): CostrictLoginState {
 		return {
 			state: this.generateRandomString(),
 			machineId: this.getMachineId(),
@@ -350,12 +428,12 @@ export class ZgsmAuthService {
 	/**
 	 * Build login URL
 	 */
-	private async buildLoginUrl(loginState: ZgsmLoginState): Promise<string> {
+	private async buildLoginUrl(loginState: CostrictLoginState): Promise<string> {
 		const apiConfig = await this.getApiConfiguration()
 		const baseUrl = this.getLoginBaseUrl(apiConfig)
 		const params = getParams(loginState.state, [])
 
-		return `${joinUrl(baseUrl, [ZgsmAuthApi.getInstance().loginUrl])}?${params.map((p) => p.join("=")).join("&")}`
+		return `${joinUrl(baseUrl, [CostrictAuthApi.getInstance().loginUrl])}?${params.map((p) => p.join("=")).join("&")}`
 	}
 
 	/**
@@ -363,13 +441,13 @@ export class ZgsmAuthService {
 	 */
 	private getLoginBaseUrl(apiConfig: ProviderSettings): string {
 		// Prefer using baseUrl from apiConfiguration
-		const baseUrl = apiConfig.zgsmBaseUrl?.trim()
+		const baseUrl = apiConfig.costrictBaseUrl?.trim()
 		if (baseUrl) {
 			return baseUrl
 		}
 
 		// Use default URL
-		return ZgsmAuthConfig.getInstance().getDefaultLoginBaseUrl()
+		return CostrictAuthConfig.getInstance().getDefaultLoginBaseUrl()
 	}
 
 	/**
@@ -390,10 +468,10 @@ export class ZgsmAuthService {
 	/**
 	 * Login success callback
 	 */
-	protected onLoginSuccess(tokens: ZgsmAuthTokens): void {
+	protected onLoginSuccess(tokens: CostrictAuthTokens): void {
 		this.updateUserInfo(tokens.refresh_token)
 		vscode.window.showInformationMessage(`${this.userInfo.name} user logged in successfully`)
-		ZgsmAuthService.clineProvider?.postMessageToWebview?.({ type: "zgsmLogined" })
+		CostrictAuthService.clineProvider?.postMessageToWebview?.({ type: "costrictLogined" })
 		this.statusBar.complete()
 	}
 
@@ -417,12 +495,12 @@ export class ZgsmAuthService {
 	 * Logout callback
 	 */
 	protected async onLogout() {
-		const state = await ZgsmAuthStorage.getInstance().getLoginState()
-		const tokens = await ZgsmAuthStorage.getInstance().getTokens()
+		const state = await CostrictAuthStorage.getInstance().getLoginState()
+		const tokens = await CostrictAuthStorage.getInstance().getTokens()
 		// Can add post-logout logic here
 		await retryWrapper(
 			"onLogout",
-			() => ZgsmAuthApi.getInstance().logoutUser(state?.state || tokens?.state, tokens?.access_token),
+			() => CostrictAuthApi.getInstance().logoutUser(state?.state || tokens?.state, tokens?.access_token),
 			undefined,
 			1,
 		)
@@ -450,7 +528,7 @@ export class ZgsmAuthService {
 				}
 
 				opt?.cb?.()
-				ZgsmAuthService?.instance?.startLogin()
+				CostrictAuthService?.instance?.startLogin()
 			})
 	}
 

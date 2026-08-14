@@ -58,15 +58,19 @@ export default defineConfig(({ mode }) => {
 	const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "src", "package.json"), "utf8"))
 	const gitSha = getGitSha()
 
+	const buildTime = new Date().toISOString()
+
 	const define: Record<string, any> = {
 		"process.platform": JSON.stringify(process.platform),
 		"process.env.VSCODE_TEXTMATE_DEBUG": JSON.stringify(process.env.VSCODE_TEXTMATE_DEBUG),
-		"process.env.PKG_NAME": JSON.stringify(pkg.name),
-		"process.env.PKG_VERSION": JSON.stringify(pkg.version),
-		"process.env.PKG_OUTPUT_CHANNEL": JSON.stringify("CoStrict"),
-		"process.env.ZGSM_BASE_URL": JSON.stringify(process.env.ZGSM_BASE_URL || ""),
-		"process.env.ZGSM_PUBLIC_KEY": JSON.stringify(process.env.ZGSM_PUBLIC_KEY || ""),
-		...(gitSha ? { "process.env.PKG_SHA": JSON.stringify(gitSha) } : {}),
+		"process.env.COSTRICT_PKG_NAME": JSON.stringify(pkg.name),
+		"process.env.COSTRICT_PKG_VERSION": JSON.stringify(pkg.version),
+		"process.env.COSTRICT_PKG_OUTPUT_CHANNEL": JSON.stringify("CoStrict"),
+		"process.env.COSTRICT_PUBLIC_KEY": JSON.stringify(
+			process.env.COSTRICT_PUBLIC_KEY || process.env.ZGSM_PUBLIC_KEY || "",
+		),
+		"process.env.COSTRICT_PKG_BUILD_TIME": JSON.stringify(buildTime),
+		...(gitSha ? { "process.env.COSTRICT_PKG_SHA": JSON.stringify(gitSha) } : {}),
 	}
 
 	// TODO: We can use `@roo-code/build` to generate `define` once the
@@ -78,12 +82,22 @@ export default defineConfig(({ mode }) => {
 			fs.readFileSync(path.join(__dirname, "..", "apps", "vscode-nightly", "package.nightly.json"), "utf8"),
 		)
 
-		define["process.env.PKG_NAME"] = JSON.stringify(nightlyPkg.name)
-		define["process.env.PKG_VERSION"] = JSON.stringify(nightlyPkg.version)
-		define["process.env.PKG_OUTPUT_CHANNEL"] = JSON.stringify("Costrict-Nightly")
+		define["process.env.COSTRICT_PKG_NAME"] = JSON.stringify(nightlyPkg.name)
+		define["process.env.COSTRICT_PKG_VERSION"] = JSON.stringify(nightlyPkg.version)
+		define["process.env.COSTRICT_PKG_OUTPUT_CHANNEL"] = JSON.stringify("Costrict-Nightly")
 	}
 
-	const plugins: PluginOption[] = [react(), tailwindcss(), persistPortPlugin(), wasmPlugin(), sourcemapPlugin()]
+	const plugins: PluginOption[] = [
+		react({
+			babel: {
+				plugins: [["babel-plugin-react-compiler", { target: "18" }]],
+			},
+		}),
+		tailwindcss(),
+		persistPortPlugin(),
+		wasmPlugin(),
+		sourcemapPlugin(),
+	]
 
 	return {
 		plugins,
@@ -98,16 +112,20 @@ export default defineConfig(({ mode }) => {
 			outDir,
 			emptyOutDir: true,
 			reportCompressedSize: false,
+			target: "es2022",
 			// Generate complete source maps with original TypeScript sources
 			sourcemap: mode !== "production",
 			// Ensure source maps are properly included in the build
 			minify: mode === "production" ? "esbuild" : false,
-			// Use a single combined CSS bundle so both webviews share styles
+			// Use a single combined CSS bundle so all webviews share styles
 			cssCodeSplit: false,
 			rollupOptions: {
+				// Externalize vscode module - it's imported by file-search.ts which is
+				// dynamically imported by roo-config/index.ts, but should never be bundled
+				// in the webview since it's not available in the browser context
+				external: ["vscode"],
 				input: {
 					index: resolve(__dirname, "index.html"),
-					"browser-panel": resolve(__dirname, "browser-panel.html"),
 				},
 				output: {
 					entryFileNames: `assets/[name].js`,
@@ -180,7 +198,7 @@ export default defineConfig(({ mode }) => {
 				"dagre", // Explicitly include dagre for pre-bundling
 				// Add other known large mermaid dependencies if identified
 			],
-			exclude: ["@vscode/codicons", "vscode-oniguruma", "shiki"],
+			exclude: ["@vscode/codicons", "vscode-oniguruma", "shiki", "vscode"],
 		},
 		assetsInclude: ["**/*.wasm", "**/*.wav"],
 	}

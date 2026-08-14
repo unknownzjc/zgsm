@@ -283,13 +283,8 @@ export default function Privacy() {
 						</li>
 						<li>
 							<strong>Delete your Cloud account</strong> at any time from{" "}
-							<strong>Security Settings</strong> inside CoStrict Cloud.
-						</li>
-						<li>
-							<strong>Marketing communications:</strong> You can unsubscribe from marketing and
-							promotional emails by clicking the unsubscribe link in those emails. Transactional or
-							service‑related emails (such as password resets, billing notices, or security alerts) will
-							continue even if you opt out.
+							<strong>Security Settings</strong> inside Roo Code Cloud (User Menu &rarr; My Settings
+							&rarr; Open Profile).
 						</li>
 						<li>
 							<strong>Marketing communications:</strong> You can unsubscribe from marketing and

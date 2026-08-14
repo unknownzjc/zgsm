@@ -1,11 +1,16 @@
 import { useExtensionState } from "@/context/ExtensionStateContext"
 import styled from "styled-components"
 import { cn } from "@src/lib/utils"
-import { type ExtensionState } from "@roo/ExtensionMessage"
 import { StandardTooltip } from "@src/components/ui"
 import { useTranslation } from "react-i18next"
 import { vscode } from "@/utils/vscode"
-import { type ZgsmCodeMode } from "@roo/modes"
+import { type CostrictCodeMode, isProviderAllowedForCostrictCodeMode } from "@roo/modes"
+import { useCallback, useMemo } from "react"
+import { ExtensionState } from "@roo-code/types"
+
+interface ModeSwitchProps {
+	isStreaming?: boolean
+}
 
 const mapDisplayToOriginal = (displayMode: "vibe" | "plan" | "spec"): string => {
 	if (displayMode === "vibe") return "vibe"
@@ -14,7 +19,7 @@ const mapDisplayToOriginal = (displayMode: "vibe" | "plan" | "spec"): string => 
 	return displayMode
 }
 
-const mapModeToDisplay = (mode: ExtensionState["zgsmCodeMode"]): "vibe" | "plan" | "spec" => {
+const mapModeToDisplay = (mode: ExtensionState["costrictCodeMode"]): "vibe" | "plan" | "spec" => {
 	if (mode === "vibe") return "vibe"
 	if (mode === "plan") return "plan"
 	if (mode === "strict") return "spec"
@@ -24,7 +29,6 @@ const mapModeToDisplay = (mode: ExtensionState["zgsmCodeMode"]): "vibe" | "plan"
 const SwitchContainer = styled.div<{ disabled: boolean }>`
 	display: flex;
 	align-items: center;
-	background-color: transparent;
 	border: 1px solid var(--vscode-input-border);
 	border-radius: 12px;
 	overflow: hidden;
@@ -47,17 +51,46 @@ const Slider = styled.div.withConfig({
 	transform: translateX(${(props) => (props.isVibe ? "0%" : props.isSpec ? "200%" : "100%")});
 `
 
-export const ModeSwitch = () => {
-	const { zgsmCodeMode, setZgsmCodeMode } = useExtensionState()
-	const displayMode = mapModeToDisplay(zgsmCodeMode)
+export const ModeSwitch = ({ isStreaming = false }: ModeSwitchProps) => {
+	const { costrictCodeMode, setCostrictCodeMode, apiConfiguration } = useExtensionState()
+	const displayMode = mapModeToDisplay(costrictCodeMode)
 	const { t } = useTranslation("welcome")
+	const { t: tSettings } = useTranslation("settings")
 
+	const apiProviderCheck = useCallback(
+		(selectedMode: "vibe" | "plan" | "spec", silent?: boolean) => {
+			const targetCostrictCodeMode = mapDisplayToOriginal(selectedMode) as CostrictCodeMode
+			const isAllowed = isProviderAllowedForCostrictCodeMode(
+				targetCostrictCodeMode,
+				apiConfiguration?.apiProvider,
+			)
+
+			if (isAllowed) {
+				return true
+			}
+
+			!silent &&
+				vscode.postMessage({
+					type: "costrictProviderTip",
+					values: {
+						tipType: "info",
+						msg: tSettings("codebase.general.onlyCostrictProviderSupport"),
+					},
+				})
+
+			return false
+		},
+		[apiConfiguration?.apiProvider, tSettings],
+	)
 	const handleModeClick = (selectedMode: "vibe" | "plan" | "spec", forceMode?: string) => {
+		if (!apiProviderCheck(selectedMode)) {
+			return
+		}
 		const originalMode = mapDisplayToOriginal(selectedMode)
-		setZgsmCodeMode(originalMode as ZgsmCodeMode)
+		setCostrictCodeMode(originalMode as CostrictCodeMode)
 
 		vscode.postMessage({
-			type: "zgsmCodeMode",
+			type: "costrictCodeMode",
 			text: originalMode,
 		})
 
@@ -77,9 +110,9 @@ export const ModeSwitch = () => {
 		}
 		return ""
 	}
-
+	const isDisabled = useMemo(() => isStreaming, [isStreaming])
 	return (
-		<SwitchContainer data-testid="mode-switch" disabled={false}>
+		<SwitchContainer data-testid="mode-switch" disabled={isDisabled}>
 			<Slider isVibe={displayMode === "vibe"} isPlan={displayMode === "plan"} isSpec={displayMode === "spec"} />
 			{["Vibe", "Plan", "Spec"].map((m) => (
 				<StandardTooltip content={getModeTip(m.toLowerCase())} key={m}>
@@ -89,12 +122,16 @@ export const ModeSwitch = () => {
 							"pt-0.5 pb-px px-2 z-10 text-xs w-1/3 text-center bg-transparent cursor-pointer",
 							displayMode === m.toLowerCase() ? "text-white" : "text-input-foreground",
 						)}
-						onClick={() =>
-							handleModeClick(
-								m.toLowerCase() as "vibe" | "plan" | "spec",
-								m === "Plan" ? "plan" : undefined,
-							)
-						}
+						onClick={() => {
+							const selectedMode = m.toLowerCase() as "vibe" | "plan" | "spec"
+							if (isDisabled || !apiProviderCheck(selectedMode, true)) {
+								if (!isDisabled) {
+									apiProviderCheck(selectedMode)
+								}
+								return
+							}
+							handleModeClick(selectedMode, m === "Plan" ? "plan" : undefined)
+						}}
 						role="switch">
 						{m}
 					</div>

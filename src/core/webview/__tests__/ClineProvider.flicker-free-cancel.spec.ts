@@ -16,7 +16,7 @@ vi.mock("vscode", async (importOriginal) => {
 				extensionPath: "/mock/extension/path",
 				extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 				packageJSON: {
-					name: "zgsm",
+					name: "costrict",
 					publisher: "zgsm-ai",
 					version: "2.0.27",
 				},
@@ -102,9 +102,6 @@ vi.mock("@roo-code/cloud", () => ({
 			isAuthenticated: vi.fn().mockReturnValue(false),
 		},
 	},
-	BridgeOrchestrator: {
-		isEnabled: vi.fn().mockReturnValue(false),
-	},
 	getRooCodeApiUrl: vi.fn().mockReturnValue("https://api.roo-code.com"),
 }))
 
@@ -174,6 +171,7 @@ describe("ClineProvider flicker-free cancel", () => {
 		})
 
 		provider.postStateToWebview = vi.fn().mockResolvedValue(undefined)
+		provider.postStateToWebviewWithoutTaskHistory = vi.fn().mockResolvedValue(undefined)
 		// Mock private method using any cast
 		;(provider as any).updateGlobalState = vi.fn().mockResolvedValue(undefined)
 		provider.activateProviderProfile = vi.fn().mockResolvedValue(undefined)

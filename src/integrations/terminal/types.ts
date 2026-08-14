@@ -24,7 +24,7 @@ export interface RooTerminal {
 
 export interface RooTerminalCallbacks {
 	onLine: (line: string, process: RooTerminalProcess) => void
-	onCompleted: (output: string | undefined, process: RooTerminalProcess) => void
+	onCompleted: (output: string | undefined, process: RooTerminalProcess) => void | Promise<void>
 	onShellExecutionStarted: (pid: number | undefined, process: RooTerminalProcess) => void
 	onShellExecutionComplete: (details: ExitCodeDetails, process: RooTerminalProcess) => void
 	onNoShellIntegration?: (message: string, process: RooTerminalProcess) => void
@@ -40,6 +40,7 @@ export interface RooTerminalProcess extends EventEmitter<RooTerminalProcessEvent
 	userInput: (string: string) => void
 	hasUnretrievedOutput: () => boolean
 	getUnretrievedOutput: () => string
+	trimRetrievedOutput: () => void
 }
 
 export type RooTerminalProcessResultPromise = RooTerminalProcess & Promise<void>

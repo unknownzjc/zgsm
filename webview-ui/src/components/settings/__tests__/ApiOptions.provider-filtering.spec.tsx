@@ -70,6 +70,7 @@ vi.mock("@src/components/ui", () => ({
 			</div>
 		)
 	},
+	StandardTooltip: ({ children }: any) => <>{children}</>,
 	Select: ({ children }: any) => <div>{children}</div>,
 	SelectTrigger: ({ children }: any) => <div>{children}</div>,
 	SelectValue: ({ placeholder }: any) => <div>{placeholder}</div>,
@@ -89,6 +90,17 @@ vi.mock("@src/components/ui", () => ({
 	AlertDialogFooter: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 	AlertDialogHeader: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 	AlertDialogTitle: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+	// Add Popover components for ModelPicker
+	Popover: ({ children }: any) => <div>{children}</div>,
+	PopoverTrigger: ({ children }: any) => <div>{children}</div>,
+	PopoverContent: ({ children }: any) => <div>{children}</div>,
+	// Add Command components for ModelPicker
+	Command: ({ children }: any) => <div>{children}</div>,
+	CommandInput: ({ ...props }: any) => <input {...props} />,
+	CommandList: ({ children }: any) => <div>{children}</div>,
+	CommandEmpty: ({ children }: any) => <div>{children}</div>,
+	CommandGroup: ({ children }: any) => <div>{children}</div>,
+	CommandItem: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }))
 
 describe("ApiOptions Provider Filtering", () => {
@@ -138,7 +150,7 @@ describe("ApiOptions Provider Filtering", () => {
 		;(MODELS_BY_PROVIDER as any).emptyProvider = {}
 
 		// Add the empty provider to PROVIDERS
-		PROVIDERS.push({ value: "emptyProvider", label: "Empty Provider" })
+		PROVIDERS.push({ value: "emptyProvider", label: "Empty Provider", proxy: false })
 
 		renderWithProviders()
 
@@ -166,9 +178,7 @@ describe("ApiOptions Provider Filtering", () => {
 		expect(providerValues).toContain("ollama")
 		expect(providerValues).toContain("lmstudio")
 		expect(providerValues).toContain("litellm")
-		expect(providerValues).toContain("unbound")
 		expect(providerValues).toContain("requesty")
-		expect(providerValues).toContain("io-intelligence")
 	})
 
 	it("should filter static providers based on organization allow list", () => {
@@ -245,7 +255,7 @@ describe("ApiOptions Provider Filtering", () => {
 		// Add an empty static provider to test
 		;(MODELS_BY_PROVIDER as any).testEmptyProvider = {}
 		// Add the provider to the PROVIDERS list
-		PROVIDERS.push({ value: "testEmptyProvider", label: "Test Empty Provider" })
+		PROVIDERS.push({ value: "testEmptyProvider", label: "Test Empty Provider", proxy: false })
 
 		// Create a mock organization allow list that allows the provider but no models
 		const allowList: OrganizationAllowList = {

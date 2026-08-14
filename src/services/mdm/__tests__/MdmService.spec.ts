@@ -6,7 +6,8 @@ vi.mock("fs", () => ({
 	readFileSync: vi.fn(),
 }))
 
-vi.mock("os", () => ({
+vi.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	platform: vi.fn(),
 }))
 
@@ -35,7 +36,7 @@ vi.mock("vscode", () => ({
 vi.mock("../../../shared/package", () => ({
 	Package: {
 		publisher: "zgsm-ai",
-		name: "zgsm",
+		name: "costrict",
 		version: "1.0.0",
 		outputChannel: "CoStrict",
 		sha: undefined,

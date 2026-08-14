@@ -30,7 +30,6 @@ const registerTerminalAction = (
 				vscode.window.showWarningMessage(t("common:warnings.no_terminal_content"))
 				return
 			}
-
 			await ClineProvider.handleTerminalAction(command, promptType, {
 				terminalContent: content,
 			})

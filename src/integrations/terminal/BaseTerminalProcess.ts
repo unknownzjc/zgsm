@@ -137,6 +137,23 @@ export abstract class BaseTerminalProcess extends EventEmitter<RooTerminalProces
 	 */
 	abstract getUnretrievedOutput(): string
 
+	/**
+	 * Clears the internal output buffer when all content has been retrieved.
+	 *
+	 * This prevents unbounded memory growth when processing large
+	 * command outputs by discarding data that has already been
+	 * consumed by callers of `getUnretrievedOutput`.
+	 *
+	 * Called after command completion when `lastRetrievedIndex` has been
+	 * set to `fullOutput.length` to indicate all output has been processed.
+	 */
+	public trimRetrievedOutput(): void {
+		if (this.lastRetrievedIndex >= this.fullOutput.length && this.fullOutput.length > 0) {
+			this.fullOutput = ""
+			this.lastRetrievedIndex = 0
+		}
+	}
+
 	protected startHotTimer(data: string) {
 		this.isHot = true
 
@@ -154,14 +171,65 @@ export abstract class BaseTerminalProcess extends EventEmitter<RooTerminalProces
 
 		this.isHot = false
 	}
-	abstract userInput(input: string) : void
+	abstract userInput(input: string): void
 
 	// These markers indicate the command is some kind of local dev
 	// server recompiling the app, which we want to wait for output
 	// of before sending request to CoStrict.
-	private static compilingMarkers = ["compiling", "building", "bundling", "transpiling", "generating", "starting"]
+	private static compilingMarkers = [
+		// Core compilation/build markers (English)
+		"compiling",
+		"building",
+		"bundling",
+		"transpiling",
+		"generating",
+		"starting",
+		// Package management (English)
+		"installing",
+		"fetching",
+		"downloading",
+		"resolving",
+		"loading",
+		// Build stages (English)
+		"assembling",
+		"packaging",
+		"linking",
+		"optimizing",
+		"processing",
+		"transforming",
+		// Development servers (English)
+		"rebuilding",
+		"recompiling",
+		"watching",
+		"hot update",
+		"hmr",
+		// Chinese (简体中文)
+		"编译中",
+		"构建中",
+		"打包中",
+		"转译中",
+		"生成中",
+		"启动中",
+		"安装中",
+		"下载中",
+		"解析中",
+		"加载中",
+		"处理中",
+		"优化中",
+		"链接中",
+		"重新编译",
+		"重新构建",
+		"热更新",
+		"监听中",
+		"正在编译",
+		"正在构建",
+		"正在打包",
+		"正在安装",
+		"正在下载",
+	]
 
 	private static compilingMarkerNullifiers = [
+		// Success indicators (English)
 		"compiled",
 		"success",
 		"finish",
@@ -169,11 +237,46 @@ export abstract class BaseTerminalProcess extends EventEmitter<RooTerminalProces
 		"succeed",
 		"done",
 		"end",
+		"ready",
+		// Termination indicators (English)
 		"stop",
 		"exit",
 		"terminate",
+		"abort",
+		"cancel",
+		"killed",
+		// Error indicators (English)
 		"error",
 		"fail",
+		"failed",
+		"crash",
+		"exception",
+		// Build completion (English)
+		"built successfully",
+		"build complete",
+		"compilation complete",
+		"bundled",
+		// Chinese (简体中文)
+		"编译完成",
+		"构建完成",
+		"打包完成",
+		"成功",
+		"完成",
+		"结束",
+		"就绪",
+		"准备就绪",
+		"停止",
+		"退出",
+		"终止",
+		"取消",
+		"中止",
+		"错误",
+		"失败",
+		"异常",
+		"崩溃",
+		"编译成功",
+		"构建成功",
+		"打包成功",
 	]
 
 	private static isCompiling(data: string): boolean {

@@ -1,7 +1,7 @@
 {
 	"extension.displayName": "CoStrict",
-	"extension.displayName.long": "CoStrict (prev. Cline / RooCode)：智能编程助手",
-	"extension.description": "CoStrict：企业严肃开发的AI智能伙伴，功能包括：AI 智能体、AI 代码审查与 AI 代码补全。",
+	"extension.displayName.long": "CoStrict",
+	"extension.description": "CoStrict - strict AI coder for enterprises, quality first, including AI Agent, AI CodeReview, AI Completion.",
 	"command.newTask.title": "新建任务",
 	"command.explainCode.title": "解释代码",
 	"command.fixCode.title": "修复代码",
@@ -30,8 +30,8 @@
 	"command.documentation.title": "文档",
 	"command.shortKeyCut.title": "CoStrict代码补全快捷键",
 	"command.codeReview.title": "代码审查",
-	"command.reviewRepo.title": "扫描仓库",
-	"command.reviewCommit.title": "审查当前变更",
+	"command.securityReview.title": "安全审查",
+	"command.reviewCommit.title": "CoStrict Review",
 	"command.addComment.title": "添加注释",
 	"command.addTests.title": "生成单元测试",
 	"command.explain.title": "解释代码",
@@ -43,6 +43,7 @@
 	"command.view.userHelperDoc.title": "CoStrict官网",
 	"command.addFileToContext.title": "添加上下文",
 	"command.generateCommitMessage.title": "使用 CoStrict 生成提交信息",
+	"command.reloadWebview.title": "重新加载 Webview UI",
 	"command.askReviewSuggestionWithAI.title": "修复代码",
 
 	"intelligentCodeCompletion.enabled.description": "启用智能代码补全",
@@ -79,5 +80,8 @@
 	"settings.commit.language.description": "提交信息生成语言（auto = 使用系统语言）",
 	"settings.toolProtocol.description": "用于 AI 交互的工具协议。XML 是默认且推荐的协议。本机是实验性的，可能不适用于所有提供商。",
 	"settings.codeIndex.embeddingBatchSize.description": "代码索引期间嵌入操作的批处理大小。根据 API 提供商的限制调整此设置。默认值为 60。",
-	"settings.debug.description": "启用调试模式以显示额外按钮，用于在临时文件中以格式化 JSON 查看 API 对话历史和 UI 消息。"
+	"settings.debug.description": "启用调试模式以显示额外按钮，用于在临时文件中以格式化 JSON 查看 API 对话历史和 UI 消息。",
+	"settings.debugProxy.enabled.description": "**启用 Debug Proxy** — 通过代理转发所有出站网络请求，用于 MITM 调试。只在调试模式 (F5) 运行时生效。",
+	"settings.debugProxy.serverUrl.description": "代理 URL（例如 `http://127.0.0.1:8888`）。仅在启用 **Debug Proxy** 时使用。",
+	"settings.debugProxy.tlsInsecure.description": "接受来自代理的 self-signed 证书。**MITM 检查所必需。** ⚠️ 不安全——只在本地调试时使用。"
 }

@@ -17,6 +17,10 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
 	return <SelectPrimitive.Value data-slot="select-value" {...props} />
 }
 
+function SelectItemText({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.ItemText>) {
+	return <SelectPrimitive.ItemText data-slot="select-item-text" className={className} {...props} />
+}
+
 function SelectTrigger({
 	className,
 	children,
@@ -86,7 +90,10 @@ function SelectLabel({ className, ...props }: React.ComponentProps<typeof Select
 	return (
 		<SelectPrimitive.Label
 			data-slot="select-label"
-			className={cn("px-2 py-1.5 text-sm font-medium", className)}
+			className={cn(
+				"px-2 py-1.5 text-xs font-semibold text-vscode-descriptionForeground uppercase tracking-wide",
+				className,
+			)}
 			{...props}
 		/>
 	)
@@ -154,6 +161,7 @@ export {
 	SelectContent,
 	SelectGroup,
 	SelectItem,
+	SelectItemText,
 	SelectLabel,
 	SelectScrollDownButton,
 	SelectScrollUpButton,

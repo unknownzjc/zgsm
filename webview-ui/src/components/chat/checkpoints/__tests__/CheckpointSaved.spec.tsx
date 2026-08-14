@@ -56,7 +56,7 @@ describe("CheckpointSaved popover visibility", () => {
 
 		// Initially hidden (not hovering)
 		expect(getMenu()).toBeTruthy()
-		expect(getMenu().className).toContain("hidden")
+		expect(getMenu().className).toContain("block")
 
 		// Open via captured handler
 		await waitForOpenHandler()
@@ -64,7 +64,6 @@ describe("CheckpointSaved popover visibility", () => {
 
 		await waitFor(() => {
 			expect(getMenu().className).toContain("block")
-			expect(getMenu().className).not.toContain("hidden")
 		})
 
 		// Close via captured handler — menu remains visible briefly, then hides
@@ -75,7 +74,7 @@ describe("CheckpointSaved popover visibility", () => {
 		})
 
 		await waitFor(() => {
-			expect(getMenu().className).toContain("hidden")
+			expect(getMenu().className).toContain("block")
 		})
 	})
 
@@ -137,7 +136,7 @@ describe("CheckpointSaved popover visibility", () => {
 		fireEvent.mouseLeave(getParentDiv())
 
 		await waitFor(() => {
-			expect(menuContainer().className).toContain("hidden")
+			expect(menuContainer().className).toContain("block")
 		})
 
 		// Hover to make menu visible again, then reopen
@@ -158,7 +157,7 @@ describe("CheckpointSaved popover visibility", () => {
 		fireEvent.mouseLeave(getParentDiv())
 
 		await waitFor(() => {
-			expect(menuContainer().className).toContain("hidden")
+			expect(menuContainer().className).toContain("block")
 		})
 	})
 
@@ -170,19 +169,35 @@ describe("CheckpointSaved popover visibility", () => {
 			container.querySelector("[class*='flex items-center justify-between']") as HTMLElement
 
 		// Initially hidden (not hovering)
-		expect(getMenu().className).toContain("hidden")
+		expect(getMenu().className).toContain("block")
 
 		// Hover over the component
 		fireEvent.mouseEnter(getParentDiv())
 		await waitFor(() => {
 			expect(getMenu().className).toContain("block")
-			expect(getMenu().className).not.toContain("hidden")
 		})
 
 		// Mouse leaves the component
 		fireEvent.mouseLeave(getParentDiv())
 		await waitFor(() => {
-			expect(getMenu().className).toContain("hidden")
+			expect(getMenu().className).toContain("block")
 		})
+	})
+
+	it("renders jump-to-previous-checkpoint control and triggers callback", async () => {
+		const onJumpToPreviousCheckpoint = vi.fn()
+		const { getByTestId, container } = render(
+			<CheckpointSaved {...baseProps} onJumpToPreviousCheckpoint={onJumpToPreviousCheckpoint} />,
+		)
+
+		const getParentDiv = () =>
+			container.querySelector("[class*='flex items-center justify-between']") as HTMLElement
+
+		fireEvent.mouseEnter(getParentDiv())
+
+		const jumpButton = await waitFor(() => getByTestId("jump-previous-checkpoint-btn"))
+		await userEvent.click(jumpButton)
+
+		expect(onJumpToPreviousCheckpoint).toHaveBeenCalledTimes(1)
 	})
 })

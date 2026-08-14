@@ -12,11 +12,10 @@ import {
 
 import type { ApiHandlerOptions } from "../../shared/api"
 
-import { XmlMatcher } from "../../utils/xml-matcher"
+import { TagMatcher } from "../../utils/tag-matcher"
 
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { convertToR1Format } from "../transform/r1-format"
-import { convertToSimpleMessages } from "../transform/simple-format"
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
@@ -38,14 +37,21 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 		super()
 		this.options = options
 
-		const baseURL = this.options.openAiBaseUrl ?? "https://api.openai.com/v1"
+		const baseURL = this.options.openAiBaseUrl || "https://api.openai.com/v1"
 		const apiKey = this.options.openAiApiKey ?? "not-provided"
 		const isAzureAiInference = this._isAzureAiInference(this.options.openAiBaseUrl)
+		const isKimiCode = this._isKimiCode(this.options.openAiBaseUrl)
 		const urlHost = this._getUrlHost(this.options.openAiBaseUrl)
 		const isAzureOpenAi = urlHost === "azure.com" || urlHost.endsWith(".azure.com") || options.openAiUseAzure
 
 		const headers = {
 			...DEFAULT_HEADERS,
+			...(isKimiCode
+				? {
+						"HTTP-Referer": "https://github.com/RooCodeInc/Roo-Cline",
+						"X-Title": "Roo Code",
+					}
+				: {}),
 			...(this.options.openAiHeaders || {}),
 		}
 
@@ -89,10 +95,10 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 		const modelUrl = this.options.openAiBaseUrl ?? ""
 		const modelId = this.options.openAiModelId ?? ""
 		const enabledR1Format = this.options.openAiR1FormatEnabled ?? false
-		const enabledLegacyFormat = this.options.openAiLegacyFormat ?? false
 		const isAzureAiInference = this._isAzureAiInference(modelUrl)
-		const deepseekReasoner = modelId.includes("deepseek-reasoner") || enabledR1Format
-		const ark = modelUrl.includes(".volces.com")
+		const deepseekReasoner =
+			modelId.includes("deepseek-reasoner") || modelId.includes("deepseek-v4") || enabledR1Format
+		let hasReasoning = false
 
 		if (modelId.includes("o1") || modelId.includes("o3") || modelId.includes("o4")) {
 			yield* this.handleO3FamilyMessage(modelId, systemPrompt, messages, metadata)
@@ -109,8 +115,6 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			if (deepseekReasoner) {
 				convertedMessages = convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
-			} else if (ark || enabledLegacyFormat) {
-				convertedMessages = [systemMessage, ...convertToSimpleMessages(messages)]
 			} else {
 				if (modelInfo.supportsPromptCache) {
 					systemMessage = {
@@ -164,11 +168,9 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				stream: true as const,
 				...(isGrokXAI ? {} : { stream_options: { include_usage: true } }),
 				...(reasoning && reasoning),
-				...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-				...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-				...(metadata?.toolProtocol === "native" && {
-					parallel_tool_calls: metadata.parallelToolCalls ?? false,
-				}),
+				tools: this.convertToolsForOpenAI(metadata?.tools),
+				tool_choice: metadata?.tool_choice,
+				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 			}
 
 			// Add max_tokens if needed
@@ -184,19 +186,22 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				throw handleOpenAIError(error, this.providerName)
 			}
 
-			const matcher = new XmlMatcher(
-				"think",
-				(chunk) =>
-					({
-						type: chunk.matched ? "reasoning" : "text",
-						text: chunk.data,
-					}) as const,
-			)
+			const matcher = new TagMatcher("think", (chunk) => {
+				if (chunk.matched) {
+					hasReasoning = true
+				}
+				return {
+					type: chunk.matched ? "reasoning" : "text",
+					text: chunk.data,
+				} as const
+			})
 
 			let lastUsage
+			const activeToolCallIds = new Set<string>()
 
 			for await (const chunk of stream) {
 				const delta = chunk.choices?.[0]?.delta ?? {}
+				const finishReason = chunk.choices?.[0]?.finish_reason
 
 				if (delta.content) {
 					for (const chunk of matcher.update(delta.content)) {
@@ -205,29 +210,23 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				}
 
 				if ("reasoning_content" in delta && delta.reasoning_content) {
+					hasReasoning = true
 					yield {
 						type: "reasoning",
 						text: (delta.reasoning_content as string | undefined) || "",
 					}
 				}
 
-				if (delta.tool_calls) {
-					for (const toolCall of delta.tool_calls) {
-						yield {
-							type: "tool_call_partial",
-							index: toolCall.index,
-							id: toolCall.id,
-							name: toolCall.function?.name,
-							arguments: toolCall.function?.arguments,
-						}
-					}
-				}
+				yield* this.processToolCalls(delta, finishReason, activeToolCallIds)
 
 				if (chunk.usage) {
 					lastUsage = chunk.usage
 				}
 			}
-
+			if (!hasReasoning) {
+				// Add a fake reasoning event to ensure the frontend processes the response
+				yield { type: "fake_reasoning", text: "" }
+			}
 			for (const chunk of matcher.final()) {
 				yield chunk
 			}
@@ -240,14 +239,11 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				model: modelId,
 				messages: deepseekReasoner
 					? convertToR1Format([{ role: "user", content: systemPrompt }, ...messages])
-					: enabledLegacyFormat
-						? [systemMessage, ...convertToSimpleMessages(messages)]
-						: [systemMessage, ...convertToOpenAiMessages(messages)],
-				...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-				...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-				...(metadata?.toolProtocol === "native" && {
-					parallel_tool_calls: metadata.parallelToolCalls ?? false,
-				}),
+					: [systemMessage, ...convertToOpenAiMessages(messages)],
+				// Tools are always present (minimum ALWAYS_AVAILABLE_TOOLS)
+				tools: this.convertToolsForOpenAI(metadata?.tools),
+				tool_choice: metadata?.tool_choice,
+				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 			}
 
 			// Add max_tokens if needed
@@ -299,12 +295,18 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 
 	override getModel() {
 		const id = this.options.openAiModelId ?? ""
-		const info = this.options.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults
-		const params = getModelParams({ format: "openai", modelId: id, model: info, settings: this.options })
+		const info: ModelInfo = this.options.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults
+		const params = getModelParams({
+			format: "openai",
+			modelId: id,
+			model: info,
+			settings: this.options,
+			defaultTemperature: 0,
+		})
 		return { id, info, ...params }
 	}
 
-	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any): Promise<string> {
+	async completePrompt(prompt: string, systemPrompt?: string, metadata?: any) {
 		try {
 			const isAzureAiInference = this._isAzureAiInference(this.options.openAiBaseUrl)
 			const model = this.getModel()
@@ -314,9 +316,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				model: model.id,
 				messages: [{ role: "user", content: prompt }],
 			}
-			if (systemPrompt) {
-				requestOptions.messages.unshift({ role: "system", content: systemPrompt })
-			}
+
 			// Add max_tokens if needed
 			this.addMaxTokensIfNeeded(requestOptions, modelInfo)
 
@@ -367,11 +367,10 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				...(isGrokXAI ? {} : { stream_options: { include_usage: true } }),
 				reasoning_effort: modelInfo.reasoningEffort as "low" | "medium" | "high" | undefined,
 				temperature: undefined,
-				...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-				...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-				...(metadata?.toolProtocol === "native" && {
-					parallel_tool_calls: metadata.parallelToolCalls ?? false,
-				}),
+				// Tools are always present (minimum ALWAYS_AVAILABLE_TOOLS)
+				tools: this.convertToolsForOpenAI(metadata?.tools),
+				tool_choice: metadata?.tool_choice,
+				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 			}
 
 			// O3 family models do not support the deprecated max_tokens parameter
@@ -402,11 +401,10 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				],
 				reasoning_effort: modelInfo.reasoningEffort as "low" | "medium" | "high" | undefined,
 				temperature: undefined,
-				...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-				...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-				...(metadata?.toolProtocol === "native" && {
-					parallel_tool_calls: metadata.parallelToolCalls ?? false,
-				}),
+				// Tools are always present (minimum ALWAYS_AVAILABLE_TOOLS)
+				tools: this.convertToolsForOpenAI(metadata?.tools),
+				tool_choice: metadata?.tool_choice,
+				parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 			}
 
 			// O3 family models do not support the deprecated max_tokens parameter
@@ -447,8 +445,11 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 	}
 
 	private async *handleStreamResponse(stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>): ApiStream {
+		const activeToolCallIds = new Set<string>()
+
 		for await (const chunk of stream) {
 			const delta = chunk.choices?.[0]?.delta
+			const finishReason = chunk.choices?.[0]?.finish_reason
 
 			if (delta) {
 				if (delta.content) {
@@ -458,18 +459,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 					}
 				}
 
-				// Emit raw tool call chunks - NativeToolCallParser handles state management
-				if (delta.tool_calls) {
-					for (const toolCall of delta.tool_calls) {
-						yield {
-							type: "tool_call_partial",
-							index: toolCall.index,
-							id: toolCall.id,
-							name: toolCall.function?.name,
-							arguments: toolCall.function?.arguments,
-						}
-					}
-				}
+				yield* this.processToolCalls(delta, finishReason, activeToolCallIds)
 			}
 
 			if (chunk.usage) {
@@ -479,6 +469,46 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 					outputTokens: chunk.usage.completion_tokens || 0,
 				}
 			}
+		}
+	}
+
+	/**
+	 * Helper generator to process tool calls from a stream chunk.
+	 * Tracks active tool call IDs and yields tool_call_partial and tool_call_end events.
+	 * @param delta - The delta object from the stream chunk
+	 * @param finishReason - The finish_reason from the stream chunk
+	 * @param activeToolCallIds - Set to track active tool call IDs (mutated in place)
+	 */
+	protected *processToolCalls(
+		delta: OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta | undefined,
+		finishReason: string | null | undefined,
+		activeToolCallIds: Set<string>,
+	): Generator<
+		| { type: "tool_call_partial"; index: number; id?: string; name?: string; arguments?: string }
+		| { type: "tool_call_end"; id: string }
+	> {
+		if (delta?.tool_calls) {
+			for (const toolCall of delta.tool_calls) {
+				if (toolCall.id) {
+					activeToolCallIds.add(toolCall.id)
+				}
+				yield {
+					type: "tool_call_partial",
+					index: toolCall.index,
+					id: toolCall.id,
+					name: toolCall.function?.name,
+					arguments: toolCall.function?.arguments,
+				}
+			}
+		}
+
+		// Emit tool_call_end events when finish_reason is "tool_calls"
+		// This ensures tool calls are finalized even if the stream doesn't properly close
+		if (finishReason === "tool_calls" && activeToolCallIds.size > 0) {
+			for (const id of activeToolCallIds) {
+				yield { type: "tool_call_end", id }
+			}
+			activeToolCallIds.clear()
 		}
 	}
 
@@ -493,6 +523,10 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 	private _isGrokXAI(baseUrl?: string): boolean {
 		const urlHost = this._getUrlHost(baseUrl)
 		return urlHost.includes("x.ai")
+	}
+	private _isKimiCode(baseUrl?: string): boolean {
+		const urlHost = this._getUrlHost(baseUrl)
+		return urlHost.includes("api.kimi.com")
 	}
 
 	protected _isAzureAiInference(baseUrl?: string): boolean {

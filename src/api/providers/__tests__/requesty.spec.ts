@@ -3,15 +3,12 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import { TOOL_PROTOCOL } from "@roo-code/types"
-
 import { RequestyHandler } from "../requesty"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { Package } from "../../../shared/package"
 import { ApiHandlerCreateMessageMetadata } from "../../index"
 
 const mockCreate = vitest.fn()
-const mockResolveToolProtocol = vitest.fn()
 
 vitest.mock("openai", () => {
 	return {
@@ -26,10 +23,6 @@ vitest.mock("openai", () => {
 })
 
 vitest.mock("delay", () => ({ default: vitest.fn(() => Promise.resolve()) }))
-
-vitest.mock("../../../utils/resolveToolProtocol", () => ({
-	resolveToolProtocol: (...args: any[]) => mockResolveToolProtocol(...args),
-}))
 
 vitest.mock("../fetchers/modelCache", () => ({
 	getModels: vitest.fn().mockImplementation(() => {
@@ -65,8 +58,9 @@ describe("RequestyHandler", () => {
 			baseURL: "https://router.requesty.ai/v1",
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
-				"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
-				"X-Title": "Costrict",
+				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+				"X-Title": "Roo Code",
+				"User-Agent": expect.any(String),
 				"X-Costrict-Version": `${Package.version}`,
 			},
 		})
@@ -80,8 +74,9 @@ describe("RequestyHandler", () => {
 			baseURL: "https://custom.requesty.ai/v1",
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
-				"HTTP-Referer": "https://github.com/zgsm-ai/zgsm",
-				"X-Title": "Costrict",
+				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+				"X-Title": "Roo Code",
+				"User-Agent": expect.any(String),
 				"X-Costrict-Version": `${Package.version}`,
 			},
 		})
@@ -244,9 +239,7 @@ describe("RequestyHandler", () => {
 				mockCreate.mockResolvedValue(mockStream)
 			})
 
-			it("should include tools in request when toolProtocol is native", async () => {
-				mockResolveToolProtocol.mockReturnValue(TOOL_PROTOCOL.NATIVE)
-
+			it("should include tools in request when tools are provided", async () => {
 				const metadata: ApiHandlerCreateMessageMetadata = {
 					taskId: "test-task",
 					tools: mockTools,
@@ -273,30 +266,7 @@ describe("RequestyHandler", () => {
 				)
 			})
 
-			it("should not include tools when toolProtocol is not native", async () => {
-				mockResolveToolProtocol.mockReturnValue(TOOL_PROTOCOL.XML)
-
-				const metadata: ApiHandlerCreateMessageMetadata = {
-					taskId: "test-task",
-					tools: mockTools,
-					tool_choice: "auto",
-				}
-
-				const handler = new RequestyHandler(mockOptions)
-				const iterator = handler.createMessage(systemPrompt, messages, metadata)
-				await iterator.next()
-
-				expect(mockCreate).toHaveBeenCalledWith(
-					expect.not.objectContaining({
-						tools: expect.anything(),
-						tool_choice: expect.anything(),
-					}),
-				)
-			})
-
 			it("should handle tool_call_partial chunks in streaming response", async () => {
-				mockResolveToolProtocol.mockReturnValue(TOOL_PROTOCOL.NATIVE)
-
 				const mockStreamWithToolCalls = {
 					async *[Symbol.asyncIterator]() {
 						yield {

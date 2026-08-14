@@ -1,24 +1,26 @@
 import path from "path"
 import delay from "delay"
-import * as vscode from "vscode"
 import fs from "fs/promises"
 
+import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
+
 import { Task } from "../task/Task"
-import { ClineSayTool } from "../../shared/ExtensionMessage"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
-import { fileExistsAtPath, createDirectoriesForFile } from "../../utils/fs"
+import { isFile } from "../../utils/fs"
 import { stripLineNumbers, everyLineHasLineNumbers } from "../../integrations/misc/extract-text"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
-import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { convertNewFileToUnifiedDiff, computeDiffStats, sanitizeUnifiedDiff } from "../diff/stats"
-import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import { TelemetryService } from "@roo-code/telemetry"
 import { getLanguage } from "../../utils/file"
+import { getRawTaskReporter } from "../costrict/telemetry"
+
+import { BaseTool, ToolCallbacks } from "./BaseTool"
+import { readFileWithEncodingDetection } from "../../utils/encoding"
 
 interface WriteToFileParams {
 	path: string
@@ -28,18 +30,14 @@ interface WriteToFileParams {
 export class WriteToFileTool extends BaseTool<"write_to_file"> {
 	readonly name = "write_to_file" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): WriteToFileParams {
-		return {
-			path: params.path || "",
-			content: params.content || "",
-		}
-	}
-
 	async execute(params: WriteToFileParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { pushToolResult, handleError, askApproval, removeClosingTag } = callbacks
-		const relPath = params.path
-		let newContent = params.content
+		const { pushToolResult, handleError, askApproval } = callbacks
+		const relPath = params?.path || ""
+		let newContent = params?.content || ""
 
+		if (newContent && newContent === "object") {
+			newContent = JSON.stringify(newContent)
+		}
 		if (!relPath) {
 			task.consecutiveMistakeCount++
 			task.recordToolError("write_to_file")
@@ -72,15 +70,19 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 		if (task.diffViewProvider.editType !== undefined) {
 			fileExists = task.diffViewProvider.editType === "modify"
 		} else {
-			fileExists = await fileExistsAtPath(absolutePath)
+			fileExists = await isFile(absolutePath)
 			task.diffViewProvider.editType = fileExists ? "modify" : "create"
 		}
 
-		// Create parent directories early for new files to prevent ENOENT errors
-		// in subsequent operations (e.g., diffViewProvider.open, fs.readFile)
-		if (!fileExists) {
-			await createDirectoriesForFile(absolutePath)
-		}
+		// NOTE: parent-directory creation for new files is intentionally NOT done
+		// here (pre-approval). Both code paths below create directories at the
+		// right time and track them for rollback on denial:
+		//   - diffViewProvider.open() (DiffViewProvider.ts ~line 78) creates dirs
+		//     and records them in createdDirs, reverted by revertChanges() on deny.
+		//   - diffViewProvider.saveDirectly() (DiffViewProvider.ts ~line 696)
+		//     creates dirs as part of the post-approval save.
+		// Creating dirs here would be an untracked, pre-consent filesystem
+		// side-effect outside the approval flow.
 
 		if (newContent.startsWith("```")) {
 			newContent = newContent.split("\n").slice(1).join("\n")
@@ -94,12 +96,12 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			newContent = unescapeHtmlEntities(newContent)
 		}
 
-		const fullPath = relPath ? path.resolve(task.cwd, removeClosingTag("path", relPath)) : ""
+		const fullPath = relPath ? path.resolve(task.cwd, relPath) : ""
 		const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: fileExists ? "editedExistingFile" : "newFileCreated",
-			path: getReadablePath(task.cwd, removeClosingTag("path", relPath)),
+			path: getReadablePath(task.cwd, relPath),
 			content: newContent,
 			isOutsideWorkspace,
 			isProtected: isWriteProtected,
@@ -116,13 +118,13 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 				state?.experiments ?? {},
 				EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION,
 			)
-			const language = await getLanguage(absolutePath)
-			const changedLines = newContent.split("\n").length
+			let language = relPath
+			let changedLines = newContent.split("\n").length
 			if (isPreventFocusDisruptionEnabled) {
 				task.diffViewProvider.editType = fileExists ? "modify" : "create"
 				if (fileExists) {
 					const absolutePath = path.resolve(task.cwd, relPath)
-					task.diffViewProvider.originalContent = await fs.readFile(absolutePath, "utf-8")
+					task.diffViewProvider.originalContent = await readFileWithEncodingDetection(absolutePath)
 				} else {
 					task.diffViewProvider.originalContent = ""
 				}
@@ -140,6 +142,7 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 				const didApprove = await askApproval("tool", completeMessage, undefined, isWriteProtected)
 
 				if (!didApprove) {
+					language = await getLanguage(absolutePath)
 					TelemetryService.instance.captureCodeReject(language, changedLines)
 					return
 				}
@@ -174,6 +177,7 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 
 				if (!didApprove) {
 					await task.diffViewProvider.revertChanges()
+					language = await getLanguage(absolutePath)
 					TelemetryService.instance.captureCodeReject(language, changedLines)
 					return
 				}
@@ -184,23 +188,28 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			if (relPath) {
 				await task.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
 			}
+			getRawTaskReporter()?.captureDiffEntry(task.taskId, {
+				label: relPath,
+				before: task.diffViewProvider.originalContent || "",
+				after: newContent,
+			})
 
 			task.didEditFile = true
-
-			TelemetryService.instance.captureCodeAccept(language, changedLines)
 
 			const message = await task.diffViewProvider.pushToolWriteResult(task, task.cwd, !fileExists)
 
 			pushToolResult(message)
 
 			await task.diffViewProvider.reset()
+			this.resetPartialState()
 
 			task.processQueuedMessages()
-
+			TelemetryService.instance.captureCodeAccept(language, changedLines)
 			return
 		} catch (error) {
 			await handleError("writing file", error as Error)
 			await task.diffViewProvider.reset()
+			this.resetPartialState()
 			return
 		}
 	}
@@ -209,7 +218,8 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 		const relPath: string | undefined = block.params.path
 		let newContent: string | undefined = block.params.content
 
-		if (!relPath || newContent === undefined) {
+		// Wait for path to stabilize before showing UI (prevents truncated paths)
+		if (!this.hasPathStabilized(relPath) || newContent === undefined) {
 			return
 		}
 
@@ -224,29 +234,26 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 			return
 		}
 
+		// relPath is guaranteed non-null after hasPathStabilized
 		let fileExists: boolean
-		const absolutePath = path.resolve(task.cwd, relPath)
+		const absolutePath = path.resolve(task.cwd, relPath!)
 
 		if (task.diffViewProvider.editType !== undefined) {
 			fileExists = task.diffViewProvider.editType === "modify"
 		} else {
-			fileExists = await fileExistsAtPath(absolutePath)
+			fileExists = await isFile(absolutePath)
 			task.diffViewProvider.editType = fileExists ? "modify" : "create"
 		}
 
-		// Create parent directories early for new files to prevent ENOENT errors
-		// in subsequent operations (e.g., diffViewProvider.open)
-		if (!fileExists) {
-			await createDirectoriesForFile(absolutePath)
-		}
-
-		const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath) || false
-		const fullPath = absolutePath
-		const isOutsideWorkspace = isPathOutsideWorkspace(fullPath)
+		// NOTE: parent-directory creation is deferred to diffViewProvider.open()
+		// below (which tracks createdDirs for rollback on denial). Doing it here
+		// would be an untracked pre-approval filesystem side-effect.
+		const isWriteProtected = task.rooProtectedController?.isWriteProtected(relPath!) || false
+		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: fileExists ? "editedExistingFile" : "newFileCreated",
-			path: getReadablePath(task.cwd, relPath),
+			path: getReadablePath(task.cwd, relPath!),
 			content: newContent || "",
 			isOutsideWorkspace,
 			isProtected: isWriteProtected,
@@ -257,7 +264,7 @@ export class WriteToFileTool extends BaseTool<"write_to_file"> {
 
 		if (newContent) {
 			if (!task.diffViewProvider.isEditing) {
-				await task.diffViewProvider.open(relPath)
+				await task.diffViewProvider.open(relPath!)
 			}
 
 			await task.diffViewProvider.update(

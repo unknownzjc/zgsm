@@ -44,7 +44,7 @@ export const usePromptHistory = ({
 		// First try to get conversation messages (user_feedback from clineMessages)
 		const conversationPrompts = clineMessages
 			?.filter((message) => message.type === "say" && message.say === "user_feedback" && message.text?.trim())
-			.map((message) => message.text!)
+			?.map((message) => message.text!)
 
 		// If we have conversation messages, use those (newest first when navigating up)
 		if (conversationPrompts?.length) {

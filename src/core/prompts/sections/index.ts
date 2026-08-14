@@ -3,8 +3,23 @@ export { getSystemInfoSection } from "./system-info"
 export { getObjectiveSection } from "./objective"
 export { addCustomInstructions } from "./custom-instructions"
 export { getSharedToolUseSection } from "./tool-use"
-export { getMcpServersSection } from "./mcp-servers"
 export { getToolUseGuidelinesSection } from "./tool-use-guidelines"
 export { getCapabilitiesSection } from "./capabilities"
 export { getModesSection } from "./modes"
 export { markdownFormattingSection } from "./markdown-formatting"
+export { getSkillsSection } from "./skills"
+
+// Lite versions - simplified and concise prompts
+export {
+	getLiteToolUseGuidelinesSection,
+	getLiteCapabilitiesSection,
+	getLiteObjectiveSection,
+	getLiteSharedToolUseSection,
+	getLiteRulesSection,
+} from "./lite-sections"
+
+// MUST_FOLLOW_RULES
+export { getMustFollowRules, getLiteMustFollowRules } from "./must-follow-rules"
+
+// English-only output rule (cacheable static section)
+export { getEnglishOnlySection } from "./english-only-rules"

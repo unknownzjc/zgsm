@@ -9,7 +9,7 @@ vi.mock("vscode", async (importOriginal) => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -54,6 +54,7 @@ vi.mock("../../task-persistence", () => ({
 vi.mock("../../../api/providers/fetchers/modelCache", () => ({
 	getModels: vi.fn(),
 	flushModels: vi.fn(),
+	getModelsFromCache: vi.fn().mockReturnValue(undefined),
 }))
 
 vi.mock("../checkpointRestoreHandler", () => ({
@@ -95,6 +96,10 @@ describe("webviewMessageHandler - Edit Message with Timestamp Fallback", () => {
 				globalStorageUri: { fsPath: "/mock/storage" },
 			},
 			log: vi.fn(),
+			getState: vi.fn().mockResolvedValue({
+				maxImageFileSize: 5,
+				maxTotalImageSize: 20,
+			}),
 		} as unknown as ClineProvider
 	})
 

@@ -6,7 +6,6 @@
  */
 
 import * as vscode from "vscode"
-import { flushModels } from "./../../api/providers/fetchers/modelCache"
 import type { ClineProvider } from "../webview/ClineProvider"
 import { registerAutoCompletionProvider, CompletionStatusBar } from "./auto-complete"
 
@@ -22,32 +21,30 @@ import {
 	printLogo,
 	loadLocalLanguageExtensions,
 } from "./base/common"
-import { ZgsmAuthApi, ZgsmAuthCommands, ZgsmAuthService, ZgsmAuthStorage } from "./auth"
+import { CostrictAuthApi, CostrictAuthCommands, CostrictAuthService, CostrictAuthStorage } from "./auth"
 import { initCodeReview, disposeGitCommitListener } from "./code-review"
 import { initTelemetry } from "./telemetry"
 import { initErrorCodeManager } from "./error-code"
-import { NotificationService } from "./notification"
+import { initNotificationService, NotificationService } from "./notification"
 import { Package } from "../../shared/package"
 import { createLogger, ILogger, deactivate as loggerDeactivate } from "../../utils/logger"
 import {
 	connectIPC,
 	disconnectIPC,
 	onCloseWindow,
-	onZgsmLogout,
-	onZgsmTokensUpdate,
+	onCostrictLogout,
+	onCostrictTokensUpdate,
 	startIPCServer,
 	stopIPCServer,
 } from "./auth/ipc"
 import { generateNewSessionClientId, getClientId } from "../../utils/getClientId"
-import ZgsmCodebaseIndexManager, { zgsmCodebaseIndexManager } from "./codebase-index"
-import { workspaceEventMonitor } from "./codebase-index/workspace-event-monitor"
-import { initGitCheckoutDetector } from "./codebase-index/git-checkout-detector"
-import { writeCostrictAccessToken } from "./codebase-index/utils"
+import { ensureCompletionRuntimeReady, writeCostrictRuntimeAuth } from "./runtime-config"
 import { getPanel } from "../../activate/registerCommands"
 import { t } from "../../i18n"
 import prettyBytes from "pretty-bytes"
-import { ensureProjectWikiSubtasksExists } from "./wiki/projectWikiHelpers"
-import { isJetbrainsPlatform } from "../../utils/platform"
+import { isCliPatform, isJetbrainsPlatform } from "../../utils/platform"
+import { updateDefaultDebug } from "../../utils/getDebugState"
+import { COSTRICT_DEFAULT_HEADERS } from "../../shared/headers"
 
 const HISTORY_WARN_SIZE = 1000 * 1000 * 1000 * 3
 
@@ -55,26 +52,44 @@ const HISTORY_WARN_SIZE = 1000 * 1000 * 1000 * 3
  * Initialization entry
  */
 async function initialize(provider: ClineProvider, logger: ILogger) {
-	const oldEnabled = provider.getValue("zgsmCodebaseIndexEnabled")
-	if (oldEnabled == null) {
-		await provider.setValue("zgsmCodebaseIndexEnabled", true)
+	const oldDebug = provider.getValue("debug")
+	const codeMode = provider.getValue("costrictCodeMode")
+
+	switch (codeMode) {
+		case "plan":
+			await provider.setValue("mode", codeMode)
+			break
+		case "strict":
+			await provider.setValue("mode", codeMode)
+			break
+		default:
+			await provider.setValue("mode", "code")
+			break
 	}
-	//
-	ZgsmAuthStorage.setProvider(provider)
-	ZgsmAuthApi.setProvider(provider)
-	ZgsmAuthService.setProvider(provider)
-	ZgsmAuthCommands.setProvider(provider)
 
-	//
-	zgsmCodebaseIndexManager.setProvider(provider)
-	zgsmCodebaseIndexManager.setLogger(logger)
-	workspaceEventMonitor.setProvider(provider)
-	workspaceEventMonitor.setLogger(logger)
+	updateDefaultDebug(oldDebug ?? false)
+	// void logger
+	CostrictAuthStorage.setProvider(provider)
+	CostrictAuthApi.setProvider(provider)
+	CostrictAuthService.setProvider(provider)
+	CostrictAuthCommands.setProvider(provider)
 
-	//
 	printLogo()
 	initLangSetting()
 	loadLocalLanguageExtensions()
+}
+
+const prepareCompletionRuntimeAuth = (
+	tokens: { access_token: string; refresh_token: string },
+	provider: ClineProvider,
+) => {
+	void writeCostrictRuntimeAuth(tokens.access_token, tokens.refresh_token)
+		.then(() => ensureCompletionRuntimeReady())
+		.catch((error) => {
+			provider.log(
+				`Failed to prepare completion runtime on startup: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		})
 }
 
 /**
@@ -86,27 +101,30 @@ export async function activate(
 	outputChannel: vscode.OutputChannel,
 ) {
 	const isJetbrains = isJetbrainsPlatform()
+	const isVscodePlatform = !isJetbrains && !isCliPatform()
 	const logger = createLogger(Package.outputChannel)
+
 	initErrorCodeManager(provider)
-	initGitCheckoutDetector(context, logger)
 	await initialize(provider, logger)
-	startIPCServer()
-	connectIPC()
-	if (!isJetbrains) {
+	void startIPCServer()
+		.then(() => connectIPC())
+		.catch((err) => console.error("IPC startup failed:", err))
+
+	if (isVscodePlatform) {
 		registerAutoCompletionProvider(context, provider)
 	}
 	const completionStatusBar = CompletionStatusBar.getInstance()
 
-	const zgsmAuthService = ZgsmAuthService.getInstance()
-	context.subscriptions.push(zgsmAuthService)
+	const costrictAuthService = CostrictAuthService.getInstance()
+	context.subscriptions.push(costrictAuthService)
 	context.subscriptions.push(
-		onZgsmTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
-			zgsmAuthService.saveTokens(tokens)
-			provider.log(`new token from other window: ${tokens.access_token}`)
+		onCostrictTokensUpdate((tokens: { state: string; access_token: string; refresh_token: string }) => {
+			costrictAuthService.saveTokens(tokens)
+			provider.log("Auth tokens refreshed from another window")
 		}),
-		onZgsmLogout((sessionId: string) => {
+		onCostrictLogout((sessionId: string) => {
 			if (generateNewSessionClientId() === sessionId) return
-			zgsmAuthService.logout(true)
+			costrictAuthService.logout(true)
 			provider.log(`logout from other window`)
 		}),
 		onCloseWindow((sessionId: string) => {
@@ -114,100 +132,94 @@ export async function activate(
 			vscode.commands.executeCommand("workbench.action.closeWindow")
 		}),
 	)
-	const zgsmAuthCommands = ZgsmAuthCommands.getInstance()
-	context.subscriptions.push(zgsmAuthCommands)
+	const costrictAuthCommands = CostrictAuthCommands.getInstance()
+	context.subscriptions.push(costrictAuthCommands)
 
-	zgsmAuthCommands.registerCommands(context)
+	costrictAuthCommands.registerCommands(context)
+	provider.setCostrictAuthCommands(costrictAuthCommands)
 
-	provider.setZgsmAuthCommands(zgsmAuthCommands)
 	let loginTip = () => {}
-	/**
-	 * Check login status when plugin starts
-	 */
 	try {
-		const isLoggedIn = await zgsmAuthService.checkLoginStatusOnStartup()
+		const startupAuth = await costrictAuthService.getStartupAuthTokens()
 
-		if (isLoggedIn) {
-			zgsmAuthService.getTokens().then(async (tokens) => {
-				if (!tokens) {
-					return
-				}
-				provider.log(`Login status detected at plugin startup: valid (${tokens.state})`)
-				writeCostrictAccessToken(tokens.access_token).then(async () => {
-					await zgsmCodebaseIndexManager.initialize()
-					zgsmCodebaseIndexManager.syncToken()
-					workspaceEventMonitor.initialize()
-				})
-				zgsmAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
-				zgsmAuthService.updateUserInfo(tokens.access_token)
-			})
-			// Start token refresh timer
+		if (startupAuth) {
+			const { tokens, source } = startupAuth
+			provider.log(`Login status detected at plugin startup: valid (${tokens.state})`)
+
+			if (source === "file") {
+				provider.log("Startup reconciliation: adopted fresher tokens from auth.json")
+				await costrictAuthService.saveTokens(tokens)
+			} else {
+				prepareCompletionRuntimeAuth(tokens, provider)
+			}
+
+			costrictAuthService.startTokenRefresh(tokens.refresh_token, getClientId(), tokens.state)
+			costrictAuthService.updateUserInfo(tokens.access_token)
 		} else {
 			loginTip = () => {
-				zgsmAuthService.getTokens().then(async (tokens) => {
+				costrictAuthService.getTokens().then(async (tokens) => {
 					if (!tokens) {
 						getPanel()?.webview.postMessage({
 							type: "showReauthConfirmationDialog",
 							messageTs: new Date().getTime(),
 						})
-						return
 					}
 				})
 			}
-			provider.log("Login status detected at plugin startup: invalid")
 		}
 	} catch (error) {
-		provider.log("Failed to check login status at startup: " + error.message)
+		provider.log("Failed to check login status at startup: " + (error as Error).message)
 	}
+
 	initCodeReview(context, provider, outputChannel)
-	initTelemetry(provider)
+	initTelemetry(provider, {
+		...COSTRICT_DEFAULT_HEADERS,
+		"User-Agent": `RooCode/3.52.1 ${isJetbrainsPlatform() ? "plugin_intellij" : "plugin_vscode"}/${Package.version}`,
+	})
 
-	context.subscriptions.push(
-		// Register codelens related commands
-		vscode.commands.registerTextEditorCommand(
-			codeLensCallBackCommand.command,
-			codeLensCallBackCommand.callback(context),
-		),
-		// Construct instruction set
-		vscode.commands.registerTextEditorCommand(
-			codeLensCallBackMoreCommand.command,
-			codeLensCallBackMoreCommand.callback(context),
-		),
-	)
-
-	if (!isJetbrains) {
+	if (!isCliPatform()) {
 		context.subscriptions.push(
-			// Register function header menu
-			vscode.languages.registerCodeLensProvider("*", new CostrictCodeLensProvider()),
+			vscode.commands.registerTextEditorCommand(
+				codeLensCallBackCommand.command,
+				codeLensCallBackCommand.callback(context),
+			),
+			vscode.commands.registerTextEditorCommand(
+				codeLensCallBackMoreCommand.command,
+				codeLensCallBackMoreCommand.callback(context),
+			),
 		)
-		// Listen for configuration changes
+	}
+
+	if (isVscodePlatform) {
+		context.subscriptions.push(vscode.languages.registerCodeLensProvider("*", new CostrictCodeLensProvider()))
 		const configChanged = vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration(configCompletion)) {
-				// Code completion settings changed
 				updateCompletionConfig()
 			}
 			if (e.affectsConfiguration(configCodeLens)) {
-				// Function Quick Commands settings changed
 				updateCodelensConfig()
 			}
-			// CompletionStatusBar.initByConfig()
 			completionStatusBar.setEnableState()
 		})
 		context.subscriptions.push(configChanged)
 	}
 
-	// Get zgsmRefreshToken without webview resolve
-	const tokens = await ZgsmAuthStorage.getInstance().getTokens()
-	if (!isJetbrains) {
-		if (tokens?.access_token) {
-			// CompletionStatusBar.initByConfig()
-			completionStatusBar.setEnableState()
-		} else {
-			completionStatusBar.fail({
-				message: OPENAI_CLIENT_NOT_INITIALIZED,
-			})
-		}
-	}
+	void CostrictAuthStorage.getInstance()
+		.getTokens()
+		.then((tokens) => {
+			if (isVscodePlatform) {
+				if (tokens?.access_token) {
+					completionStatusBar.setEnableState()
+				} else {
+					completionStatusBar.fail({
+						message: OPENAI_CLIENT_NOT_INITIALIZED,
+					})
+				}
+			}
+		})
+		.catch((error) => provider.log(`Failed to read auth tokens on startup: ${error}`))
+
+	void initNotificationService(provider)
 	provider.getState().then((state) => {
 		const size = (state.taskHistory || []).reduce((p, c) => p + Number(c.size), 0)
 		if (size > HISTORY_WARN_SIZE) {
@@ -221,34 +233,18 @@ export async function activate(
 				})
 		}
 	})
-	setTimeout(() => {
+	void setTimeout(() => {
 		loginTip()
-		flushModels("zgsm", true)
-		// init project-wiki subtasks.
-		ensureProjectWikiSubtasksExists()
-	}, 2000)
+	}, 5000)
 }
 
 /**
  * Deactivation function for ZGSM
  */
 export async function deactivate() {
-	// Stop periodic health checks
-	ZgsmCodebaseIndexManager.getInstance().stopHealthCheck()
-
-	// Stop periodic notice fetching
-	NotificationService.getInstance().stopPeriodicFetch()
-
-	// Dispose git commit listener
-	disposeGitCommitListener()
-
-	// ZgsmCodebaseIndexManager.getInstance().stopExistingClient()
-	// Clean up IPC connections
-	disconnectIPC()
-	stopIPCServer()
-	// Clean up workspace event monitoring
-	workspaceEventMonitor.handleVSCodeClose()
-
-	// Currently no specific cleanup needed
+	void NotificationService.getInstance().stopPeriodicFetch()
+	void disposeGitCommitListener()
+	void disconnectIPC()
+	void stopIPCServer()
 	loggerDeactivate()
 }

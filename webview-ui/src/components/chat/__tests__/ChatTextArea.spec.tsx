@@ -1,6 +1,6 @@
 import { defaultModeSlug } from "@roo/modes"
 
-import { render, fireEvent, screen } from "@src/utils/test-utils"
+import { render, fireEvent, screen, within } from "@src/utils/test-utils"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { vscode } from "@src/utils/vscode"
 import * as pathMentions from "@src/utils/path-mentions"
@@ -94,9 +94,19 @@ describe("ChatTextArea", () => {
 		;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
 			filePaths: [],
 			openedTabs: [],
+			currentApiConfigName: "default",
+			listApiConfigMeta: [
+				{ id: "config-default", name: "default", modelId: "claude-3-opus-20240229", apiProvider: "anthropic" },
+				{ id: "config-alt", name: "backup", modelId: "gpt-4", apiProvider: "anthropic" },
+			],
+			pinnedApiConfigs: {},
+			togglePinnedApiConfig: vi.fn(),
 			apiConfiguration: {
 				apiProvider: "anthropic",
 			},
+			organizationAllowList: { allowAll: true, providers: {} },
+			reviewTask: { status: "idle" },
+			lockApiConfigAcrossModes: true,
 			taskHistory: [],
 			cwd: "/test/workspace",
 		})
@@ -1069,51 +1079,90 @@ describe("ChatTextArea", () => {
 	})
 
 	describe("selectApiConfig", () => {
-		// Helper function to get the API config dropdown - using more flexible query methods
-		const getApiConfigDropdown = () => {
-			// Try to find the dropdown button using different query methods
-			return (
-				screen.queryByTestId("dropdown-trigger") ||
-				screen.queryByRole("button", { name: /provider/i }) ||
-				screen.queryByRole("button", { name: /model/i }) ||
-				screen.queryByRole("combobox") ||
-				document.querySelector('[aria-controls^="radix-"]')
-			)
+		const getApiConfigTrigger = () => {
+			const topbar = screen.getByTestId("api-config-topbar")
+			return within(topbar).getByTestId("dropdown-trigger")
 		}
+
+		const openApiConfigDropdown = () => {
+			const trigger = getApiConfigTrigger()
+			fireEvent.click(trigger)
+			return trigger
+		}
+
+		it("should render the api config selector in the top-right toolbar", () => {
+			render(<ChatTextArea {...defaultProps} />)
+
+			const topbar = screen.getByTestId("api-config-topbar")
+			expect(topbar).toBeInTheDocument()
+			expect(within(topbar).getByTestId("dropdown-trigger")).toBeInTheDocument()
+		})
 
 		it("should be enabled independently of sendingDisabled", () => {
 			render(<ChatTextArea {...defaultProps} sendingDisabled={true} selectApiConfigDisabled={false} />)
-			const apiConfigDropdown = getApiConfigDropdown()
-
-			// If the dropdown cannot be found, skip this test
-			if (!apiConfigDropdown) {
-				console.warn("API config dropdown not found, skipping test")
-				return
-			}
+			const apiConfigDropdown = getApiConfigTrigger()
 
 			expect(apiConfigDropdown).not.toHaveAttribute("disabled")
 		})
 
 		it("should be disabled when selectApiConfigDisabled is true", () => {
 			render(<ChatTextArea {...defaultProps} sendingDisabled={true} selectApiConfigDisabled={true} />)
-			const apiConfigDropdown = getApiConfigDropdown()
+			const apiConfigDropdown = getApiConfigTrigger()
 
-			// If the dropdown cannot be found, skip this test
-			if (!apiConfigDropdown) {
-				console.warn("API config dropdown not found, skipping test")
-				return
-			}
+			expect(apiConfigDropdown).toBeDisabled()
+		})
 
-			// The component may not have implemented this feature yet, skip this test for now
-			// Or check if the component at least exists (indicating that the component can render normally)
-			expect(apiConfigDropdown).toBeTruthy()
+		it("should send loadApiConfigurationById when selecting another config", () => {
+			render(<ChatTextArea {...defaultProps} />)
+			openApiConfigDropdown()
 
-			// TODO: If the disable functionality is implemented in the future, the following checks can be restored:
-			// const isDisabled = apiConfigDropdown.hasAttribute("disabled") ||
-			//                   apiConfigDropdown.getAttribute("aria-disabled") === "true" ||
-			//                   apiConfigDropdown.classList.contains("disabled") ||
-			//                   apiConfigDropdown.classList.contains("opacity-50")
-			// expect(isDisabled).toBe(true)
+			fireEvent.click(screen.getByText("backup"))
+
+			expect(mockPostMessage).toHaveBeenCalledWith({
+				type: "loadApiConfigurationById",
+				text: "config-alt",
+			})
+		})
+
+		it("should toggle lockApiConfigAcrossModes off from the selector footer when enabled by default", () => {
+			render(<ChatTextArea {...defaultProps} />)
+			openApiConfigDropdown()
+
+			fireEvent.click(screen.getByLabelText("chat:unlockApiConfigAcrossModes"))
+
+			expect(mockPostMessage).toHaveBeenCalledWith({
+				type: "lockApiConfigAcrossModes",
+				bool: false,
+			})
+		})
+
+		it("filters non-costrict profiles out of the selector in plan/spec modes", () => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				currentApiConfigName: "costrict-default",
+				listApiConfigMeta: [
+					{ id: "config-costrict", name: "costrict-default", modelId: "auto", apiProvider: "costrict" },
+					{ id: "config-alt", name: "backup", modelId: "gpt-4", apiProvider: "anthropic" },
+				],
+				pinnedApiConfigs: {},
+				togglePinnedApiConfig: vi.fn(),
+				apiConfiguration: {
+					apiProvider: "costrict",
+				},
+				organizationAllowList: { allowAll: true, providers: {} },
+				reviewTask: { status: "idle" },
+				lockApiConfigAcrossModes: false,
+				taskHistory: [],
+				cwd: "/test/workspace",
+				costrictCodeMode: "plan",
+			})
+
+			render(<ChatTextArea {...defaultProps} />)
+			openApiConfigDropdown()
+
+			expect(screen.getByText("costrict-default")).toBeInTheDocument()
+			expect(screen.queryByText("backup")).not.toBeInTheDocument()
 		})
 
 		describe("enter key behavior", () => {
@@ -1201,11 +1250,9 @@ describe("ChatTextArea", () => {
 
 			expect(sendButton).toBeInTheDocument()
 
-			// Check that the button is visible (has opacity-100 class when content exists)
-			expect(sendButton).toHaveClass("opacity-100")
+			// Check that the button is visible (has hover:opacity-100 class when content exists)
+			expect(sendButton).toHaveClass("hover:opacity-100")
 			expect(sendButton).toHaveClass("cursor-pointer")
-			expect(sendButton).not.toHaveClass("opacity-60")
-			expect(sendButton).not.toHaveClass("cursor-not-allowed")
 		})
 
 		it("should hide send button when there is no text and no images", () => {
@@ -1219,11 +1266,9 @@ describe("ChatTextArea", () => {
 
 			expect(sendButton).toBeInTheDocument()
 
-			// Check that the button is hidden (has opacity-60 class when no content)
-			expect(sendButton).toHaveClass("opacity-60")
+			// Check that the button is hidden (has hidden and pointer-events-none when no content)
 			expect(sendButton).toHaveClass("cursor-not-allowed")
-			expect(sendButton).not.toHaveClass("opacity-100")
-			expect(sendButton).not.toHaveClass("cursor-pointer")
+			expect(sendButton).toHaveClass("opacity-40")
 		})
 
 		it("should show send button when there is text but no images", () => {
@@ -1238,7 +1283,7 @@ describe("ChatTextArea", () => {
 			expect(sendButton).toBeInTheDocument()
 
 			// Check that the button is visible
-			expect(sendButton).toHaveClass("opacity-100")
+			expect(sendButton).toHaveClass("hover:opacity-100")
 			expect(sendButton).toHaveClass("pointer-events-auto")
 		})
 
@@ -1260,7 +1305,7 @@ describe("ChatTextArea", () => {
 			expect(sendButton).toBeInTheDocument()
 
 			// Check that the button is visible
-			expect(sendButton).toHaveClass("opacity-100")
+			expect(sendButton).toHaveClass("hover:opacity-100")
 			expect(sendButton).toHaveClass("pointer-events-auto")
 		})
 	})

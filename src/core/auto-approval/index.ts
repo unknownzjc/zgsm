@@ -1,17 +1,55 @@
-import { type ClineAsk, type McpServerUse, type FollowUpData, isNonBlockingAsk } from "@roo-code/types"
+import {
+	type ClineAsk,
+	type ClineSayTool,
+	type McpServerUse,
+	type FollowUpData,
+	type ExtensionState,
+	isNonBlockingAsk,
+} from "@roo-code/types"
 
-import type { ClineSayTool, ExtensionState } from "../../shared/ExtensionMessage"
+import path from "path"
+import os from "os"
+
 import { ClineAskResponse } from "../../shared/WebviewMessage"
 
 import { isWriteToolAction, isReadOnlyToolAction } from "./tools"
 import { isMcpToolAlwaysAllowed } from "./mcp"
 import { getCommandDecision } from "./commands"
 
-// We have 10 different actions that can be auto-approved.
+/**
+ * Get all global skill directory prefixes.
+ * Files inside these directories are considered safe to read without approval.
+ * Includes mode-specific skill directories (skills-review, skills-security-review, etc.)
+ */
+function getSkillDirectoryPrefixes(): string[] {
+	const homeDir = os.homedir()
+	const baseDirs = [
+		path.join(homeDir, ".costrict"),
+		path.join(homeDir, ".roo"),
+		path.join(homeDir, ".agents"),
+		path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir, ".config"), "costrict"),
+	]
+	const prefixes: string[] = []
+	for (const base of baseDirs) {
+		prefixes.push(path.join(base, "skills"))
+		prefixes.push(path.join(base, "skills-review"))
+		prefixes.push(path.join(base, "skills-security-review"))
+	}
+	return prefixes
+}
+
+/**
+ * Check if a file path is inside any known skill directory.
+ */
+function isInsideSkillDirectory(filePath: string): boolean {
+	const normalized = path.resolve(filePath).toLowerCase()
+	return getSkillDirectoryPrefixes().some((prefix) => normalized.startsWith(prefix.toLowerCase()))
+}
+
+// We have auto-approval actions for different categories.
 export type AutoApprovalState =
 	| "alwaysAllowReadOnly"
 	| "alwaysAllowWrite"
-	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
@@ -86,10 +124,6 @@ export async function checkAutoApproval({
 		}
 	}
 
-	if (ask === "browser_action_launch") {
-		return state.alwaysAllowBrowser === true ? { decision: "approve" } : { decision: "ask" }
-	}
-
 	if (ask === "use_mcp_server") {
 		if (!text) {
 			return { decision: "ask" }
@@ -147,14 +181,11 @@ export async function checkAutoApproval({
 			return { decision: "approve" }
 		}
 
-		if (tool?.tool === "fetchInstructions") {
-			if (tool.content === "create_mode") {
-				return state.alwaysAllowModeSwitch === true ? { decision: "approve" } : { decision: "ask" }
-			}
-
-			if (tool.content === "create_mcp_server") {
-				return state.alwaysAllowMcp === true ? { decision: "approve" } : { decision: "ask" }
-			}
+		// The skill tool only loads pre-defined instructions from global or project skills.
+		// It does not read arbitrary files - skills must be explicitly installed/defined by the user.
+		// Auto-approval is intentional to provide a seamless experience when loading task instructions.
+		if (tool.tool === "skill") {
+			return { decision: "approve" }
 		}
 
 		if (tool?.tool === "switchMode") {
@@ -168,6 +199,19 @@ export async function checkAutoApproval({
 		const isOutsideWorkspace = !!tool.isOutsideWorkspace
 
 		if (isReadOnlyToolAction(tool)) {
+			// Auto-approve reads from skill directories (user-installed instruction files)
+			if (isOutsideWorkspace && tool.content && isInsideSkillDirectory(tool.content)) {
+				return { decision: "approve" }
+			}
+			// Auto-approve batch reads where all files are inside skill directories
+			if (tool.batchFiles && Array.isArray(tool.batchFiles)) {
+				const allInSkillDir = (
+					tool.batchFiles as Array<{ content?: string; isOutsideWorkspace?: boolean }>
+				).every((f) => f.isOutsideWorkspace && f.content && isInsideSkillDirectory(f.content))
+				if (allInSkillDir) {
+					return { decision: "approve" }
+				}
+			}
 			return state.alwaysAllowReadOnly === true &&
 				(!isOutsideWorkspace || state.alwaysAllowReadOnlyOutsideWorkspace === true)
 				? { decision: "approve" }

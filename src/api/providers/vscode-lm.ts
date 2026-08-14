@@ -1,16 +1,41 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import * as vscode from "vscode"
+import OpenAI from "openai"
 
 import { type ModelInfo, openAiModelInfoSaneDefaults } from "@roo-code/types"
 
 import type { ApiHandlerOptions } from "../../shared/api"
 import { SELECTOR_SEPARATOR, stringifyVsCodeLmModelSelector } from "../../shared/vsCodeSelectorUtils"
+import { normalizeToolSchema } from "../../utils/json-schema"
 
 import { ApiStream } from "../transform/stream"
 import { convertToVsCodeLmMessages, extractTextCountFromMessage } from "../transform/vscode-lm-format"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+
+// Hot-path logging (stream chunk loop) is gated to dev only to avoid per-token
+// console overhead in production. Mirrors the isDev convention in costrict.ts.
+const isDev = process.env.NODE_ENV === "development"
+
+/**
+ * Converts OpenAI-format tools to VSCode Language Model tools.
+ * Normalizes the JSON Schema to draft 2020-12 compliant format required by
+ * GitHub Copilot's backend, converting type: ["T", "null"] to anyOf format.
+ * @param tools Array of OpenAI ChatCompletionTool definitions
+ * @returns Array of VSCode LanguageModelChatTool definitions
+ */
+function convertToVsCodeLmTools(tools: OpenAI.Chat.ChatCompletionTool[]): vscode.LanguageModelChatTool[] {
+	return tools
+		.filter((tool) => tool.type === "function")
+		.map((tool) => ({
+			name: tool.function.name,
+			description: tool.function.description || "",
+			inputSchema: tool.function.parameters
+				? normalizeToolSchema(tool.function.parameters as Record<string, unknown>)
+				: undefined,
+		}))
+}
 
 /**
  * Handles interaction with VS Code's Language Model API for chat-based operations.
@@ -208,15 +233,21 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 			return 0
 		}
 
-		if (!this.currentRequestCancellation) {
-			console.warn("CoStrict <Language Model API>: No cancellation token available for token counting")
-			return 0
-		}
-
 		// Validate input
 		if (!text) {
 			console.debug("CoStrict <Language Model API>: Empty text provided for token counting")
 			return 0
+		}
+
+		// Create a temporary cancellation token if we don't have one (e.g., when called outside a request)
+		let cancellationToken: vscode.CancellationToken
+		let tempCancellation: vscode.CancellationTokenSource | null = null
+
+		if (this.currentRequestCancellation) {
+			cancellationToken = this.currentRequestCancellation.token
+		} else {
+			tempCancellation = new vscode.CancellationTokenSource()
+			cancellationToken = tempCancellation.token
 		}
 
 		try {
@@ -224,7 +255,7 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 			let tokenCount: number
 
 			if (typeof text === "string") {
-				tokenCount = await this.client.countTokens(text, this.currentRequestCancellation.token)
+				tokenCount = await this.client.countTokens(text, cancellationToken)
 			} else if (text instanceof vscode.LanguageModelChatMessage) {
 				// For chat messages, ensure we have content
 				if (!text.content || (Array.isArray(text.content) && text.content.length === 0)) {
@@ -232,7 +263,7 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 					return 0
 				}
 				const countMessage = extractTextCountFromMessage(text)
-				tokenCount = await this.client.countTokens(countMessage, this.currentRequestCancellation.token)
+				tokenCount = await this.client.countTokens(countMessage, cancellationToken)
 			} else {
 				console.warn("CoStrict <Language Model API>: Invalid input type for token counting")
 				return 0
@@ -266,6 +297,11 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 			}
 
 			return 0 // Fallback to prevent stream interruption
+		} finally {
+			// Clean up temporary cancellation token
+			if (tempCancellation) {
+				tempCancellation.dispose()
+			}
 		}
 	}
 
@@ -361,13 +397,11 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 		let accumulatedText: string = ""
 
 		try {
-			// Create the response stream with minimal required options
+			// Create the response stream with required options
 			const requestOptions: vscode.LanguageModelChatRequestOptions = {
 				justification: `CoStrict would like to use '${client.name}' from '${client.vendor}', Click 'Allow' to proceed.`,
+				tools: convertToVsCodeLmTools(metadata?.tools ?? []),
 			}
-
-			// Note: Tool support is currently provided by the VSCode Language Model API directly
-			// Extensions can register tools using vscode.lm.registerTool()
 
 			const response: vscode.LanguageModelChatResponse = await client.sendRequest(
 				vsCodeLmMessages,
@@ -380,7 +414,12 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 				if (chunk instanceof vscode.LanguageModelTextPart) {
 					// Validate text part value
 					if (typeof chunk.value !== "string") {
-						console.warn("CoStrict <Language Model API>: Invalid text part value received:", chunk.value)
+						if (isDev) {
+							console.warn(
+								"CoStrict <Language Model API>: Invalid text part value received:",
+								chunk.value,
+							)
+						}
 						continue
 					}
 
@@ -393,42 +432,49 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 					try {
 						// Validate tool call parameters
 						if (!chunk.name || typeof chunk.name !== "string") {
-							console.warn("CoStrict <Language Model API>: Invalid tool name received:", chunk.name)
+							if (isDev) {
+								console.warn("CoStrict <Language Model API>: Invalid tool name received:", chunk.name)
+							}
 							continue
 						}
 
 						if (!chunk.callId || typeof chunk.callId !== "string") {
-							console.warn("CoStrict <Language Model API>: Invalid tool callId received:", chunk.callId)
+							if (isDev) {
+								console.warn(
+									"CoStrict <Language Model API>: Invalid tool callId received:",
+									chunk.callId,
+								)
+							}
 							continue
 						}
 
 						// Ensure input is a valid object
 						if (!chunk.input || typeof chunk.input !== "object") {
-							console.warn("CoStrict <Language Model API>: Invalid tool input received:", chunk.input)
+							if (isDev) {
+								console.warn("CoStrict <Language Model API>: Invalid tool input received:", chunk.input)
+							}
 							continue
 						}
 
-						// Convert tool calls to text format with proper error handling
-						const toolCall = {
-							type: "tool_call",
-							name: chunk.name,
-							arguments: chunk.input,
-							callId: chunk.callId,
+						// Log tool call for debugging
+						if (isDev) {
+							console.debug("CoStrict <Language Model API>: Processing tool call:", {
+								name: chunk.name,
+								callId: chunk.callId,
+								inputSize: JSON.stringify(chunk.input).length,
+							})
 						}
 
-						const toolCallText = JSON.stringify(toolCall)
-						accumulatedText += toolCallText
-
-						// Log tool call for debugging
-						console.debug("CoStrict <Language Model API>: Processing tool call:", {
-							name: chunk.name,
-							callId: chunk.callId,
-							inputSize: JSON.stringify(chunk.input).length,
-						})
-
-						yield {
-							type: "text",
-							text: toolCallText,
+						// Yield native tool_call chunk when tools are provided
+						if (metadata?.tools?.length) {
+							const argumentsString = JSON.stringify(chunk.input)
+							accumulatedText += argumentsString
+							yield {
+								type: "tool_call",
+								id: chunk.callId,
+								name: chunk.name,
+								arguments: argumentsString,
+							}
 						}
 					} catch (error) {
 						console.error("CoStrict <Language Model API>: Failed to process tool call:", error)
@@ -436,7 +482,9 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 						continue
 					}
 				} else {
-					console.warn("CoStrict <Language Model API>: Unknown chunk type received:", chunk)
+					if (isDev) {
+						console.warn("CoStrict <Language Model API>: Unknown chunk type received:", chunk)
+					}
 				}
 			}
 

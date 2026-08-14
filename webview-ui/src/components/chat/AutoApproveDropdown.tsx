@@ -26,7 +26,7 @@ interface AutoApproveDropdownProps {
 
 export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }: AutoApproveDropdownProps) => {
 	const [open, setOpen] = React.useState(false)
-	const portalContainer = useRooPortal("roo-portal")
+	const portalContainer = useRooPortal("costrict-portal")
 	const { t } = useAppTranslation()
 
 	const {
@@ -35,7 +35,6 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 		setAlwaysAllowReadOnly,
 		setAlwaysAllowWrite,
 		setAlwaysAllowExecute,
-		setAlwaysAllowBrowser,
 		setAlwaysAllowMcp,
 		setAlwaysAllowModeSwitch,
 		setAlwaysAllowSubtasks,
@@ -57,9 +56,6 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 					break
 				case "alwaysAllowExecute":
 					setAlwaysAllowExecute(value)
-					break
-				case "alwaysAllowBrowser":
-					setAlwaysAllowBrowser(value)
 					break
 				case "alwaysAllowMcp":
 					setAlwaysAllowMcp(value)
@@ -86,7 +82,6 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 			setAlwaysAllowReadOnly,
 			setAlwaysAllowWrite,
 			setAlwaysAllowExecute,
-			setAlwaysAllowBrowser,
 			setAlwaysAllowMcp,
 			setAlwaysAllowModeSwitch,
 			setAlwaysAllowSubtasks,
@@ -163,7 +158,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 						"max-[300px]:shrink-0",
 						disabled
 							? "opacity-50 cursor-not-allowed"
-							: "opacity-90 hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
+							: "opacity-90 hover:opacity-100 bg-vscode-input-background hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
 						triggerClassName,
 					)}>
 					{!effectiveAutoApprovalEnabled ? (

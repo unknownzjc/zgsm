@@ -1,5 +1,6 @@
 import React from "react"
 import { VSCodeTextField, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+
 import { type ProviderSettings } from "@roo-code/types"
 
 interface QwenCodeProps {
@@ -19,7 +20,7 @@ export const QwenCode: React.FC<QwenCodeProps> = ({ apiConfiguration, setApiConf
 	const handleBlur = (e: Event | React.FormEvent<HTMLElement>) => {
 		const element = e.target as HTMLInputElement
 		// If the field is empty on blur, set it to the default value
-		if (!element.value || element.value.trim() === "") {
+		if (!element.value || element.value?.trim() === "") {
 			setApiConfigurationField("qwenCodeOauthPath", defaultPath)
 		}
 	}

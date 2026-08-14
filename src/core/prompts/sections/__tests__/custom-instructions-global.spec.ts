@@ -1,18 +1,31 @@
 import * as path from "path"
 
 // Use vi.hoisted to ensure mocks are available during hoisting
-const { mockHomedir, mockStat, mockReadFile, mockReaddir, mockGetRooDirectoriesForCwd, mockGetGlobalRooDirectory } =
-	vi.hoisted(() => ({
-		mockHomedir: vi.fn(),
-		mockStat: vi.fn(),
-		mockReadFile: vi.fn(),
-		mockReaddir: vi.fn(),
-		mockGetRooDirectoriesForCwd: vi.fn(),
-		mockGetGlobalRooDirectory: vi.fn(),
-	}))
+const {
+	mockHomedir,
+	mockStat,
+	mockReadFile,
+	mockReaddir,
+	mockLstat,
+	mockGetRooDirectoriesForCwd,
+	mockGetAllRooDirectoriesForCwd,
+	mockGetAgentsDirectoriesForCwd,
+	mockGetGlobalRooDirectory,
+} = vi.hoisted(() => ({
+	mockHomedir: vi.fn(),
+	mockStat: vi.fn(),
+	mockReadFile: vi.fn(),
+	mockReaddir: vi.fn(),
+	mockLstat: vi.fn(),
+	mockGetRooDirectoriesForCwd: vi.fn(),
+	mockGetAllRooDirectoriesForCwd: vi.fn(),
+	mockGetAgentsDirectoriesForCwd: vi.fn(),
+	mockGetGlobalRooDirectory: vi.fn(),
+}))
 
 // Mock os module
-vi.mock("os", () => ({
+vi.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	default: {
 		homedir: mockHomedir,
 	},
@@ -25,12 +38,15 @@ vi.mock("fs/promises", () => ({
 		stat: mockStat,
 		readFile: mockReadFile,
 		readdir: mockReaddir,
+		lstat: mockLstat,
 	},
 }))
 
 // Mock the roo-config service
 vi.mock("../../../../services/roo-config", () => ({
 	getRooDirectoriesForCwd: mockGetRooDirectoriesForCwd,
+	getAllRooDirectoriesForCwd: mockGetAllRooDirectoriesForCwd,
+	getAgentsDirectoriesForCwd: mockGetAgentsDirectoriesForCwd,
 	getGlobalRooDirectory: mockGetGlobalRooDirectory,
 }))
 
@@ -46,7 +62,13 @@ describe("custom-instructions global .roo support", () => {
 		vi.clearAllMocks()
 		mockHomedir.mockReturnValue(mockHomeDir)
 		mockGetRooDirectoriesForCwd.mockReturnValue([globalRooDir, projectRooDir])
+		// getAllRooDirectoriesForCwd is now async and returns the same directories by default
+		mockGetAllRooDirectoriesForCwd.mockResolvedValue([globalRooDir, projectRooDir])
+		// getAgentsDirectoriesForCwd returns parent directories (without .roo)
+		mockGetAgentsDirectoriesForCwd.mockResolvedValue([mockCwd])
 		mockGetGlobalRooDirectory.mockReturnValue(globalRooDir)
+		// Default lstat to reject (file not found)
+		mockLstat.mockRejectedValue(new Error("ENOENT"))
 	})
 
 	afterEach(() => {
@@ -65,7 +87,11 @@ describe("custom-instructions global .roo support", () => {
 
 			// Mock directory reading for global rules
 			mockReaddir.mockResolvedValueOnce([
-				{ name: "rules.md", isFile: () => true, isSymbolicLink: () => false } as any,
+				{
+					name: "rules.md",
+					isFile: () => true,
+					isSymbolicLink: () => false,
+				} as any,
 			])
 
 			// Mock file reading for the rules.md file
@@ -87,7 +113,11 @@ describe("custom-instructions global .roo support", () => {
 
 			// Mock directory reading for project rules
 			mockReaddir.mockResolvedValueOnce([
-				{ name: "rules.md", isFile: () => true, isSymbolicLink: () => false } as any,
+				{
+					name: "rules.md",
+					isFile: () => true,
+					isSymbolicLink: () => false,
+				} as any,
 			])
 
 			// Mock file reading
@@ -112,8 +142,20 @@ describe("custom-instructions global .roo support", () => {
 
 			// Mock directory reading
 			mockReaddir
-				.mockResolvedValueOnce([{ name: "global.md", isFile: () => true, isSymbolicLink: () => false } as any])
-				.mockResolvedValueOnce([{ name: "project.md", isFile: () => true, isSymbolicLink: () => false } as any])
+				.mockResolvedValueOnce([
+					{
+						name: "global.md",
+						isFile: () => true,
+						isSymbolicLink: () => false,
+					} as any,
+				])
+				.mockResolvedValueOnce([
+					{
+						name: "project.md",
+						isFile: () => true,
+						isSymbolicLink: () => false,
+					} as any,
+				])
 
 			// Mock file reading
 			mockReadFile.mockResolvedValueOnce("global rule content").mockResolvedValueOnce("project rule content")
@@ -182,10 +224,18 @@ describe("custom-instructions global .roo support", () => {
 			// Mock directory reading for mode-specific rules
 			mockReaddir
 				.mockResolvedValueOnce([
-					{ name: "global-mode.md", isFile: () => true, isSymbolicLink: () => false } as any,
+					{
+						name: "global-mode.md",
+						isFile: () => true,
+						isSymbolicLink: () => false,
+					} as any,
 				])
 				.mockResolvedValueOnce([
-					{ name: "project-mode.md", isFile: () => true, isSymbolicLink: () => false } as any,
+					{
+						name: "project-mode.md",
+						isFile: () => true,
+						isSymbolicLink: () => false,
+					} as any,
 				])
 
 			// Mock file reading for mode-specific rules

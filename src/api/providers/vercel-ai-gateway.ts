@@ -61,11 +61,9 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 			max_completion_tokens: info.maxTokens,
 			stream: true,
 			stream_options: { include_usage: true },
-			...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-			...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-			...(metadata?.toolProtocol === "native" && {
-				parallel_tool_calls: metadata.parallelToolCalls ?? false,
-			}),
+			tools: this.convertToolsForOpenAI(metadata?.tools),
+			tool_choice: metadata?.tool_choice,
+			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
 		const completion = await this.client.chat.completions.create(body)
@@ -122,7 +120,9 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 
 			requestOptions.max_completion_tokens = info.maxTokens
 
-			const response = await this.client.chat.completions.create(requestOptions, { signal: metadata?.signal })
+			const response = await this.client.chat.completions.create(requestOptions, {
+				signal: metadata?.signal,
+			})
 			return response.choices[0]?.message.content || ""
 		} catch (error) {
 			if (error instanceof Error) {

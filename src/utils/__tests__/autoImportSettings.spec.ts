@@ -30,7 +30,7 @@ vi.mock("vscode", () => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -55,17 +55,37 @@ vi.mock("fs/promises", () => ({
 	readFile: vi.fn(),
 }))
 
-vi.mock("path", () => ({
-	join: vi.fn((...args: string[]) => args.join("/")),
-	isAbsolute: vi.fn((p: string) => p.startsWith("/")),
-	basename: vi.fn((p: string) => p.split("/").pop() || ""),
-	sep: "/",
-}))
+vi.mock("path", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("path")>()
+	return {
+		...actual,
+		default: {
+			...actual,
+			join: vi.fn((...args: string[]) => args.join("/")),
+			isAbsolute: vi.fn((p: string) => p.startsWith("/")),
+			basename: vi.fn((p: string) => p.split("/").pop() || ""),
+			sep: "/",
+		},
+		join: vi.fn((...args: string[]) => args.join("/")),
+		isAbsolute: vi.fn((p: string) => p.startsWith("/")),
+		basename: vi.fn((p: string) => p.split("/").pop() || ""),
+		sep: "/",
+	}
+})
 
-vi.mock("os", () => ({
-	homedir: vi.fn(() => "/home/user"),
-	tmpdir: vi.fn(() => "/tmp"),
-}))
+vi.mock("os", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("os")>()
+	return {
+		...actual,
+		default: {
+			...actual,
+			homedir: vi.fn(() => "/home/user"),
+			tmpdir: vi.fn(() => "/tmp"),
+		},
+		homedir: vi.fn(() => "/home/user"),
+		tmpdir: vi.fn(() => "/tmp"),
+	}
+})
 
 vi.mock("../fs", () => ({
 	fileExistsAtPath: vi.fn(),
@@ -148,13 +168,19 @@ describe("autoImportSettings", () => {
 		// Reset fs mock
 		vi.mocked(fsPromises.readFile).mockReset()
 		vi.mocked(fileExistsAtPath).mockReset()
-		vi.mocked(vscode.workspace.getConfiguration).mockReset()
+		vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+			get: vi.fn().mockReturnValue(""),
+			update: vi.fn(),
+			has: vi.fn(),
+			inspect: vi.fn(),
+		} as any)
 		vi.mocked(vscode.window.showInformationMessage).mockReset()
 		vi.mocked(vscode.window.showWarningMessage).mockReset()
 	})
 
 	afterEach(() => {
-		vi.restoreAllMocks()
+		// Note: We don't call vi.restoreAllMocks() here because it affects other test files
+		// that also use vscode mocks. Instead, we just reset the mocks in beforeEach.
 	})
 
 	it("should skip auto-import when no settings path is specified", async () => {

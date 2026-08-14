@@ -1,19 +1,13 @@
 import React, { useState, useEffect } from "react"
 import { Trans } from "react-i18next"
-import {
-	VSCodeCheckbox,
-	VSCodeLink,
-	VSCodePanels,
-	VSCodePanelTab,
-	VSCodePanelView,
-} from "@vscode/webview-ui-toolkit/react"
-import { Webhook } from "lucide-react"
+import { VSCodePanels, VSCodePanelTab, VSCodePanelView } from "@vscode/webview-ui-toolkit/react"
 
-import { McpServer } from "@roo/mcp"
+import type { McpServer } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
+import { useTooManyTools } from "@src/hooks/useTooManyTools"
 import {
 	Button,
 	Dialog,
@@ -26,7 +20,7 @@ import {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	StandardTooltip,
 } from "@src/components/ui"
-import { buildDocLink } from "@src/utils/docLinks"
+// import { buildDocLink } from "@src/utils/docLinks"
 import { Section } from "@src/components/settings/Section"
 import { SectionHeader } from "@src/components/settings/SectionHeader"
 
@@ -36,75 +30,66 @@ import McpEnabledToggle from "./McpEnabledToggle"
 import { McpErrorRow } from "./McpErrorRow"
 
 const McpView = () => {
-	const {
-		mcpServers: servers,
-		alwaysAllowMcp,
-		mcpEnabled,
-		enableMcpServerCreation,
-		setEnableMcpServerCreation,
-	} = useExtensionState()
+	const { mcpServers: servers, alwaysAllowMcp, mcpEnabled } = useExtensionState()
 
 	const { t } = useAppTranslation()
+	const { isOverThreshold, title, message } = useTooManyTools()
 
 	return (
 		<div>
-			<SectionHeader>
-				<div className="flex items-center gap-2">
-					<Webhook className="w-4" />
-					<div>{t("mcp:title")}</div>
-				</div>
-			</SectionHeader>
+			<SectionHeader>{t("mcp:title")}</SectionHeader>
 
 			<Section>
 				<div
 					style={{
-						color: "var(--vscode-foreground)",
-						fontSize: "13px",
+						color: "var(--vscode-descriptionForeground)",
+						fontSize: "12px",
 						marginBottom: "10px",
 						marginTop: "5px",
 					}}>
-					<Trans i18nKey="mcp:description">
-						<VSCodeLink
-							href={buildDocLink("features/mcp/using-mcp-in-roo", "mcp_settings")}
-							style={{ display: "inline" }}>
-							Learn More
-						</VSCodeLink>
-					</Trans>
+					<Trans
+						i18nKey="mcp:description"
+						components={{
+							DocsLink: (
+								<a
+									href="https://docs.costrict.ai/product-features/mcp"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-vscode-textLink-foreground hover:underline">
+									{t("common:docsLink.label")}
+								</a>
+							),
+						}}></Trans>
 				</div>
 
 				<McpEnabledToggle />
 
 				{mcpEnabled && (
 					<>
-						<div style={{ marginBottom: 15 }}>
-							<VSCodeCheckbox
-								checked={enableMcpServerCreation}
-								onChange={(e: any) => {
-									setEnableMcpServerCreation(e.target.checked)
-									vscode.postMessage({ type: "enableMcpServerCreation", bool: e.target.checked })
-								}}>
-								<span style={{ fontWeight: "500" }}>{t("mcp:enableServerCreation.title")}</span>
-							</VSCodeCheckbox>
-							<div
-								style={{
-									fontSize: "12px",
-									marginTop: "5px",
-									color: "var(--vscode-descriptionForeground)",
-								}}>
-								<Trans i18nKey="mcp:enableServerCreation.description">
-									<VSCodeLink
-										href={buildDocLink(
-											"features/mcp/using-mcp-in-roo#how-to-use-roo-to-create-an-mcp-server",
-											"mcp_server_creation",
-										)}
-										style={{ display: "inline" }}>
-										Learn about server creation
-									</VSCodeLink>
-									<strong>new</strong>
-								</Trans>
-								<p style={{ marginTop: "8px" }}>{t("mcp:enableServerCreation.hint")}</p>
+						{/* Too Many Tools Warning */}
+						{isOverThreshold && (
+							<div style={{ marginBottom: 15 }}>
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: "6px",
+										fontWeight: "500",
+										color: "var(--vscode-editorWarning-foreground)",
+										marginBottom: "5px",
+									}}>
+									<span className="codicon codicon-warning" />
+									{title}
+								</div>
+								<div
+									style={{
+										fontSize: "12px",
+										color: "var(--vscode-descriptionForeground)",
+									}}>
+									{message}
+								</div>
 							</div>
-						</div>
+						)}
 
 						{/* Server List */}
 						{servers.length > 0 && (
@@ -175,21 +160,19 @@ const McpView = () => {
 								</Button>
 							</StandardTooltip> */}
 						</div>
-						<div
+						{/* <div
 							style={{
 								marginTop: "15px",
 								fontSize: "12px",
 								color: "var(--vscode-descriptionForeground)",
 							}}>
-							{/* <VSCodeLink
-								href={buildDocLink(
-									"features/mcp/using-mcp-in-roo#editing-mcp-settings-files",
-									"mcp_edit_settings",
-								)}
+							<VSCodeLink
+								href="https://docs.costrict.ai/product-features/mcp"
+								target="_blank"
 								style={{ display: "inline" }}>
 								{t("mcp:learnMoreEditingSettings")}
-							</VSCodeLink> */}
-						</div>
+							</VSCodeLink>
+						</div> */}
 					</>
 				)}
 			</Section>
@@ -298,7 +281,14 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 						style={{ marginRight: "8px" }}
 					/>
 				)}
-				<span style={{ flex: 1 }}>
+				<span
+					style={{
+						flex: 1,
+						minWidth: 0,
+						overflow: "hidden",
+						whiteSpace: "nowrap",
+						textOverflow: "ellipsis",
+					}}>
 					{server.name}
 					{server.source && (
 						<span
@@ -315,7 +305,12 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 					)}
 				</span>
 				<div
-					style={{ display: "flex", alignItems: "center", marginRight: "8px" }}
+					style={{
+						display: "flex",
+						alignItems: "center",
+						marginRight: "8px",
+						flexShrink: 0,
+					}}
 					onClick={(e) => e.stopPropagation()}>
 					<Button
 						variant="ghost"
@@ -340,9 +335,10 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 						borderRadius: "50%",
 						background: getStatusColor(),
 						marginLeft: "8px",
+						flexShrink: 0,
 					}}
 				/>
-				<div style={{ marginLeft: "8px" }}>
+				<div style={{ marginLeft: "8px", flexShrink: 0 }}>
 					<ToggleSwitch
 						checked={!server.disabled}
 						onChange={() => {

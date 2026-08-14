@@ -1,10 +1,12 @@
+import type { ClineAskUseMcpServer, McpExecutionStatus } from "@roo-code/types"
+
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
-import { ClineAskUseMcpServer } from "../../shared/ExtensionMessage"
-import { McpExecutionStatus } from "@roo-code/types"
 import { t } from "../../i18n"
-import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
+import { toolNamesMatch } from "../../utils/mcp-name"
+
+import { BaseTool, ToolCallbacks } from "./BaseTool"
 
 interface UseMcpToolParams {
 	server_name: string
@@ -24,18 +26,8 @@ type ValidationResult =
 export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 	readonly name = "use_mcp_tool" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): UseMcpToolParams {
-		// For legacy params, arguments come as a JSON string that needs parsing
-		// We don't parse here - let validateParams handle parsing and errors
-		return {
-			server_name: params.server_name || "",
-			tool_name: params.tool_name || "",
-			arguments: params.arguments as any, // Keep as string for validation to handle
-		}
-	}
-
 	async execute(params: UseMcpToolParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { askApproval, handleError, pushToolResult, toolProtocol } = callbacks
+		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
 			// Validate parameters
@@ -52,6 +44,11 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 				return
 			}
 
+			// Use the resolved tool name (original name from the server) for MCP calls
+			// This handles cases where models mangle hyphens to underscores
+			const resolvedToolName = toolValidation.resolvedToolName ?? toolName
+			const resolvedSource = toolValidation.resolvedSource
+
 			// Reset mistake count on successful validation
 			task.consecutiveMistakeCount = 0
 
@@ -59,25 +56,28 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 			const completeMessage = JSON.stringify({
 				type: "use_mcp_tool",
 				serverName,
-				toolName,
+				toolName: resolvedToolName,
 				arguments: params.arguments ? JSON.stringify(params.arguments) : undefined,
 			} satisfies ClineAskUseMcpServer)
 
-			const executionId = task.lastMessageTs?.toString() ?? Date.now().toString()
 			const didApprove = await askApproval("use_mcp_server", completeMessage)
 
 			if (!didApprove) {
 				return
 			}
 
+			// Read ask timestamp AFTER approval so the executionId matches the actual UI card.
+			const executionId = task.lastMessageTs?.toString() ?? Date.now().toString()
+
 			// Execute the tool and process results
 			await this.executeToolAndProcessResult(
 				task,
 				serverName,
-				toolName,
+				resolvedToolName,
 				parsedArguments,
 				executionId,
 				pushToolResult,
+				resolvedSource,
 			)
 		} catch (error) {
 			await handleError("executing MCP tool", error as Error)
@@ -88,9 +88,9 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 		const params = block.params
 		const partialMessage = JSON.stringify({
 			type: "use_mcp_tool",
-			serverName: this.removeClosingTag("server_name", params.server_name, block.partial),
-			toolName: this.removeClosingTag("tool_name", params.tool_name, block.partial),
-			arguments: this.removeClosingTag("arguments", params.arguments, block.partial),
+			serverName: params.server_name ?? "",
+			toolName: params.tool_name ?? "",
+			arguments: params.arguments,
 		} satisfies ClineAskUseMcpServer)
 
 		await task.ask("use_mcp_server", partialMessage, true).catch(() => {})
@@ -115,31 +115,22 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 			return { isValid: false }
 		}
 
-		// Parse arguments if provided
+		// Native-only: arguments are already a structured object.
 		let parsedArguments: Record<string, unknown> | undefined
-
-		if (params.arguments) {
-			// If arguments is already an object (from native protocol), use it
-			if (typeof params.arguments === "object") {
-				parsedArguments = params.arguments
-			} else if (typeof params.arguments === "string") {
-				// If arguments is a string (from legacy/XML protocol), parse it
-				try {
-					parsedArguments = JSON.parse(params.arguments)
-				} catch (error) {
-					task.consecutiveMistakeCount++
-					task.recordToolError("use_mcp_tool")
-					await task.say("error", t("mcp:errors.invalidJsonArgument", { toolName: params.tool_name }))
-					task.didToolFailInCurrentTurn = true
-
-					pushToolResult(
-						formatResponse.toolError(
-							formatResponse.invalidMcpToolArgumentError(params.server_name, params.tool_name),
-						),
-					)
-					return { isValid: false }
-				}
+		if (params.arguments !== undefined) {
+			if (typeof params.arguments !== "object" || params.arguments === null || Array.isArray(params.arguments)) {
+				task.consecutiveMistakeCount++
+				task.recordToolError("use_mcp_tool")
+				await task.say("error", t("mcp:errors.invalidJsonArgument", { toolName: params.tool_name }))
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(
+					formatResponse.toolError(
+						formatResponse.invalidMcpToolArgumentError(params.server_name, params.tool_name),
+					),
+				)
+				return { isValid: false }
 			}
+			parsedArguments = params.arguments
 		}
 
 		return {
@@ -155,7 +146,12 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 		serverName: string,
 		toolName: string,
 		pushToolResult: (content: string) => void,
-	): Promise<{ isValid: boolean; availableTools?: string[] }> {
+	): Promise<{
+		isValid: boolean
+		availableTools?: string[]
+		resolvedToolName?: string
+		resolvedSource?: "global" | "project"
+	}> {
 		try {
 			// Get the MCP hub to access server information
 			const provider = task.providerRef.deref()
@@ -204,8 +200,8 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 				return { isValid: false, availableTools: [] }
 			}
 
-			// Check if the requested tool exists
-			const tool = server.tools.find((tool) => tool.name === toolName)
+			// Check if the requested tool exists (using fuzzy matching to handle model mangling of hyphens)
+			const tool = server.tools.find((t) => toolNamesMatch(t.name, toolName))
 
 			if (!tool) {
 				// Tool not found - provide list of available tools
@@ -250,8 +246,13 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 				return { isValid: false, availableTools: enabledToolNames }
 			}
 
-			// Tool exists and is enabled
-			return { isValid: true, availableTools: server.tools.map((tool) => tool.name) }
+			// Tool exists and is enabled - return the original tool name for use with the MCP server
+			return {
+				isValid: true,
+				availableTools: server?.tools?.map((t) => t.name),
+				resolvedToolName: tool.name,
+				resolvedSource: server.source,
+			}
 		} catch (error) {
 			// If there's an error during validation, log it but don't block the tool execution
 			// The actual tool call might still fail with a proper error
@@ -268,12 +269,14 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 		})
 	}
 
-	private processToolContent(toolResult: any): string {
+	private processToolContent(toolResult: any): { text: string; images: string[] } {
 		if (!toolResult?.content || toolResult.content.length === 0) {
-			return ""
+			return { text: "", images: [] }
 		}
 
-		return toolResult.content
+		const images: string[] = []
+
+		const textContent = toolResult.content
 			.map((item: any) => {
 				if (item.type === "text") {
 					return item.text
@@ -282,10 +285,23 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 					const { blob: _, ...rest } = item.resource
 					return JSON.stringify(rest, null, 2)
 				}
+				if (item.type === "image") {
+					// Handle image content (MCP image content has mimeType and data properties)
+					if (item.mimeType && item.data) {
+						if (item.data.startsWith("data:")) {
+							images.push(item.data)
+						} else {
+							images.push(`data:${item.mimeType};base64,${item.data}`)
+						}
+					}
+					return ""
+				}
 				return ""
 			})
 			.filter(Boolean)
 			.join("\n\n")
+
+		return { text: textContent, images }
 	}
 
 	private async executeToolAndProcessResult(
@@ -295,10 +311,10 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 		parsedArguments: Record<string, unknown> | undefined,
 		executionId: string,
 		pushToolResult: (content: string | Array<any>) => void,
+		source?: "global" | "project",
 	): Promise<void> {
 		await task.say("mcp_server_request_started")
 
-		// Send started status
 		await this.sendExecutionStatus(task, {
 			executionId,
 			status: "started",
@@ -306,24 +322,42 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 			toolName,
 		})
 
-		const toolResult = await task.providerRef.deref()?.getMcpHub()?.callTool(serverName, toolName, parsedArguments)
+		const mcpHub = task.providerRef.deref()?.getMcpHub()
+		if (!mcpHub) {
+			await task.say("mcp_server_response", "(No response: MCP hub unavailable)", [])
+			pushToolResult(formatResponse.toolResult("(No response)"))
+			return
+		}
+
+		const toolResult = await mcpHub.getAsyncExecutionService().execute({
+			serverName,
+			toolName,
+			arguments: parsedArguments,
+			source,
+			executionId,
+			isCancelled: () => task.abort,
+			onProgress: (status) => this.sendExecutionStatus(task, status),
+		})
 
 		let toolResultPretty = "(No response)"
+		let images: string[] = []
 
 		if (toolResult) {
-			const outputText = this.processToolContent(toolResult)
+			const { text: outputText, images: extractedImages } = this.processToolContent(toolResult)
+			images = extractedImages
 
-			if (outputText) {
+			if (outputText || images.length > 0) {
 				await this.sendExecutionStatus(task, {
 					executionId,
 					status: "output",
-					response: outputText,
+					response: outputText || (images.length > 0 ? `[${images.length} image(s)]` : ""),
 				})
 
-				toolResultPretty = (toolResult.isError ? "Error:\n" : "") + outputText
+				toolResultPretty =
+					(toolResult.isError ? "Error:\n" : "") +
+					(outputText || (images.length > 0 ? `[${images.length} image(s) received]` : ""))
 			}
 
-			// Send completion status
 			await this.sendExecutionStatus(task, {
 				executionId,
 				status: toolResult.isError ? "error" : "completed",
@@ -331,7 +365,6 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 				error: toolResult.isError ? "Error executing MCP tool" : undefined,
 			})
 		} else {
-			// Send error status if no result
 			await this.sendExecutionStatus(task, {
 				executionId,
 				status: "error",
@@ -339,8 +372,8 @@ export class UseMcpToolTool extends BaseTool<"use_mcp_tool"> {
 			})
 		}
 
-		await task.say("mcp_server_response", toolResultPretty)
-		pushToolResult(formatResponse.toolResult(toolResultPretty))
+		await task.say("mcp_server_response", toolResultPretty, images)
+		pushToolResult(formatResponse.toolResult(toolResultPretty, images))
 	}
 }
 

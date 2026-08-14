@@ -89,9 +89,9 @@ describe("CloudSettingsService", () => {
 			expect(cloudSettingsService).toBeInstanceOf(CloudSettingsService)
 			expect(RefreshTimer).toHaveBeenCalledWith({
 				callback: expect.any(Function),
-				successInterval: 30000,
+				successInterval: 3_600_000,
 				initialBackoffMs: 1000,
-				maxBackoffMs: 30000,
+				maxBackoffMs: 3_600_000,
 			})
 		})
 
@@ -636,7 +636,7 @@ describe("CloudSettingsService", () => {
 			expect(cloudSettingsService.isTaskSyncEnabled()).toBe(false)
 		})
 
-		it("should return true when user taskSyncEnabled is undefined (default)", () => {
+		it("should return false when user taskSyncEnabled is undefined (default)", () => {
 			// Set up mock settings with org recordTaskMessages undefined
 			const mockSettings = {
 				version: 1,
@@ -659,7 +659,7 @@ describe("CloudSettingsService", () => {
 			;(cloudSettingsService as unknown as { userSettings: typeof mockUserSettings }).userSettings =
 				mockUserSettings
 
-			expect(cloudSettingsService.isTaskSyncEnabled()).toBe(true)
+			expect(cloudSettingsService.isTaskSyncEnabled()).toBe(false)
 		})
 
 		it("should return false when no settings are available", () => {

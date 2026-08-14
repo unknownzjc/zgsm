@@ -16,7 +16,7 @@ const FileIssueList: React.FC<FileIssueListProps> = ({ fileName, issues, onIssue
 	const allIssuesProcessed = useMemo(() => {
 		return (
 			issues.length > 0 &&
-			issues.every((issue) => issue.status !== IssueStatus.INITIAL && issue.status !== IssueStatus.IGNORE)
+			issues?.every?.((issue) => issue.status !== IssueStatus.INITIAL && issue.status !== IssueStatus.IGNORE)
 		)
 	}, [issues])
 
@@ -28,7 +28,7 @@ const FileIssueList: React.FC<FileIssueListProps> = ({ fileName, issues, onIssue
 
 	return (
 		<div className="w-full" style={{ opacity: allIssuesProcessed ? 0.4 : 1 }}>
-			<div className="flex justify-between pr-5">
+			<div className="flex justify-between">
 				<div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
 					<SetiFileIcon fileName={fileName} size={16} className="flex-shrink-0" />
 					<span className="truncate" title={fileName}>

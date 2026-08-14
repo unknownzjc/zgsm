@@ -4,6 +4,7 @@ import * as path from "path"
 import { fileURLToPath } from "url"
 import process from "node:process"
 import * as console from "node:console"
+import { execSync } from "child_process"
 
 import { copyPaths, copyWasms, copyLocales, setupLocaleWatcher } from "@roo-code/build"
 import { networkInterfacesCompatible } from "../scripts/network-interfaces-compatible.mjs"
@@ -11,12 +12,58 @@ import { networkInterfacesCompatible } from "../scripts/network-interfaces-compa
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+async function removeDirWithRetries(dirPath, retries = 5, retryDelayMs = 200) {
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		try {
+			await fs.promises.rm(dirPath, { recursive: true, force: true })
+			return
+		} catch (error) {
+			const isRetryable = error?.code === "ENOTEMPTY" || error?.code === "EBUSY" || error?.code === "EPERM"
+			const isLastAttempt = attempt === retries
+
+			if (!isRetryable || isLastAttempt) {
+				throw error
+			}
+
+			await new Promise((resolve) => globalThis.setTimeout(resolve, retryDelayMs * (attempt + 1)))
+		}
+	}
+}
+
+/**
+ * Recursively copy a directory, following symlinks (i.e. copying the target
+ *
+ * @param {string} src
+ * @param {string} dest
+ */
+function copyDirSync(src, dest) {
+	fs.mkdirSync(dest, { recursive: true })
+	for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+		const srcPath = path.join(src, entry.name)
+		const destPath = path.join(dest, entry.name)
+		// Follow symlinks by using stat (not lstat).
+		const stat = fs.statSync(srcPath)
+		if (stat.isDirectory()) {
+			copyDirSync(srcPath, destPath)
+		} else {
+			fs.copyFileSync(srcPath, destPath)
+		}
+	}
+}
+
 async function main() {
 	const name = "extension"
 	const production = process.argv.includes("--production")
 	const watch = process.argv.includes("--watch")
 	const minify = production
-	const sourcemap = true // Always generate source maps for error handling
+	const sourcemap = !production // Always generate source maps for error handling.
+
+	const buildTime = new Date().toISOString()
+
+	let gitSha = undefined
+	try {
+		gitSha = execSync("git rev-parse HEAD").toString().trim()
+	} catch {}
 
 	/**
 	 * @type {import('esbuild').BuildOptions}
@@ -31,8 +78,9 @@ async function main() {
 		platform: "node",
 		define: {
 			"process.env.NODE_ENV": production ? '"production"' : '"development"',
-			"process.env.ZGSM_BASE_URL": JSON.stringify(process.env.ZGSM_BASE_URL || ""),
-			"process.env.ZGSM_PUBLIC_KEY": JSON.stringify(process.env.ZGSM_PUBLIC_KEY || ""),
+			"process.env.COSTRICT_PUBLIC_KEY": JSON.stringify(process.env.COSTRICT_PUBLIC_KEY || process.env.ZGSM_PUBLIC_KEY || ""),
+			"process.env.COSTRICT_PKG_BUILD_TIME": JSON.stringify(buildTime),
+			...(gitSha ? { "process.env.COSTRICT_PKG_SHA": JSON.stringify(gitSha) } : {}),
 		},
 		banner: {
 			js: networkInterfacesCompatible,
@@ -45,7 +93,7 @@ async function main() {
 
 	if (fs.existsSync(distDir)) {
 		console.log(`[${name}] Cleaning dist directory: ${distDir}`)
-		fs.rmSync(distDir, { recursive: true, force: true })
+		await removeDirWithRetries(distDir)
 	}
 
 	/**
@@ -68,6 +116,19 @@ async function main() {
 						srcDir,
 						buildDir,
 					)
+
+					const assistantUiOutSrc = path.join(srcDir, "assets", "cs-cloud-ui", "out")
+					const assistantUiOutDest = path.join(distDir, "assets", "cs-cloud-ui", "out")
+					if (fs.existsSync(assistantUiOutSrc)) {
+						if (fs.existsSync(assistantUiOutDest)) {
+							fs.rmSync(assistantUiOutDest, { recursive: true, force: true })
+						}
+						fs.mkdirSync(path.dirname(assistantUiOutDest), { recursive: true })
+						copyDirSync(assistantUiOutSrc, assistantUiOutDest)
+						console.log(`[copyFiles] Copied cloud-ui static export to ${assistantUiOutDest}`)
+					} else {
+						console.warn(`[copyFiles] Cloud UI static export not found: ${assistantUiOutSrc}`)
+					}
 				})
 			},
 		},
@@ -109,7 +170,10 @@ async function main() {
 		plugins,
 		entryPoints: ["extension.ts"],
 		outfile: "dist/extension.js",
-		external: ["vscode"],
+		// global-agent must be external because it dynamically patches Node.js http/https modules
+		// which breaks when bundled. It needs access to the actual Node.js module instances.
+		// undici must be bundled because our VSIX is packaged with `--no-dependencies`.
+		external: ["vscode", "esbuild", "global-agent"],
 	}
 
 	/**

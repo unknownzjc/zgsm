@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { CleanupStrategy } from "./auto-cleanup.js"
 import { type Keys } from "./type-fu.js"
 import {
 	type ProviderSettings,
@@ -9,10 +10,11 @@ import {
 } from "./provider-settings.js"
 import { historyItemSchema } from "./history.js"
 import { codebaseIndexModelsSchema, codebaseIndexConfigSchema } from "./codebase-index.js"
-import { experimentsSchema } from "./experiment.js"
+import { experimentsSchema, experimentSettingsSchema } from "./experiment.js"
 import { telemetrySettingsSchema } from "./telemetry.js"
 import { modeConfigSchema } from "./mode.js"
 import { customModePromptsSchema, customSupportPromptsSchema } from "./mode.js"
+import { toolNamesSchema } from "./tool.js"
 import { languagesSchema } from "./vscode.js"
 
 /**
@@ -22,15 +24,44 @@ import { languagesSchema } from "./vscode.js"
  */
 export const DEFAULT_WRITE_DELAY_MS = 1000
 
-export const MAX_WORKSPACE_FILES = 200
+export const MAX_WORKSPACE_FILES = 150
 
 /**
- * Default terminal output character limit constant.
- * This provides a reasonable default that aligns with typical terminal usage
- * while preventing context window explosions from extremely long lines.
+ * Terminal output preview size options for persisted command output.
+ *
+ * Controls how much command output is kept in memory as a "preview" before
+ * the LLM decides to retrieve more via `read_command_output`. Larger previews
+ * mean more immediate context but consume more of the context window.
+ *
+ * - `small`: 5KB preview - Best for long-running commands with verbose output
+ * - `medium`: 10KB preview - Balanced default for most use cases
+ * - `large`: 20KB preview - Best when commands produce critical info early
+ *
+ * @see OutputInterceptor - Uses this setting to determine when to spill to disk
+ * @see PersistedCommandOutput - Contains the resulting preview and artifact reference
  */
-export const DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT = 50_000
 export const DEFAULT_FILE_READ_CHARACTER_LIMIT = 40_000
+export type TerminalOutputPreviewSize = "small" | "medium" | "large"
+
+/**
+ * Byte limits for each terminal output preview size.
+ *
+ * Maps preview size names to their corresponding byte thresholds.
+ * When command output exceeds these thresholds, the excess is persisted
+ * to disk and made available via the `read_command_output` tool.
+ */
+export const TERMINAL_PREVIEW_BYTES: Record<TerminalOutputPreviewSize, number> = {
+	small: 5 * 1024, // 5KB
+	medium: 10 * 1024, // 10KB
+	large: 20 * 1024, // 20KB
+}
+
+/**
+ * Default terminal output preview size.
+ * The "medium" (10KB) setting provides a good balance between immediate
+ * visibility and context window conservation for most use cases.
+ */
+export const DEFAULT_TERMINAL_OUTPUT_PREVIEW_SIZE: TerminalOutputPreviewSize = "medium"
 
 /**
  * Minimum checkpoint timeout in seconds.
@@ -55,6 +86,18 @@ export const globalSettingsSchema = z.object({
 	currentApiConfigName: z.string().optional(),
 	listApiConfigMeta: z.array(providerSettingsEntrySchema).optional(),
 	pinnedApiConfigs: z.record(z.string(), z.boolean()).optional(),
+	debug: z.boolean().optional(),
+	// Auto cleanup settings
+	autoCleanup: z
+		.object({
+			enabled: z.boolean().optional(),
+			strategy: z.nativeEnum(CleanupStrategy).optional(),
+			retentionDays: z.number().min(1).max(365).optional(),
+			maxHistoryCount: z.number().min(10).max(500).optional(),
+			excludeActive: z.boolean().optional(),
+			cleanupOnStartup: z.boolean().optional(),
+		})
+		.optional(),
 
 	lastShownAnnouncementId: z.string().optional(),
 	customInstructions: z.string().optional(),
@@ -67,12 +110,10 @@ export const globalSettingsSchema = z.object({
 	openRouterImageApiKey: z.string().optional(),
 	openRouterImageGenerationSelectedModel: z.string().optional(),
 
-	condensingApiConfigId: z.string().optional(),
 	customCondensingPrompt: z.string().optional(),
-	// zgsm
-	useZgsmCustomConfig: z.boolean().optional(),
-	zgsmCodebaseIndexEnabled: z.boolean().optional(),
-	zgsmCodeMode: z.union([z.literal("vibe"), z.literal("strict"), z.literal("raw"), z.literal("plan")]).optional(),
+	// costrict
+	useCostrictCustomConfig: z.boolean().optional(),
+	costrictCodeMode: z.union([z.literal("vibe"), z.literal("strict"), z.literal("raw"), z.literal("plan")]).optional(),
 
 	autoApprovalEnabled: z.boolean().optional(),
 	alwaysAllowReadOnly: z.boolean().optional(),
@@ -81,7 +122,6 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowWriteOutsideWorkspace: z.boolean().optional(),
 	alwaysAllowWriteProtected: z.boolean().optional(),
 	writeDelayMs: z.number().min(0).optional(),
-	alwaysAllowBrowser: z.boolean().optional(),
 	requestDelaySeconds: z.number().optional(),
 	alwaysAllowMcp: z.boolean().optional(),
 	alwaysAllowModeSwitch: z.boolean().optional(),
@@ -98,7 +138,6 @@ export const globalSettingsSchema = z.object({
 	allowedMaxCost: z.number().nullish(),
 	autoCondenseContext: z.boolean().optional(),
 	autoCondenseContextPercent: z.number().optional(),
-	maxConcurrentFileReads: z.number().optional(),
 
 	/**
 	 * Whether to include current time in the environment details
@@ -128,12 +167,7 @@ export const globalSettingsSchema = z.object({
 	 */
 	maxDiagnosticMessages: z.number().optional(),
 
-	browserToolEnabled: z.boolean().optional(),
-	browserViewportSize: z.string().optional(),
-	screenshotQuality: z.number().optional(),
-	remoteBrowserEnabled: z.boolean().optional(),
-	remoteBrowserHost: z.string().optional(),
-	cachedChromeHostUrl: z.string().optional(),
+	customStoragePath: z.string().optional(),
 
 	enableCheckpoints: z.boolean().optional(),
 	checkpointTimeout: z
@@ -151,13 +185,11 @@ export const globalSettingsSchema = z.object({
 	maxOpenTabsContext: z.number().optional(),
 	maxWorkspaceFiles: z.number().optional(),
 	showRooIgnoredFiles: z.boolean().optional(),
-	maxReadFileLine: z.number().optional(),
+	enableSubfolderRules: z.boolean().optional(),
 	maxImageFileSize: z.number().optional(),
 	maxTotalImageSize: z.number().optional(),
 
-	terminalOutputLineLimit: z.number().optional(),
-	terminalOutputCharacterLimit: z.number().optional(),
-	maxReadCharacterLimit: z.number().optional(),
+	terminalOutputPreviewSize: z.enum(["small", "medium", "large"]).optional(),
 	terminalShellIntegrationTimeout: z.number().optional(),
 	terminalShellIntegrationDisabled: z.boolean().optional(),
 	terminalCommandDelay: z.number().optional(),
@@ -166,14 +198,13 @@ export const globalSettingsSchema = z.object({
 	terminalZshOhMy: z.boolean().optional(),
 	terminalZshP10k: z.boolean().optional(),
 	terminalZdotdir: z.boolean().optional(),
-	terminalCompressProgressBar: z.boolean().optional(),
+	execaShellPath: z.string().optional(),
 
 	diagnosticsEnabled: z.boolean().optional(),
 
 	rateLimitSeconds: z.number().optional(),
-	diffEnabled: z.boolean().optional(),
-	fuzzyMatchThreshold: z.number().optional(),
 	experiments: experimentsSchema.optional(),
+	experimentSettings: experimentSettingsSchema.optional(),
 
 	codebaseIndexModels: codebaseIndexModelsSchema.optional(),
 	codebaseIndexConfig: codebaseIndexConfigSchema.optional(),
@@ -183,7 +214,6 @@ export const globalSettingsSchema = z.object({
 	telemetrySetting: telemetrySettingsSchema.optional(),
 
 	mcpEnabled: z.boolean().optional(),
-	enableMcpServerCreation: z.boolean().optional(),
 
 	mode: z.string().optional(),
 	prevMode: z.string().optional(),
@@ -196,6 +226,9 @@ export const globalSettingsSchema = z.object({
 	includeTaskHistoryInEnhance: z.boolean().optional(),
 	historyPreviewCollapsed: z.boolean().optional(),
 	reasoningBlockCollapsed: z.boolean().optional(),
+	showSpeedInfo: z.boolean().optional(),
+	automaticallyFocus: z.boolean().optional(),
+	collapseMarkdownWithoutScroll: z.boolean().optional(),
 	/**
 	 * Controls the keyboard behavior for sending messages in the chat input.
 	 * - "send": Enter sends message, Shift+Enter creates newline (default)
@@ -205,10 +238,30 @@ export const globalSettingsSchema = z.object({
 	enterBehavior: z.enum(["send", "newline"]).optional(),
 	profileThresholds: z.record(z.string(), z.number()).optional(),
 	hasOpenedModeSelector: z.boolean().optional(),
+	hasClosedCodeReviewWelcomeTips: z.boolean().optional(),
 	lastModeExportPath: z.string().optional(),
 	lastModeImportPath: z.string().optional(),
+	lastSettingsExportPath: z.string().optional(),
+	lastTaskExportPath: z.string().optional(),
+	lastImageSavePath: z.string().optional(),
 
 	errorCode: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+	/**
+	 * Path to worktree to auto-open after switching workspaces.
+	 * Used by the worktree feature to open the Roo Code sidebar in a new window.
+	 */
+	worktreeAutoOpenPath: z.string().optional(),
+	/**
+	 * Whether to show the worktree selector in the home screen.
+	 * @default true
+	 */
+	showWorktreesInHomeScreen: z.boolean().optional(),
+
+	/**
+	 * List of native tool names to globally disable.
+	 * Tools in this list will be excluded from prompt generation and rejected at execution time.
+	 */
+	disabledTools: z.array(toolNamesSchema).optional(),
 })
 
 export type GlobalSettings = z.infer<typeof globalSettingsSchema>
@@ -227,10 +280,11 @@ export type RooCodeSettings = GlobalSettings & ProviderSettings
  * SecretState
  */
 export const SECRET_STATE_KEYS = [
-	// zgsm
-	"zgsmAccessToken",
-	"zgsmRefreshToken",
-	// zgsm
+	// costrict
+	"costrictAccessToken",
+	"costrictRefreshToken",
+	"costrictState",
+	// costrict
 	"apiKey",
 	"openRouterApiKey",
 	"awsAccessKey",
@@ -241,19 +295,14 @@ export const SECRET_STATE_KEYS = [
 	"ollamaApiKey",
 	"geminiApiKey",
 	"openAiNativeApiKey",
-	"cerebrasApiKey",
 	"deepSeekApiKey",
-	"doubaoApiKey",
 	"moonshotApiKey",
 	"mistralApiKey",
 	"minimaxApiKey",
-	"unboundApiKey",
 	"requestyApiKey",
+	"unboundApiKey",
 	"xaiApiKey",
-	"groqApiKey",
-	"chutesApiKey",
 	"litellmApiKey",
-	"deepInfraApiKey",
 	"codeIndexOpenAiKey",
 	"codeIndexQdrantApiKey",
 	"codebaseIndexOpenAiCompatibleApiKey",
@@ -261,14 +310,12 @@ export const SECRET_STATE_KEYS = [
 	"codebaseIndexMistralApiKey",
 	"codebaseIndexVercelAiGatewayApiKey",
 	"codebaseIndexOpenRouterApiKey",
-	"huggingFaceApiKey",
 	"sambaNovaApiKey",
 	"zaiApiKey",
 	"fireworksApiKey",
-	"featherlessApiKey",
-	"ioIntelligenceApiKey",
 	"vercelAiGatewayApiKey",
 	"basetenApiKey",
+	"mimoApiKey",
 ] as const
 
 // Global secrets that are part of GlobalSettings (not ProviderSettings)
@@ -308,20 +355,18 @@ export const isGlobalStateKey = (key: string): key is Keys<GlobalState> =>
 // Default settings when running evals (unless overridden).
 export const EVALS_SETTINGS: RooCodeSettings = {
 	apiProvider: "openrouter",
-	openRouterUseMiddleOutTransform: false,
-	zgsmCodeMode: "vibe",
+	costrictCodeMode: "vibe",
 	lastShownAnnouncementId: "jul-09-2025-3-23-0",
 
 	pinnedApiConfigs: {},
 
 	autoApprovalEnabled: true,
 	alwaysAllowReadOnly: true,
-	alwaysAllowReadOnlyOutsideWorkspace: false,
+	alwaysAllowReadOnlyOutsideWorkspace: true,
 	alwaysAllowWrite: true,
 	alwaysAllowWriteOutsideWorkspace: false,
 	alwaysAllowWriteProtected: false,
 	writeDelayMs: 1000,
-	alwaysAllowBrowser: true,
 	requestDelaySeconds: 10,
 	alwaysAllowMcp: true,
 	alwaysAllowModeSwitch: true,
@@ -334,19 +379,12 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	commandTimeoutAllowlist: [],
 	preventCompletionWithOpenTodos: false,
 
-	browserToolEnabled: false,
-	browserViewportSize: "900x600",
-	screenshotQuality: 75,
-	remoteBrowserEnabled: false,
-
 	ttsEnabled: false,
 	ttsSpeed: 1,
 	soundEnabled: false,
 	soundVolume: 0.5,
 
-	terminalOutputLineLimit: 500,
-	terminalOutputCharacterLimit: DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
-	maxReadCharacterLimit: DEFAULT_FILE_READ_CHARACTER_LIMIT,
+	// maxReadCharacterLimit: DEFAULT_FILE_READ_CHARACTER_LIMIT,
 	terminalShellIntegrationTimeout: 30000,
 	terminalCommandDelay: 150,
 	terminalPowershellCounter: false,
@@ -354,13 +392,9 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	terminalZshClearEolMark: true,
 	terminalZshP10k: false,
 	terminalZdotdir: true,
-	terminalCompressProgressBar: true,
 	terminalShellIntegrationDisabled: true,
 
 	diagnosticsEnabled: true,
-
-	diffEnabled: true,
-	fuzzyMatchThreshold: 1,
 
 	enableCheckpoints: false,
 
@@ -369,7 +403,6 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	maxWorkspaceFiles: MAX_WORKSPACE_FILES,
 	maxGitStatusFiles: 20,
 	showRooIgnoredFiles: true,
-	maxReadFileLine: 500, // -1 to enable full file reading.
 
 	includeDiagnosticMessages: true,
 	maxDiagnosticMessages: 50,

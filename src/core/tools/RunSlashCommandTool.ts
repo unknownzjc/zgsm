@@ -4,6 +4,12 @@ import { getCommand, getCommandNames } from "../../services/command/commands"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
+import { getModeBySlug } from "../../shared/modes"
+import {
+	buildSkillApprovalMessage,
+	buildSkillResult,
+	resolveSkillContentForMode,
+} from "../../services/skills/skillInvocation"
 
 interface RunSlashCommandParams {
 	command: string
@@ -13,16 +19,9 @@ interface RunSlashCommandParams {
 export class RunSlashCommandTool extends BaseTool<"run_slash_command"> {
 	readonly name = "run_slash_command" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): RunSlashCommandParams {
-		return {
-			command: params.command || "",
-			args: params.args,
-		}
-	}
-
 	async execute(params: RunSlashCommandParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { command: commandName, args } = params
-		const { askApproval, handleError, pushToolResult, toolProtocol } = callbacks
+		const { askApproval, handleError, pushToolResult } = callbacks
 
 		// Check if run slash command experiment is enabled
 		const provider = task.providerRef.deref()
@@ -53,11 +52,31 @@ export class RunSlashCommandTool extends BaseTool<"run_slash_command"> {
 			task.consecutiveMistakeCount = 0
 
 			// Get the command from the commands service
-			const command = await getCommand(task.cwd, commandName)
+			const command = await getCommand(task.cwd, commandName, state?.language)
 
 			if (!command) {
+				const currentMode = state?.mode ?? "code"
+				const skillsManager = provider ? await provider.ensureSkillsManager() : undefined
+				if (!skillsManager) {
+					pushToolResult(formatResponse.toolError("Skills Manager not available"))
+					return
+				}
+				const skillContent = await resolveSkillContentForMode(skillsManager, commandName, currentMode)
+
+				if (skillContent) {
+					const skillMessage = buildSkillApprovalMessage(commandName, args, skillContent)
+					const didApprove = await askApproval("tool", skillMessage)
+
+					if (!didApprove) {
+						return
+					}
+
+					pushToolResult(buildSkillResult(commandName, args, skillContent))
+					return
+				}
+
 				// Get available commands for error message
-				const availableCommands = await getCommandNames(task.cwd)
+				const availableCommands = await getCommandNames(task.cwd, state?.language)
 				task.recordToolError("run_slash_command")
 				task.didToolFailInCurrentTurn = true
 				pushToolResult(
@@ -74,12 +93,22 @@ export class RunSlashCommandTool extends BaseTool<"run_slash_command"> {
 				args: args,
 				source: command.source,
 				description: command.description,
+				mode: command.mode,
 			})
 
 			const didApprove = await askApproval("tool", toolMessage)
 
 			if (!didApprove) {
 				return
+			}
+
+			// Switch mode if specified in the command frontmatter
+			if (command.mode) {
+				const provider = task.providerRef.deref()
+				const targetMode = getModeBySlug(command.mode, (await provider?.getState())?.customModes)
+				if (targetMode) {
+					await provider?.handleModeSwitch(command.mode)
+				}
 			}
 
 			// Build the result message
@@ -91,6 +120,10 @@ export class RunSlashCommandTool extends BaseTool<"run_slash_command"> {
 
 			if (command.argumentHint) {
 				result += `\nArgument hint: ${command.argumentHint}`
+			}
+
+			if (command.mode) {
+				result += `\nMode: ${command.mode}`
 			}
 
 			if (args) {
@@ -113,8 +146,8 @@ export class RunSlashCommandTool extends BaseTool<"run_slash_command"> {
 
 		const partialMessage = JSON.stringify({
 			tool: "runSlashCommand",
-			command: this.removeClosingTag("command", commandName, block.partial),
-			args: this.removeClosingTag("args", args, block.partial),
+			command: commandName,
+			args: args,
 		})
 
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})

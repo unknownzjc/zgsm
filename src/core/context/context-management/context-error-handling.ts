@@ -4,8 +4,7 @@ export function checkContextWindowExceededError(error: unknown): boolean {
 	return (
 		checkIsOpenAIContextWindowError(error) ||
 		checkIsOpenRouterContextWindowError(error) ||
-		checkIsAnthropicContextWindowError(error) ||
-		checkIsCerebrasContextWindowError(error)
+		checkIsAnthropicContextWindowError(error)
 	)
 }
 
@@ -26,6 +25,7 @@ function checkIsOpenRouterContextWindowError(error: unknown): boolean {
 			/\bmaximum\s*context\b/i,
 			/\b(?:input\s*)?tokens?\s*exceed/i,
 			/\btoo\s*many\s*tokens?\b/i,
+			/\blonger\s*than\s*(?:the\s*)?(?:model'?s?\s*)?context\b/i,
 		] as const
 
 		return String(status) === "400" && CONTEXT_ERROR_PATTERNS.some((pattern) => pattern.test(message))
@@ -78,6 +78,7 @@ function checkIsAnthropicContextWindowError(response: unknown): boolean {
 				/token.*limit/i,
 				/context_length_exceeded/i,
 				/max_tokens_to_sample/i,
+				/\blonger\s*than\s*(?:the\s*)?(?:model'?s?\s*)?context/i,
 			]
 
 			// Additional check for Anthropic-specific error codes
@@ -90,24 +91,6 @@ function checkIsAnthropicContextWindowError(response: unknown): boolean {
 		}
 
 		return false
-	} catch {
-		return false
-	}
-}
-
-function checkIsCerebrasContextWindowError(response: unknown): boolean {
-	try {
-		// Type guard to safely access properties
-		if (!response || typeof response !== "object") {
-			return false
-		}
-
-		// Use type assertions with proper checks
-		const res = response as Record<string, any>
-		const status = res.status ?? res.code ?? res.error?.status ?? res.response?.status
-		const message: string = String(res.message || res.error?.message || "")
-
-		return String(status) === "400" && message.includes("Please reduce the length of the messages or completion")
 	} catch {
 		return false
 	}

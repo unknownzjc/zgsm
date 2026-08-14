@@ -69,9 +69,9 @@ export class CloudSettingsService extends EventEmitter<SettingsServiceEvents> im
 			callback: async () => {
 				return await this.fetchSettings()
 			},
-			successInterval: 30000,
+			successInterval: 3_600_000,
 			initialBackoffMs: 1000,
-			maxBackoffMs: 30000,
+			maxBackoffMs: 3_600_000,
 		})
 	}
 
@@ -272,10 +272,10 @@ export class CloudSettingsService extends EventEmitter<SettingsServiceEvents> im
 			return this.settings?.cloudSettings?.recordTaskMessages ?? false
 		}
 
-		// User settings default to true if unspecified
+		// User settings default to false if unspecified
 		const userSettings = this.userSettings
 		if (userSettings) {
-			return userSettings.settings.taskSyncEnabled ?? true
+			return userSettings.settings.taskSyncEnabled ?? false
 		}
 
 		return false

@@ -6,12 +6,13 @@ import {
 	OPENAI_REQUEST_ABORTED,
 } from "../base/common"
 import { t } from "../../../i18n"
+import { Package } from "shared/package"
 interface IFailError {
 	message?: string
 	status?: number
 	[key: string]: any
 }
-const statusBarCommand = "zgsm-statusBar.showInformationMessage"
+const statusBarCommand = `${Package.commandIDPrefix}-statusBar.showInformationMessage`
 export class CompletionStatusBar {
 	private static _instance: CompletionStatusBar
 	private _statusBar: vscode.StatusBarItem
@@ -43,11 +44,11 @@ export class CompletionStatusBar {
 		context.subscriptions.push(
 			vscode.commands.registerCommand(statusBarCommand, handleStatusBarClick),
 			vscode.commands.registerCommand(
-				"zgsm-completion.enable",
+				`${Package.commandIDPrefix}-completion.enable`,
 				statusUpdateCallback(() => this.setExtensionStatus(true), true),
 			),
 			vscode.commands.registerCommand(
-				"zgsm-completion.disable",
+				`${Package.commandIDPrefix}-completion.disable`,
 				statusUpdateCallback(() => this.setExtensionStatus(false), false),
 			),
 		)
@@ -119,7 +120,7 @@ export class CompletionStatusBar {
 		} else if (error.message?.includes(OPENAI_CLIENT_NOT_INITIALIZED)) {
 			codeMsg = t("common:completion.code.401")
 			solutionMsg = t("common:completion.solution.401")
-		} else if (error.message?.includes(OPENAI_REQUEST_ABORTED)) {
+		} else if (error.message?.includes(OPENAI_REQUEST_ABORTED) || (error as any)?.name === "AbortError") {
 			codeMsg = t("common:completion.code.aborted")
 			solutionMsg = t("common:completion.solution.aborted")
 		} else {
@@ -142,6 +143,8 @@ export class CompletionStatusBar {
 	private setExtensionStatus(enabled: boolean) {
 		const config = vscode.workspace.getConfiguration()
 		const target = vscode.ConfigurationTarget.Global
-		config.update("zgsm-completion.enabled", enabled, target, false).then(console.error)
+		config
+			.update(`${Package.commandIDPrefix}.completion.enabled`, enabled, target, false)
+			.then(undefined, console.error)
 	}
 }

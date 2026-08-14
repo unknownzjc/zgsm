@@ -7,7 +7,8 @@ import { ensureSettingsDirectoryExists } from "../../../utils/globalContext"
 
 export async function getModesSection(
 	context: vscode.ExtensionContext,
-	skipXmlExamples: boolean = false,
+	costrictCodeMode?: string,
+	currentModeSlug?: string,
 ): Promise<string> {
 	// Make sure path gets created
 	await ensureSettingsDirectoryExists(context)
@@ -15,12 +16,35 @@ export async function getModesSection(
 	// Get all modes with their overrides from extension state
 	const allModes = await getAllModesWithPrompts(context)
 
-	let modesContent = `====
+	// Get current mode config to check subagents filter
+	const currentMode = currentModeSlug ? allModes.find((mode: ModeConfig) => mode.slug === currentModeSlug) : undefined
+	const allowedSubagents = currentMode?.subagents
+
+	const modesContent = `====
 
 MODES
 
 - These are the currently available modes:
 ${allModes
+	.filter((mode: ModeConfig) => {
+		// If current mode has subagents configured, filter to only show those
+		if (allowedSubagents && allowedSubagents.length > 0) {
+			return allowedSubagents.includes(mode.slug)
+		}
+
+		// Original costrictCodeMode filtering logic mode.apiProvider
+		if (
+			!mode.costrictCodeModeGroup ||
+			(mode.apiProvider === "costrict" &&
+				["quick-explore", "task-check", "subcoding", "review", "security-review", "subreview"].includes(
+					mode.slug,
+				))
+		)
+			return true
+		if (mode.costrictCodeModeGroup)
+			return mode.costrictCodeModeGroup.split(",").includes(costrictCodeMode ?? "vibe")
+		return true
+	})
 	.map((mode: ModeConfig) => {
 		let description: string
 		if (mode.whenToUse && mode.whenToUse.trim() !== "") {
@@ -33,19 +57,6 @@ ${allModes
 		return `  * "${mode.name}" mode (${mode.slug}) - ${description}`
 	})
 	.join("\n")}`
-
-	if (!skipXmlExamples) {
-		modesContent += `
-If the user asks you to create or edit a new mode for this project, you should read the instructions by using the fetch_instructions tool, like this:
-<fetch_instructions>
-<task>create_mode</task>
-</fetch_instructions>
-`
-	} else {
-		modesContent += `
-If the user asks you to create or edit a new mode for this project, you should read the instructions by using the fetch_instructions tool.
-`
-	}
 
 	return modesContent
 }

@@ -14,21 +14,37 @@ vi.mock("vscode", async () => {
 			QuickFix: { value: "quickfix" },
 			RefactorRewrite: { value: "refactor.rewrite" },
 		},
+		FileType: {
+			File: 1,
+			Directory: 2,
+		},
+		Uri: {
+			parse: vi.fn(),
+		},
 		window: {
 			createTextEditorDecorationType: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 			createOutputChannel: () => ({
 				appendLine: vi.fn(),
 				show: vi.fn(),
 			}),
+			showInformationMessage: vi.fn(),
 		},
 		workspace: {
 			workspaceFolders: [
 				{
 					uri: {
 						fsPath: "/mock/workspace",
+						path: "/mock/workspace",
 					},
 				},
 			],
+			fs: {
+				stat: vi.fn(),
+			},
+			getWorkspaceFolder: vi.fn(),
+			getConfiguration: vi.fn().mockReturnValue({
+				get: vi.fn().mockReturnValue("classic"),
+			}),
 			createFileSystemWatcher: vi.fn().mockReturnValue({
 				onDidCreate: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 				onDidChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
@@ -42,7 +58,7 @@ vi.mock("vscode", async () => {
 				extensionPath: "/mock/extension/path",
 				extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 				packageJSON: {
-					name: "zgsm",
+					name: "costrict",
 					publisher: "zgsm-ai",
 					version: "2.0.27",
 				},
@@ -57,7 +73,7 @@ vi.mock("vscode", async () => {
 
 vi.mock("../../core/webview/ClineProvider")
 
-describe("getVisibleProviderOrLog", () => {
+describe("registerCommands", () => {
 	let mockOutputChannel: vscode.OutputChannel
 
 	beforeEach(() => {
@@ -72,6 +88,9 @@ describe("getVisibleProviderOrLog", () => {
 			dispose: vi.fn(),
 		}
 		vi.clearAllMocks()
+		vi.mocked(vscode.Uri.parse).mockReset()
+		vi.mocked(vscode.workspace.getWorkspaceFolder).mockReset()
+		vi.mocked(vscode.workspace.fs.stat).mockReset()
 	})
 
 	it("returns the visible provider if found", () => {

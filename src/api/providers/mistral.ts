@@ -15,6 +15,7 @@ import { ApiHandlerOptions } from "../../shared/api"
 
 import { convertToMistralMessages } from "../transform/mistral-format"
 import { ApiStream } from "../transform/stream"
+import { handleProviderError } from "./utils/error-handler"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
@@ -93,13 +94,9 @@ export class MistralHandler extends BaseProvider implements SingleCompletionHand
 			temperature,
 		}
 
-		// Add tools if provided and toolProtocol is not 'xml' and model supports native tools
-		const supportsNativeTools = info.supportsNativeTools ?? false
-		if (metadata?.tools && metadata.tools.length > 0 && metadata?.toolProtocol !== "xml" && supportsNativeTools) {
-			requestOptions.tools = this.convertToolsForMistral(metadata.tools)
-			// Always use "any" to require tool use
-			requestOptions.toolChoice = "any"
-		}
+		requestOptions.tools = this.convertToolsForMistral(metadata?.tools ?? [])
+		// Always use "any" to require tool use
+		requestOptions.toolChoice = "any"
 
 		// Temporary debug log for QA
 		// console.log("[MISTRAL DEBUG] Raw API request body:", requestOptions)
@@ -207,7 +204,7 @@ export class MistralHandler extends BaseProvider implements SingleCompletionHand
 					temperature,
 				},
 				{
-					fetchOptions: { signal: metadata?.signal },
+					signal: metadata?.signal,
 				},
 			)
 

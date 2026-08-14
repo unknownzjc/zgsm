@@ -2,6 +2,8 @@ import { safeWriteJson } from "../../utils/safeWriteJson"
 import * as path from "path"
 import * as os from "os"
 import * as fs from "fs/promises"
+import { getRooDirectoriesForCwd } from "../../services/roo-config/index.js"
+import { WorkspaceTrustService, listCustomToolFiles } from "../../services/security/workspaceTrust"
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
 import dedent from "dedent"
@@ -12,11 +14,20 @@ import {
 	type ClineMessage,
 	type TelemetrySetting,
 	type UserSettingsConfig,
+	type ModelRecord,
+	type Command as SlashCommand,
+	type WebviewMessage,
+	type EditQueuedMessagePayload,
+	type CodeReviewWelcomeTipsPayload,
+	type CreateReviewTaskPayload,
 	TelemetryEventName,
 	ModelInfo,
 	RooCodeSettings,
 	ExperimentId,
+	checkoutDiffPayloadSchema,
+	checkoutRestorePayloadSchema,
 } from "@roo-code/types"
+import { customToolRegistry } from "@roo-code/core"
 import { CloudService } from "@roo-code/cloud"
 import { TelemetryService } from "@roo-code/telemetry"
 
@@ -24,19 +35,22 @@ import { type ApiMessage } from "../task-persistence/apiMessages"
 import { saveTaskMessages } from "../task-persistence"
 
 import { ClineProvider } from "./ClineProvider"
-import { BrowserSessionPanelManager } from "./BrowserSessionPanelManager"
 import { handleCheckpointRestoreOperation } from "./checkpointRestoreHandler"
+import { generateErrorDiagnostics } from "./diagnosticsHandler"
+import {
+	handleRequestSkills,
+	handleCreateSkill,
+	handleDeleteSkill,
+	handleMoveSkill,
+	handleUpdateSkillModes,
+	handleOpenSkillFile,
+} from "./skillsMessageHandler"
 import { changeLanguage, t } from "../../i18n"
 import { Package } from "../../shared/package"
-import { type RouterName, type ModelRecord, toRouterName } from "../../shared/api"
+import { type RouterName, toRouterName } from "../../shared/api"
 import { MessageEnhancer } from "./messageEnhancer"
 
-import {
-	type WebviewMessage,
-	type EditQueuedMessagePayload,
-	checkoutDiffPayloadSchema,
-	checkoutRestorePayloadSchema,
-} from "../../shared/WebviewMessage"
+// import { CodeIndexManager } from "../../services/code-index/manager"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
 import { experimentDefault } from "../../shared/experiments"
 import { Terminal } from "../../integrations/terminal/Terminal"
@@ -44,20 +58,34 @@ import { openFile } from "../../integrations/misc/open-file"
 import { openImage, saveImage } from "../../integrations/misc/image-handler"
 import { selectImages } from "../../integrations/misc/process-images"
 import { getTheme } from "../../integrations/theme/getTheme"
-import { discoverChromeHostUrl, tryChromeHostUrl } from "../../services/browser/browserDiscovery"
 import { searchWorkspaceFiles } from "../../services/search/file-search"
 import { fileExistsAtPath } from "../../utils/fs"
 import { playTts, setTtsEnabled, setTtsSpeed, stopTts } from "../../utils/tts"
-import { searchCommits } from "../../utils/git"
+import { searchCommits, getUncommittedFiles, addFilesIntent, restoreFilesFromStaged } from "../../utils/git"
 import { exportSettings, importSettingsWithFeedback } from "../config/importExport"
 import { getOpenAiModels } from "../../api/providers/openai"
 import { getVsCodeLmModels } from "../../api/providers/vscode-lm"
 import { openMention } from "../mentions"
+import { resolveImageMentions } from "../mentions/resolveImageMentions"
+import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { getWorkspacePath } from "../../utils/path"
-import { Mode, defaultModeSlug, ZgsmCodeMode } from "../../shared/modes"
-import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
+import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import {
+	Mode,
+	defaultModeSlug,
+	CostrictCodeMode,
+	isProviderAllowedForCostrictCodeMode,
+	resolveCostrictCodeModeForMode,
+} from "../../shared/modes"
+import {
+	getModels,
+	getModelsWithMetadata,
+	flushModels,
+	type ModelFetchResult,
+} from "../../api/providers/fetchers/modelCache"
 import { GetModelsOptions } from "../../shared/api"
 import { generateSystemPrompt } from "./generateSystemPrompt"
+import { resolveDefaultSaveUri, saveLastExportPath } from "../../utils/export"
 import { getCommand } from "../../utils/commands"
 
 const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
@@ -66,18 +94,37 @@ const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 // const pendingIndexStatusRequests = new Map<string, Promise<any>>()
 
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
-import { ZgsmAuthConfig } from "../costrict/auth"
+import { CostrictAuthConfig, CostrictAuthService, CostrictAuthStorage } from "../costrict/auth"
 import { CodeReviewService } from "../costrict/code-review"
-import { ZgsmCodebaseIndexManager, IndexSwitchRequest, IndexStatusInfo } from "../costrict/codebase-index"
 import { ErrorCodeManager } from "../costrict/error-code"
-import { writeCostrictAccessToken } from "../costrict/codebase-index/utils"
-import { workspaceEventMonitor } from "../costrict/codebase-index/workspace-event-monitor"
-import { fetchZgsmQuotaInfo, fetchZgsmInviteCode } from "../../api/providers/fetchers/zgsm"
+import { writeCostrictRuntimeAuth } from "../costrict/runtime-config"
+import { fetchCostrictQuotaInfo, fetchCostrictInviteCode } from "../../api/providers/fetchers/costrict"
 import { initNotificationService } from "../costrict/notification"
+import { initReviewSkills, showSkillsInitNotification } from "../../services/skills/github-skills-init"
 import delay from "delay"
-// import { ensureProjectWikiSubtasksExists } from "../costrict/wiki/projectWikiHelpers"
+import { ensureProjectWikiSubtasksExists } from "../costrict/wiki/projectWikiHelpers"
 import { setPendingTodoList } from "../tools/UpdateTodoListTool"
 import { getEditorType } from "../../utils/getEditorType"
+import { updateDefaultDebug } from "../../utils/getDebugState"
+import {
+	handleListWorktrees,
+	handleCreateWorktree,
+	handleDeleteWorktree,
+	handleSwitchWorktree,
+	handleGetAvailableBranches,
+	handleGetWorktreeDefaults,
+	handleGetWorktreeIncludeStatus,
+	handleCheckBranchWorktreeInclude,
+	handleCreateWorktreeInclude,
+	handleCheckoutBranch,
+} from "./worktree"
+import { isJetbrainsPlatform } from "../../utils/platform"
+import { showFileDiffFromGitStatus } from "../../utils/costrictUtils"
+import { ReviewTargetType } from "../../shared/codeReview"
+import { getRawTaskReporter } from "../costrict/telemetry"
+import { handleQueryMcpAsyncTask } from "../../services/mcp/asyncPolling/handleQueryMessage"
+
+let webviewDidLaunchTimer: NodeJS.Timeout | undefined
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
@@ -91,6 +138,93 @@ export const webviewMessageHandler = async (
 
 	const getCurrentCwd = () => {
 		return provider.getCurrentTask()?.cwd || provider.cwd
+	}
+
+	const getCurrentMode = async (): Promise<string> => {
+		const currentTask = provider.getCurrentTask()
+
+		if (currentTask) {
+			try {
+				return await currentTask.getTaskMode()
+			} catch (error) {
+				provider.log(
+					`Error resolving current task mode for command discovery: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
+				)
+			}
+		}
+
+		try {
+			const state = await provider.getState()
+			if (typeof state.mode === "string" && state.mode.length > 0) {
+				return state.mode
+			}
+		} catch (error) {
+			provider.log(
+				`Error resolving global mode for command discovery: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
+			)
+		}
+
+		return defaultModeSlug
+	}
+
+	const getDiscoveredCommands = async (): Promise<SlashCommand[]> => {
+		const state = await provider.getState()
+		const { getCommands } = await import("../../services/command/commands")
+		const commands = await getCommands(getCurrentCwd(), state.language)
+
+		const commandList: SlashCommand[] = commands.map((command) => ({
+			name: command.name,
+			source: command.source,
+			filePath: command.filePath,
+			description: command.description,
+			argumentHint: command.argumentHint,
+		}))
+
+		const existingCommandNames = new Set(commandList.map((command) => command.name))
+		const skillsManager = provider.getSkillsManager()
+
+		if (!skillsManager) {
+			return commandList
+		}
+
+		const currentMode = await getCurrentMode()
+		const availableSkills = skillsManager.getSkillsForMode(currentMode)
+
+		for (const skill of availableSkills) {
+			if (existingCommandNames.has(skill.name)) {
+				continue
+			}
+
+			existingCommandNames.add(skill.name)
+			commandList.push({
+				name: skill.name,
+				source: skill.source,
+				filePath: skill.path,
+				description: skill.description,
+			})
+		}
+
+		return commandList
+	}
+
+	/**
+	 * Resolves image file mentions in incoming messages.
+	 * Matches read_file behavior: respects size limits and model capabilities.
+	 */
+	const resolveIncomingImages = async (payload: { text?: string; images?: string[] }) => {
+		const text = payload.text ?? ""
+		const images = payload.images
+		const currentTask = provider.getCurrentTask()
+		const state = await provider.getState()
+		const resolved = await resolveImageMentions({
+			text,
+			images,
+			cwd: getCurrentCwd(),
+			rooIgnoreController: currentTask?.rooIgnoreController,
+			maxImageFileSize: state.maxImageFileSize,
+			maxTotalImageSize: state.maxTotalImageSize,
+		})
+		return resolved
 	}
 	/**
 	 * Shared utility to find message indices based on timestamp.
@@ -439,7 +573,7 @@ export const webviewMessageHandler = async (
 	}
 
 	switch (message.type) {
-		case "zgsmProviderTip": {
+		case "costrictProviderTip": {
 			const { tipType = "", msg = "" } = message.values || {}
 
 			if (!tipType || !msg) break
@@ -454,14 +588,14 @@ export const webviewMessageHandler = async (
 
 			break
 		}
-		case "zgsmLogin": {
+		case "costrictLogin": {
 			try {
 				TelemetryService.instance.captureEvent(TelemetryEventName.AUTHENTICATION_INITIATED)
 				const currentConfigName = getGlobalState("currentApiConfigName") || "default"
 				if (message.apiConfiguration) {
 					await provider.upsertProviderProfile(currentConfigName, message.apiConfiguration)
 				}
-				await provider.getZgsmAuthCommands?.()?.handleLogin()
+				await provider.getCostrictAuthCommands?.()?.handleLogin()
 			} catch (error) {
 				provider.log(`AuthService#login failed: ${error}`)
 				vscode.window.showErrorMessage("Sign in failed.")
@@ -469,9 +603,9 @@ export const webviewMessageHandler = async (
 
 			break
 		}
-		case "zgsmLogout": {
+		case "costrictLogout": {
 			try {
-				await provider.getZgsmAuthCommands?.()?.handleLogout()
+				await provider.getCostrictAuthCommands?.()?.handleLogout()
 				await provider.postStateToWebview()
 			} catch (error) {
 				provider.log(`AuthService#logout failed: ${error}`)
@@ -480,12 +614,15 @@ export const webviewMessageHandler = async (
 
 			break
 		}
-		case "zgsmAbort": {
-			await provider.cancelTask()
+		case "costrictTelemetry": {
+			const { eventName, properties } = message?.values ?? {}
+			if (eventName) {
+				TelemetryService.instance.captureEvent(eventName, properties)
+			}
 			break
 		}
-		case "showZgsmCodebaseDisableConfirmDialog": {
-			await provider.postMessageToWebview({ type: "showZgsmCodebaseDisableConfirmDialog" })
+		case "switchUiMode": {
+			await vscode.commands.executeCommand(`${Package.commandIDPrefix}.toggleUiMode`)
 			break
 		}
 		case "checkReviewSuggestion":
@@ -494,90 +631,166 @@ export const webviewMessageHandler = async (
 		case "cancelReviewTask":
 			await CodeReviewService.getInstance().cancelCurrentTask()
 			break
-		case "webviewDidLaunch":
-			// Load custom modes first
-			const customModes = await provider.customModesManager.getCustomModes()
-			await updateGlobalState("customModes", customModes)
+		case "webviewDidLaunch": {
+			try {
+				// Load custom modes first
+				const customModes = await provider.customModesManager.getCustomModes()
+				await updateGlobalState("customModes", customModes)
 
-			provider.postStateToWebview()
-			provider.workspaceTracker?.initializeFilePaths() // Don't await.
+				provider.postStateToWebview({ force: true })
+				provider.workspaceTracker?.initializeFilePaths() // Don't await.
 
-			getTheme().then((theme) => provider.postMessageToWebview({ type: "theme", text: JSON.stringify(theme) }))
-
-			// If MCP Hub is already initialized, update the webview with
-			// current server list.
-			const mcpHub = provider.getMcpHub()
-
-			if (mcpHub) {
-				provider.postMessageToWebview({ type: "mcpServers", mcpServers: mcpHub.getAllServers() })
-			}
-
-			provider.providerSettingsManager
-				.listConfig()
-				.then(async (listApiConfig) => {
-					if (!listApiConfig) {
-						return
-					}
-
-					if (listApiConfig.length === 1) {
-						// Check if first time init then sync with exist config.
-						if (!checkExistKey(listApiConfig[0])) {
-							const { apiConfiguration } = await provider.getState()
-
-							await provider.providerSettingsManager.saveConfig(
-								listApiConfig[0].name ?? "default",
-								apiConfiguration,
-							)
-
-							listApiConfig[0].apiProvider = apiConfiguration.apiProvider
-						}
-					}
-
-					const currentConfigName = getGlobalState("currentApiConfigName")
-
-					if (currentConfigName) {
-						if (!(await provider.providerSettingsManager.hasConfig(currentConfigName))) {
-							// Current config name not valid, get first config in list.
-							const name = listApiConfig[0]?.name
-							await updateGlobalState("currentApiConfigName", name)
-
-							if (name) {
-								await provider.activateProviderProfile({ name })
-								return
-							}
-						}
-					}
-
-					await Promise.all([
-						await updateGlobalState("listApiConfigMeta", listApiConfig),
-						await provider.postMessageToWebview({ type: "listApiConfig", listApiConfig }),
-					])
-				})
-				.catch((error) =>
-					provider.log(
-						`Error list api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
-					),
+				getTheme().then((theme) =>
+					provider.postMessageToWebview({ type: "theme", text: JSON.stringify(theme) }),
 				)
 
-			// Enable telemetry by default (when unset) or when explicitly enabled
-			provider.getStateToPostToWebview().then((state) => {
-				const { telemetrySetting } = state
-				const isOptedIn = telemetrySetting !== "disabled"
-				TelemetryService.instance.updateTelemetryState(isOptedIn)
-			})
-			initNotificationService(provider)
+				// When MCP is enabled, ensure the MCP Hub is initialized so that
+				// configured servers connect and their status reaches the webview.
+				// If the hub already exists, push the current server list now.
+				// Otherwise, lazily initialize it in the background — McpHub will
+				// automatically push the server list via updateServerConnections
+				// once initialization completes. This fixes the case where opening
+				// the MCP settings page shows an empty server list on first launch.
+				const { mcpEnabled } = (await provider.getState()) ?? {}
+				if (mcpEnabled ?? true) {
+					const mcpHub = provider.getMcpHub()
 
-			provider.isViewLaunched = true
+					if (mcpHub) {
+						provider.postMessageToWebview({ type: "mcpServers", mcpServers: mcpHub.getAllServers() })
+					} else {
+						// Lazily initialize MCP Hub in the background without
+						// blocking webview startup.
+						provider
+							.ensureMcpHub()
+							.catch((err) => provider.log(`MCP background initialization failed: ${err}`, "error"))
+					}
+				}
+
+				provider.providerSettingsManager
+					.listConfig()
+					.then(async (listApiConfig) => {
+						if (!listApiConfig) {
+							return
+						}
+
+						if (listApiConfig.length === 1) {
+							// Check if first time init then sync with exist config.
+							if (!checkExistKey(listApiConfig[0])) {
+								const { apiConfiguration } = await provider.getState()
+
+								// Only save if the current configuration has meaningful settings
+								// (e.g., API keys). This prevents saving a default "anthropic"
+								// fallback when no real config exists, which can happen during
+								// CLI initialization before provider settings are applied.
+								if (checkExistKey(apiConfiguration)) {
+									await provider.providerSettingsManager.saveConfig(
+										listApiConfig[0].name ?? "default",
+										apiConfiguration,
+									)
+
+									listApiConfig[0].apiProvider = apiConfiguration.apiProvider
+								}
+							}
+						}
+
+						const currentConfigName = getGlobalState("currentApiConfigName")
+
+						if (currentConfigName) {
+							if (!(await provider.providerSettingsManager.hasConfig(currentConfigName))) {
+								// Current config name not valid, get first config in list.
+								const name = listApiConfig[0]?.name
+								await updateGlobalState("currentApiConfigName", name)
+
+								if (name) {
+									await provider.activateProviderProfile({ name })
+									return
+								}
+							}
+						}
+
+						await Promise.all([
+							updateGlobalState("listApiConfigMeta", listApiConfig),
+							provider.postMessageToWebview({ type: "listApiConfig", listApiConfig }),
+						])
+					})
+					.catch((error) =>
+						provider.log(
+							`Error list api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
+						),
+					)
+
+				// Enable telemetry by default (when unset) or when explicitly enabled
+				provider.getStateToPostToWebview().then((state) => {
+					const { telemetrySetting } = state
+					const isOptedIn = telemetrySetting !== "disabled"
+					TelemetryService.instance.updateTelemetryState(isOptedIn)
+				})
+				clearTimeout(webviewDidLaunchTimer)
+				webviewDidLaunchTimer = setTimeout(() => {
+					void initNotificationService(provider)
+
+					// Deferred background work — only needed once the webview is ready
+					void flushModels(
+						{
+							provider: "costrict",
+							baseUrl: provider.getValue("costrictBaseUrl"),
+						},
+						true,
+						(models: ModelRecord, metadata) => {
+							const openAiModels = [] as string[]
+							const fullResponseData = [] as ModelInfo[]
+							for (const [id, value] of Object.entries(models)) {
+								openAiModels.push(id)
+								fullResponseData.push(value)
+							}
+							provider.postMessageToWebview({
+								type: "costrictModels",
+								openAiModels,
+								fullResponseData,
+								modelListAuthoritative: metadata.authoritative,
+							})
+						},
+					)
+
+					void provider.getState().then((state) => {
+						void ensureProjectWikiSubtasksExists(state.language ?? "en")
+					})
+
+					void provider.getState().then((state) => {
+						void initReviewSkills(provider.context, state.language ?? "zh-CN")
+							.then((summary) => {
+								provider.log("[BuiltinSkills] Bundled skills installed")
+								showSkillsInitNotification(summary)
+							})
+							.catch((error) =>
+								provider.log(
+									`[BuiltinSkills] Failed to install: ${error instanceof Error ? error.message : String(error)}`,
+								),
+							)
+					})
+					// Perform auto cleanup shortly after startup so initial webview rendering is not blocked.
+					void provider?.performAutoCleanup?.().then(() => {
+						provider.log("Auto cleanup check completed on startup")
+					})
+				}, 500)
+			} finally {
+				provider.isViewLaunched = true
+			}
 			break
+		}
 		case "newTask":
 			// Initializing new instance of Cline will make sure that any
 			// agentically running promises in old instance don't affect our new
 			// task. This essentially creates a fresh slate for the new task.
 			try {
-				// if (message.values?.checkProjectWiki) {
-				// 	await ensureProjectWikiSubtasksExists()
-				// }
-				await provider.createTask(message.text, message.images)
+				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
+				await provider.createTask(
+					resolved.text,
+					resolved.images,
+					undefined,
+					{ taskId: message.taskId },
+					message.taskConfiguration,
+				)
 				// Task created successfully - notify the UI to reset
 				await provider.postMessageToWebview({ type: "invoke", invoke: "newChat" })
 			} catch (error) {
@@ -594,15 +807,19 @@ export const webviewMessageHandler = async (
 			break
 
 		case "askResponse":
-			provider
-				.getCurrentTask()
-				?.handleWebviewAskResponse(
-					message.askResponse!,
-					message.text,
-					message.images,
-					message?.values?.chatType || "system",
-					message?.values?.isCommandInput ?? false,
-				)
+			{
+				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
+				//costrict: transparently forward the dedicated multiple choice response channel to Task
+				provider
+					.getCurrentTask()
+					?.handleWebviewAskResponse(
+						message.askResponse!,
+						resolved.text,
+						resolved.images,
+						message?.values?.chatType || "system",
+						message?.values?.isCommandInput ?? false,
+					)
+			}
 			break
 
 		case "updateSettings":
@@ -612,6 +829,19 @@ export const webviewMessageHandler = async (
 					if (key === "language") {
 						newValue = value ?? "en"
 						changeLanguage(newValue as Language)
+						// Initialize subtask files for the new language.
+						await ensureProjectWikiSubtasksExists(newValue as string)
+						// Reinstall bundled skills with the new locale
+						void initReviewSkills(provider.context, newValue as string)
+							.then((summary) => {
+								provider.log("[BuiltinSkills] Bundled skills reinstalled")
+								showSkillsInitNotification(summary)
+							})
+							.catch((error) =>
+								provider.log(
+									`[BuiltinSkills] Failed to reinstall: ${error instanceof Error ? error.message : String(error)}`,
+								),
+							)
 					} else if (key === "allowedCommands") {
 						const commands = value ?? []
 
@@ -620,7 +850,7 @@ export const webviewMessageHandler = async (
 							: []
 
 						await vscode.workspace
-							.getConfiguration(Package.name)
+							.getConfiguration(Package.commandIDPrefix)
 							.update("allowedCommands", newValue, vscode.ConfigurationTarget.Global)
 					} else if (key === "deniedCommands") {
 						const commands = value ?? []
@@ -630,8 +860,15 @@ export const webviewMessageHandler = async (
 							: []
 
 						await vscode.workspace
-							.getConfiguration(Package.name)
+							.getConfiguration(Package.commandIDPrefix)
 							.update("deniedCommands", newValue, vscode.ConfigurationTarget.Global)
+					} else if (key === "customStoragePath") {
+						newValue = typeof value === "string" ? value.trim() : ""
+
+						await vscode.workspace
+							.getConfiguration(Package.commandIDPrefix)
+							.update("customStoragePath", newValue, vscode.ConfigurationTarget.Global)
+						continue
 					} else if (key === "ttsEnabled") {
 						newValue = value ?? true
 						setTtsEnabled(newValue as boolean)
@@ -670,10 +907,8 @@ export const webviewMessageHandler = async (
 						if (value !== undefined) {
 							Terminal.setTerminalZdotdir(value as boolean)
 						}
-					} else if (key === "terminalCompressProgressBar") {
-						if (value !== undefined) {
-							Terminal.setCompressProgressBar(value as boolean)
-						}
+					} else if (key === "execaShellPath") {
+						Terminal.setExecaShellPath(value as string | undefined)
 					} else if (key === "mcpEnabled") {
 						newValue = value ?? true
 						const mcpHub = provider.getMcpHub()
@@ -709,15 +944,27 @@ export const webviewMessageHandler = async (
 
 		case "terminalOperation":
 			if (message.terminalOperation) {
-				provider
+				await provider
 					.getCurrentTask()
 					?.handleTerminalOperation(message.terminalOperation, message.terminalPid, message.executionId)
+					?.catch((err) => {
+						provider.log(
+							`Failed to handle terminal operation: ${err.message}`,
+							"error",
+							"terminalOperation",
+						)
+					})
 			}
 			break
 		case "clearTask":
 			// Clear task resets the current session. Delegation flows are
 			// handled via metadata; parent resumption occurs through
 			// reopenParentFromDelegation, not via finishSubTask.
+			const task = provider.getCurrentTask()
+			if (task) {
+				void getRawTaskReporter()?.reportTaskSummary(task)
+			}
+
 			await provider.clearTask()
 			await provider.postStateToWebview()
 			break
@@ -844,6 +1091,38 @@ export const webviewMessageHandler = async (
 		case "exportTaskWithId":
 			provider.exportTaskWithId(message.text!)
 			break
+		case "backupTasks":
+			await provider.backupTaskHistory()
+			break
+		case "restoreTasks":
+			await provider.restoreTaskHistory(message.conflict)
+			break
+		case "getTaskWithAggregatedCosts": {
+			try {
+				const taskId = message.text
+				if (!taskId) {
+					throw new Error("Task ID is required")
+				}
+				const result = await provider.getTaskWithAggregatedCosts(taskId)
+				await provider.postMessageToWebview({
+					type: "taskWithAggregatedCosts",
+					// IMPORTANT: ChatView stores aggregatedCostsMap keyed by message.text (taskId)
+					// so we must include it here.
+					text: taskId,
+					historyItem: result.historyItem,
+					aggregatedCosts: result.aggregatedCosts,
+				})
+			} catch (error) {
+				console.error("Error getting task with aggregated costs:", error)
+				await provider.postMessageToWebview({
+					type: "taskWithAggregatedCosts",
+					// Include taskId when available for correlation in UI logs.
+					text: message.text,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+			break
+		}
 		case "importSettings": {
 			await importSettingsWithFeedback({
 				providerSettingsManager: provider.providerSettingsManager,
@@ -864,40 +1143,42 @@ export const webviewMessageHandler = async (
 		case "resetState":
 			await provider.resetState()
 			break
-		case "fixCodebase":
-			await provider.fixCodebase()
+		case "requestReloadWebview":
+			await provider.reloadWebview()
+			break
+		case "fixHistory":
+			await provider.fixHistory()
 			break
 		case "flushRouterModels": {
 			const { apiConfiguration } = await provider.getState()
 			const routerNameFlush: RouterName = toRouterName(message.text)
+			const opt = {
+				provider: routerNameFlush,
+			} as GetModelsOptions
 
-			await flushModels(
-				routerNameFlush,
-				true,
-				apiConfiguration?.apiProvider === "zgsm"
-					? {
-							provider: "zgsm",
-							baseUrl: apiConfiguration?.zgsmBaseUrl,
-							apiKey: apiConfiguration?.zgsmAccessToken,
-							openAiHeaders: apiConfiguration?.openAiHeaders,
-						}
-					: undefined,
-				(models: ModelRecord) => {
-					if (apiConfiguration?.apiProvider === "zgsm") {
-						const openAiModels = [] as string[]
-						const fullResponseData = [] as ModelInfo[]
-						for (const [id, value] of Object.entries(models)) {
-							openAiModels.push(id)
-							fullResponseData.push(value)
-						}
-						provider.postMessageToWebview({
-							type: "zgsmModels",
-							openAiModels,
-							fullResponseData,
-						})
+			if (opt.provider === "costrict") {
+				opt.baseUrl =
+					apiConfiguration?.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()
+				opt.apiKey = apiConfiguration?.costrictAccessToken
+				opt.openAiHeaders = apiConfiguration?.openAiHeaders
+			}
+
+			await flushModels(opt, true, (models: ModelRecord, metadata) => {
+				if (apiConfiguration?.apiProvider === "costrict") {
+					const openAiModels = [] as string[]
+					const fullResponseData = [] as ModelInfo[]
+					for (const [id, value] of Object.entries(models)) {
+						openAiModels.push(id)
+						fullResponseData.push(value)
 					}
-				},
-			)
+					provider.postMessageToWebview({
+						type: "costrictModels",
+						openAiModels,
+						fullResponseData,
+						modelListAuthoritative: metadata.authoritative,
+					})
+				}
+			})
 			break
 		}
 		case "requestRouterModels":
@@ -907,22 +1188,22 @@ export const webviewMessageHandler = async (
 			const requestedProvider = message?.values?.provider
 			const providerFilter = requestedProvider ? toRouterName(requestedProvider) : undefined
 
+			// Optional refresh flag to flush cache before fetching (useful for providers requiring credentials)
+			const shouldRefresh = message?.values?.refresh === true
+
 			const routerModels: Record<RouterName, ModelRecord> = providerFilter
 				? ({} as Record<RouterName, ModelRecord>)
 				: {
-						zgsm: {},
+						costrict: {},
 						openrouter: {},
 						"vercel-ai-gateway": {},
-						huggingface: {},
 						litellm: {},
-						deepinfra: {},
-						"io-intelligence": {},
 						requesty: {},
 						unbound: {},
 						ollama: {},
 						lmstudio: {},
 						// roo: {},
-						chutes: {},
+						poe: {},
 					}
 
 			const safeGetModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
@@ -941,11 +1222,17 @@ export const webviewMessageHandler = async (
 			// Base candidates (only those handled by this aggregate fetcher)
 			const candidates: { key: RouterName; options: GetModelsOptions }[] = [
 				{
-					key: "zgsm",
+					key: "costrict",
 					options: {
-						provider: "zgsm",
-						baseUrl: message?.values?.baseUrl || apiConfiguration.zgsmBaseUrl,
-						apiKey: message?.values?.apiKey || apiConfiguration.zgsmAccessToken,
+						provider: "costrict",
+						baseUrl:
+							message?.values?.baseUrl ||
+							apiConfiguration.costrictBaseUrl ||
+							CostrictAuthConfig.getInstance().getDefaultApiBaseUrl(),
+						apiKey:
+							message?.values?.apiKey ||
+							apiConfiguration.costrictAccessToken ||
+							((await CostrictAuthStorage.getInstance().getTokens()) ?? {}).access_token,
 						openAiHeaders: message?.values?.openAiHeaders || {},
 					},
 				},
@@ -958,16 +1245,14 @@ export const webviewMessageHandler = async (
 						baseUrl: apiConfiguration.requestyBaseUrl,
 					},
 				},
-				{ key: "unbound", options: { provider: "unbound", apiKey: apiConfiguration.unboundApiKey } },
-				{ key: "vercel-ai-gateway", options: { provider: "vercel-ai-gateway" } },
 				{
-					key: "deepinfra",
+					key: "unbound",
 					options: {
-						provider: "deepinfra",
-						apiKey: apiConfiguration.deepInfraApiKey,
-						baseUrl: apiConfiguration.deepInfraBaseUrl,
+						provider: "unbound",
+						apiKey: apiConfiguration.unboundApiKey,
 					},
 				},
+				{ key: "vercel-ai-gateway", options: { provider: "vercel-ai-gateway" } },
 				// {
 				// 	key: "roo",
 				// 	options: {
@@ -978,19 +1263,7 @@ export const webviewMessageHandler = async (
 				// 			: undefined,
 				// 	},
 				// },
-				{
-					key: "chutes",
-					options: { provider: "chutes", apiKey: apiConfiguration.chutesApiKey },
-				},
 			]
-
-			// IO Intelligence is conditional on api key
-			if (apiConfiguration.ioIntelligenceApiKey) {
-				candidates.push({
-					key: "io-intelligence",
-					options: { provider: "io-intelligence", apiKey: apiConfiguration.ioIntelligenceApiKey },
-				})
-			}
 
 			// LiteLLM is conditional on baseUrl+apiKey
 			const litellmApiKey = apiConfiguration.litellmApiKey || message?.values?.litellmApiKey
@@ -1000,7 +1273,7 @@ export const webviewMessageHandler = async (
 				// If explicit credentials are provided in message.values (from Refresh Models button),
 				// flush the cache first to ensure we fetch fresh data with the new credentials
 				if (message?.values?.litellmApiKey || message?.values?.litellmBaseUrl) {
-					await flushModels("litellm", true)
+					await flushModels({ provider: "litellm", apiKey: litellmApiKey, baseUrl: litellmBaseUrl }, true)
 				}
 
 				candidates.push({
@@ -1009,16 +1282,46 @@ export const webviewMessageHandler = async (
 				})
 			}
 
+			// Poe is conditional on apiKey
+			const poeApiKey = apiConfiguration.poeApiKey || message?.values?.poeApiKey
+			const poeBaseUrl = apiConfiguration.poeBaseUrl || message?.values?.poeBaseUrl
+
+			if (poeApiKey) {
+				if (message?.values?.poeApiKey || message?.values?.poeBaseUrl) {
+					await flushModels({ provider: "poe", apiKey: poeApiKey, baseUrl: poeBaseUrl }, true)
+				}
+
+				candidates.push({
+					key: "poe",
+					options: { provider: "poe", apiKey: poeApiKey, baseUrl: poeBaseUrl },
+				})
+			}
+
 			// Apply single provider filter if specified
 			const modelFetchPromises = providerFilter
 				? candidates.filter(({ key }) => key === providerFilter)
 				: candidates
 
+			// If refresh flag is set and we have a specific provider, flush its cache first
+			let forcedRefreshResult: ModelFetchResult | undefined
+			if (shouldRefresh && providerFilter && modelFetchPromises.length > 0) {
+				const targetCandidate = modelFetchPromises[0]
+				await flushModels(targetCandidate.options, true, (_models, metadata) => {
+					forcedRefreshResult = metadata
+				})
+			}
+
 			const results = await Promise.allSettled(
 				modelFetchPromises.map(async ({ key, options }) => {
-					const models = await safeGetModels(options)
+					const result =
+						key === providerFilter && forcedRefreshResult
+							? forcedRefreshResult
+							: key === "costrict"
+								? await getModelsWithMetadata(options)
+								: { models: await safeGetModels(options), authoritative: false }
+					const { models } = result
 
-					if (key === "zgsm") {
+					if (key === "costrict") {
 						const openAiModels = [] as string[]
 						const fullResponseData = [] as ModelInfo[]
 						for (const [id, value] of Object.entries(models)) {
@@ -1026,9 +1329,10 @@ export const webviewMessageHandler = async (
 							fullResponseData.push(value)
 						}
 						provider.postMessageToWebview({
-							type: "zgsmModels",
+							type: "costrictModels",
 							openAiModels,
 							fullResponseData,
+							modelListAuthoritative: result.authoritative,
 						})
 					}
 
@@ -1069,14 +1373,15 @@ export const webviewMessageHandler = async (
 			// Specific handler for Ollama models only.
 			const { apiConfiguration: ollamaApiConfig } = await provider.getState()
 			try {
-				// Flush cache and refresh to ensure fresh models.
-				await flushModels("ollama", true)
-
-				const ollamaModels = await getModels({
-					provider: "ollama",
+				const ollamaOptions = {
+					provider: "ollama" as const,
 					baseUrl: ollamaApiConfig.ollamaBaseUrl,
 					apiKey: ollamaApiConfig.ollamaApiKey,
-				})
+				}
+				// Flush cache and refresh to ensure fresh models.
+				await flushModels(ollamaOptions, true)
+
+				const ollamaModels = await getModels(ollamaOptions)
 
 				if (Object.keys(ollamaModels).length > 0) {
 					provider.postMessageToWebview({ type: "ollamaModels", ollamaModels: ollamaModels })
@@ -1091,13 +1396,14 @@ export const webviewMessageHandler = async (
 			// Specific handler for LM Studio models only.
 			const { apiConfiguration: lmStudioApiConfig } = await provider.getState()
 			try {
-				// Flush cache and refresh to ensure fresh models.
-				await flushModels("lmstudio", true)
-
-				const lmStudioModels = await getModels({
-					provider: "lmstudio",
+				const lmStudioOptions = {
+					provider: "lmstudio" as const,
 					baseUrl: lmStudioApiConfig.lmStudioBaseUrl,
-				})
+				}
+				// Flush cache and refresh to ensure fresh models.
+				await flushModels(lmStudioOptions, true)
+
+				const lmStudioModels = await getModels(lmStudioOptions)
 
 				if (Object.keys(lmStudioModels).length > 0) {
 					provider.postMessageToWebview({
@@ -1160,26 +1466,36 @@ export const webviewMessageHandler = async (
 			// TODO: Cache like we do for OpenRouter, etc?
 			provider.postMessageToWebview({ type: "vsCodeLmModels", vsCodeLmModels })
 			break
-		case "requestHuggingFaceModels":
-			// TODO: Why isn't this handled by `requestRouterModels` above?
-			try {
-				const { getHuggingFaceModelsWithMetadata } = await import("../../api/providers/fetchers/huggingface")
-				const huggingFaceModelsResponse = await getHuggingFaceModelsWithMetadata()
-
-				provider.postMessageToWebview({
-					type: "huggingFaceModels",
-					huggingFaceModels: huggingFaceModelsResponse.models,
-				})
-			} catch (error) {
-				console.error("Failed to fetch Hugging Face models:", error)
-				provider.postMessageToWebview({ type: "huggingFaceModels", huggingFaceModels: [] })
-			}
-			break
 		case "openImage":
 			openImage(message.text!, { values: message.values })
 			break
 		case "saveImage":
-			saveImage(message.dataUri!)
+			if (message.dataUri) {
+				const matches = message.dataUri.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/)
+				if (!matches) {
+					// Let saveImage handle invalid URI error
+					saveImage(message.dataUri, vscode.Uri.file(""))
+					break
+				}
+				const format = matches[1]
+				const defaultFileName = `img_${Date.now()}.${format}`
+
+				const defaultUri = await resolveDefaultSaveUri(
+					provider.contextProxy,
+					"lastImageSavePath",
+					defaultFileName,
+					{
+						useWorkspace: false,
+						fallbackDir: path.join(os.homedir(), "Downloads"),
+					},
+				)
+
+				const savedUri = await saveImage(message.dataUri, defaultUri)
+
+				if (savedUri) {
+					await saveLastExportPath(provider.contextProxy, "lastImageSavePath", savedUri)
+				}
+			}
 			break
 		case "openFile":
 			let filePath: string = message.text!
@@ -1188,12 +1504,63 @@ export const webviewMessageHandler = async (
 			}
 			openFile(filePath, message.values as { create?: boolean; content?: string; line?: number })
 			break
+		case "readFileContent": {
+			const relPath = message.text || ""
+			if (!relPath) {
+				provider.postMessageToWebview({
+					type: "fileContent",
+					fileContent: { path: relPath, content: null, error: "No path provided" },
+				})
+				break
+			}
+			try {
+				const cwd = getCurrentCwd()
+				if (!cwd) {
+					provider.postMessageToWebview({
+						type: "fileContent",
+						fileContent: { path: relPath, content: null, error: "No workspace path available" },
+					})
+					break
+				}
+				const absPath = path.resolve(cwd, relPath)
+				// Workspace-boundary validation: prevent path traversal attacks
+				if (isPathOutsideWorkspace(absPath)) {
+					provider.postMessageToWebview({
+						type: "fileContent",
+						fileContent: { path: relPath, content: null, error: "Path is outside workspace" },
+					})
+					break
+				}
+				const content = await fs.readFile(absPath, "utf-8")
+				provider.postMessageToWebview({ type: "fileContent", fileContent: { path: relPath, content } })
+			} catch (err) {
+				const errorMsg = err instanceof Error ? err.message : String(err)
+				provider.postMessageToWebview({
+					type: "fileContent",
+					fileContent: { path: relPath, content: null, error: errorMsg },
+				})
+			}
+			break
+		}
 		case "openMention":
 			openMention(getCurrentCwd(), message.text)
 			break
 		case "openExternal":
 			if (message.url) {
 				vscode.env.openExternal(vscode.Uri.parse(message.url))
+			}
+			break
+		case "executeCommand":
+			// Execute a VS Code command from a markdown link (command: prefix).
+			// Only allow a bare command id + args; reject anything that looks like it
+			// escaped the command: scheme (e.g. "command:foo"); executeCommand itself
+			// is the source of truth for whether the command exists.
+			if (message.command && typeof message.command === "string") {
+				const cmd = message.command.trim()
+				// Reject obvious path-like / url-like payloads; commands don't contain "/" or ":".
+				if (!/[\/:]/.test(cmd)) {
+					vscode.commands.executeCommand(cmd)
+				}
 			}
 			break
 		case "checkpointDiff":
@@ -1230,71 +1597,8 @@ export const webviewMessageHandler = async (
 			break
 		case "cancelAutoApproval":
 			// Cancel any pending auto-approval timeout for the current task
-			provider.getCurrentTask()?.cancelAutoApprovalTimeout()
+			provider.getCurrentTask()?.cancelAutoApprovalTimeout(message?.values?.cancelType as string)
 			await provider.postStateToWebview()
-			break
-		case "killBrowserSession":
-			{
-				const task = provider.getCurrentTask()
-				if (task?.browserSession) {
-					await task.browserSession.closeBrowser()
-					await provider.postStateToWebview()
-				}
-			}
-			break
-		case "openBrowserSessionPanel":
-			{
-				// Toggle the Browser Session panel (open if closed, close if open)
-				const panelManager = BrowserSessionPanelManager.getInstance(provider)
-				await panelManager.toggle()
-			}
-			break
-		case "showBrowserSessionPanelAtStep":
-			{
-				const panelManager = BrowserSessionPanelManager.getInstance(provider)
-
-				// If this is a launch action, reset the manual close flag
-				if (message.isLaunchAction) {
-					panelManager.resetManualCloseFlag()
-				}
-
-				// Show panel if:
-				// 1. Manual click (forceShow) - always show
-				// 2. Launch action - always show and reset flag
-				// 3. Auto-open for non-launch action - only if user hasn't manually closed
-				if (message.forceShow || message.isLaunchAction || panelManager.shouldAllowAutoOpen()) {
-					// Ensure panel is shown and populated
-					await panelManager.show()
-
-					// Navigate to a specific step if provided
-					// For launch actions: navigate to step 0
-					// For manual clicks: navigate to the clicked step
-					// For auto-opens of regular actions: don't navigate, let BrowserSessionRow's
-					// internal auto-advance logic handle it (only advances if user is on most recent step)
-					if (typeof message.stepIndex === "number" && message.stepIndex >= 0) {
-						await panelManager.navigateToStep(message.stepIndex)
-					}
-				}
-			}
-			break
-		case "refreshBrowserSessionPanel":
-			{
-				// Re-send the latest browser session snapshot to the panel
-				const panelManager = BrowserSessionPanelManager.getInstance(provider)
-				const task = provider.getCurrentTask()
-				if (task) {
-					const messages = task.clineMessages || []
-					const browserSessionStartIndex = messages.findIndex(
-						(m) =>
-							m.ask === "browser_action_launch" ||
-							(m.say === "browser_session_status" && m.text?.includes("opened")),
-					)
-					const browserSessionMessages =
-						browserSessionStartIndex !== -1 ? messages.slice(browserSessionStartIndex) : []
-					const isBrowserSessionActive = task.browserSession?.isSessionActive() ?? false
-					await panelManager.updateBrowserSession(browserSessionMessages, isBrowserSessionActive)
-				}
-			}
 			break
 		case "allowedCommands": {
 			// Validate and sanitize the commands array
@@ -1307,7 +1611,7 @@ export const webviewMessageHandler = async (
 
 			// Also update workspace settings.
 			await vscode.workspace
-				.getConfiguration(Package.name)
+				.getConfiguration(Package.commandIDPrefix)
 				.update("allowedCommands", validCommands, vscode.ConfigurationTarget.Global)
 
 			break
@@ -1323,11 +1627,19 @@ export const webviewMessageHandler = async (
 
 			// Also update workspace settings.
 			await vscode.workspace
-				.getConfiguration(Package.name)
+				.getConfiguration(Package.commandIDPrefix)
 				.update("deniedCommands", validCommands, vscode.ConfigurationTarget.Global)
 
 			break
 		}
+		// case "setAutoCleanup": {
+		// 	if (message.autoCleanup) {
+		// 		await updateGlobalState("autoCleanup", message.autoCleanup)
+		// 		// 同步更新 webview 状态
+		// 		await provider.postStateToWebview()
+		// 	}
+		// 	break
+		// }
 		case "openCustomModesSettings": {
 			const customModesFilePath = await provider.customModesManager.getCustomModesFilePath()
 
@@ -1350,7 +1662,7 @@ export const webviewMessageHandler = async (
 			break
 		}
 		case "openMcpSettings": {
-			const mcpSettingsFilePath = await provider.getMcpHub()?.getMcpSettingsFilePath()
+			const mcpSettingsFilePath = await provider.ensureMcpHub().then((hub) => hub.getMcpSettingsFilePath())
 
 			if (mcpSettingsFilePath) {
 				openFile(mcpSettingsFilePath)
@@ -1373,7 +1685,7 @@ export const webviewMessageHandler = async (
 				const exists = await fileExistsAtPath(mcpPath)
 
 				if (!exists) {
-					await safeWriteJson(mcpPath, { mcpServers: {} })
+					await safeWriteJson(mcpPath, { mcpServers: {} }, { prettyPrint: true })
 				}
 
 				await openFile(mcpPath)
@@ -1390,7 +1702,9 @@ export const webviewMessageHandler = async (
 
 			try {
 				provider.log(`Attempting to delete MCP server: ${message.serverName}`)
-				await provider.getMcpHub()?.deleteServer(message.serverName, message.source as "global" | "project")
+				await provider
+					.ensureMcpHub()
+					.then((hub) => hub.deleteServer(message.serverName!, message.source as "global" | "project"))
 				provider.log(`Successfully deleted MCP server: ${message.serverName}`)
 
 				// Refresh the webview state
@@ -1404,7 +1718,9 @@ export const webviewMessageHandler = async (
 		}
 		case "restartMcpServer": {
 			try {
-				await provider.getMcpHub()?.restartConnection(message.text!, message.source as "global" | "project")
+				await provider
+					.ensureMcpHub()
+					.then((hub) => hub.restartConnection(message.text!, message.source as "global" | "project"))
 			} catch (error) {
 				provider.log(
 					`Failed to retry connection for ${message.text}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1414,14 +1730,14 @@ export const webviewMessageHandler = async (
 		}
 		case "toggleToolAlwaysAllow": {
 			try {
-				await provider
-					.getMcpHub()
-					?.toggleToolAlwaysAllow(
-						message.serverName!,
-						message.source as "global" | "project",
-						message.toolName!,
-						Boolean(message.alwaysAllow),
-					)
+				await (
+					await provider.ensureMcpHub()
+				).toggleToolAlwaysAllow(
+					message.serverName!,
+					message.source as "global" | "project",
+					message.toolName!,
+					Boolean(message.alwaysAllow),
+				)
 			} catch (error) {
 				provider.log(
 					`Failed to toggle auto-approve for tool ${message.toolName}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1431,14 +1747,14 @@ export const webviewMessageHandler = async (
 		}
 		case "toggleToolEnabledForPrompt": {
 			try {
-				await provider
-					.getMcpHub()
-					?.toggleToolEnabledForPrompt(
-						message.serverName!,
-						message.source as "global" | "project",
-						message.toolName!,
-						Boolean(message.isEnabled),
-					)
+				await (
+					await provider.ensureMcpHub()
+				).toggleToolEnabledForPrompt(
+					message.serverName!,
+					message.source as "global" | "project",
+					message.toolName!,
+					Boolean(message.isEnabled),
+				)
 			} catch (error) {
 				provider.log(
 					`Failed to toggle enabled for prompt for tool ${message.toolName}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1448,13 +1764,9 @@ export const webviewMessageHandler = async (
 		}
 		case "toggleMcpServer": {
 			try {
-				await provider
-					.getMcpHub()
-					?.toggleServerDisabled(
-						message.serverName!,
-						message.disabled!,
-						message.source as "global" | "project",
-					)
+				await (
+					await provider.ensureMcpHub()
+				).toggleServerDisabled(message.serverName!, message.disabled!, message.source as "global" | "project")
 			} catch (error) {
 				provider.log(
 					`Failed to toggle MCP server ${message.serverName}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1462,28 +1774,9 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
-		case "enableMcpServerCreation":
-			await updateGlobalState("enableMcpServerCreation", message.bool ?? true)
-			await provider.postStateToWebview()
-			break
-		case "remoteControlEnabled":
-			try {
-				await CloudService.instance.updateUserSettings({ extensionBridgeEnabled: message.bool ?? false })
-			} catch (error) {
-				provider.log(
-					`CloudService#updateUserSettings failed: ${error instanceof Error ? error.message : String(error)}`,
-				)
-			}
-			break
-
 		case "taskSyncEnabled":
 			const enabled = message.bool ?? false
 			const updatedSettings: Partial<UserSettingsConfig> = { taskSyncEnabled: enabled }
-
-			// If disabling task sync, also disable remote control.
-			if (!enabled) {
-				updatedSettings.extensionBridgeEnabled = false
-			}
 
 			try {
 				await CloudService.instance.updateUserSettings(updatedSettings)
@@ -1500,6 +1793,25 @@ export const webviewMessageHandler = async (
 				await mcpHub.refreshAllConnections()
 			}
 
+			break
+		}
+
+		case "queryMcpAsyncTask": {
+			const mcpHub = provider.getMcpHub()
+			if (!mcpHub) break
+			const records = await mcpHub.getAsyncTaskRecords()
+			const record = records.find((r) => r.id === message.recordId)
+			if (!record) break
+			const cfg = await mcpHub.getAsyncPollingConfig(record.serverName, record.originalToolName, record.source)
+			if (!cfg) break
+			await handleQueryMcpAsyncTask({
+				recordId: record.id,
+				store: mcpHub.getAsyncTaskStore(),
+				callTool: (s, t, a, src, opts) => mcpHub.callTool(s, t, a, src, opts),
+				postExecutionStatus: (status) =>
+					provider.postMessageToWebview({ type: "mcpExecutionStatus", text: JSON.stringify(status) }),
+				asyncPollingConfig: cfg,
+			})
 			break
 		}
 
@@ -1526,47 +1838,6 @@ export const webviewMessageHandler = async (
 			break
 		case "stopTts":
 			stopTts()
-			break
-		// case "useZgsmCustomConfig":
-		// 	const useZgsmCustomConfig = message.bool ?? false
-		// 	await updateGlobalState("useZgsmCustomConfig", useZgsmCustomConfig)
-		// 	await provider.postStateToWebview()
-		// 	break
-		case "testBrowserConnection":
-			// If no text is provided, try auto-discovery
-			if (!message.text) {
-				// Use testBrowserConnection for auto-discovery
-				const chromeHostUrl = await discoverChromeHostUrl()
-
-				if (chromeHostUrl) {
-					// Send the result back to the webview
-					await provider.postMessageToWebview({
-						type: "browserConnectionResult",
-						success: !!chromeHostUrl,
-						text: `Auto-discovered and tested connection to Chrome: ${chromeHostUrl}`,
-						values: { endpoint: chromeHostUrl },
-					})
-				} else {
-					await provider.postMessageToWebview({
-						type: "browserConnectionResult",
-						success: false,
-						text: "No Chrome instances found on the network. Make sure Chrome is running with remote debugging enabled (--remote-debugging-port=9222).",
-					})
-				}
-			} else {
-				// Test the provided URL
-				const customHostUrl = message.text
-				const hostIsValid = await tryChromeHostUrl(message.text)
-
-				// Send the result back to the webview
-				await provider.postMessageToWebview({
-					type: "browserConnectionResult",
-					success: hostIsValid,
-					text: hostIsValid
-						? `Successfully connected to Chrome: ${customHostUrl}`
-						: "Failed to connect to Chrome",
-				})
-			}
 			break
 
 		case "updateVSCodeSetting": {
@@ -1609,8 +1880,8 @@ export const webviewMessageHandler = async (
 		case "mode":
 			await provider.handleModeSwitch(message.text as Mode)
 			break
-		case "zgsmCodeMode":
-			await provider.setZgsmCodeMode(message.text as ZgsmCodeMode)
+		case "costrictCodeMode":
+			await provider.setCostrictCodeMode(message.text as CostrictCodeMode)
 			break
 		case "updatePrompt":
 			if (message.promptMode && message.customPrompt !== undefined) {
@@ -1675,6 +1946,23 @@ export const webviewMessageHandler = async (
 			await updateGlobalState("hasOpenedModeSelector", message.bool ?? true)
 			await provider.postStateToWebview()
 			break
+		case "setCodeReviewWelcomeTips": {
+			const payload = message.payload as CodeReviewWelcomeTipsPayload
+			if (payload?.value !== undefined) {
+				await updateGlobalState("hasClosedCodeReviewWelcomeTips", payload.value)
+				await provider.postStateToWebview()
+			}
+			break
+		}
+
+		case "lockApiConfigAcrossModes": {
+			const enabled = message.bool ?? false
+			await provider.context.workspaceState.update("lockApiConfigAcrossModes", enabled)
+
+			await provider.postStateToWebview()
+			break
+		}
+
 		case "toggleApiConfigPin":
 			if (message.text) {
 				const currentPinned = getGlobalState("pinnedApiConfigs") ?? {}
@@ -1695,16 +1983,6 @@ export const webviewMessageHandler = async (
 			await provider.postStateToWebview()
 			break
 
-		case "updateCondensingPrompt":
-			// Store the condensing prompt in customSupportPrompts["CONDENSE"]
-			// instead of customCondensingPrompt.
-			const currentSupportPrompts = getGlobalState("customSupportPrompts") ?? {}
-			const updatedSupportPrompts = { ...currentSupportPrompts, CONDENSE: message.text }
-			await updateGlobalState("customSupportPrompts", updatedSupportPrompts)
-			// Also update the old field for backward compatibility during migration.
-			await updateGlobalState("customCondensingPrompt", message.text)
-			await provider.postStateToWebview()
-			break
 		case "autoApprovalEnabled":
 			await updateGlobalState("autoApprovalEnabled", message.bool ?? false)
 			await provider.postStateToWebview()
@@ -1821,12 +2099,39 @@ export const webviewMessageHandler = async (
 					20, // Use default limit, as filtering is now done in the backend
 				)
 
-				// Send results back to webview
-				await provider.postMessageToWebview({
-					type: "fileSearchResults",
-					results,
-					requestId: message.requestId,
-				})
+				// Get the RooIgnoreController from the current task, or create a new one
+				const currentTask = provider.getCurrentTask()
+				let rooIgnoreController = currentTask?.rooIgnoreController
+				let tempController: RooIgnoreController | undefined
+
+				// If no current task or no controller, create a temporary one
+				if (!rooIgnoreController) {
+					tempController = new RooIgnoreController(workspacePath)
+					await tempController.initialize()
+					rooIgnoreController = tempController
+				}
+
+				try {
+					// Get showRooIgnoredFiles setting from state
+					const { showRooIgnoredFiles = false } = (await provider.getState()) ?? {}
+
+					// Filter results using RooIgnoreController if showRooIgnoredFiles is false
+					let filteredResults = results
+					if (!showRooIgnoredFiles && rooIgnoreController) {
+						const allowedPaths = rooIgnoreController.filterPaths(results.map((r) => r.path))
+						filteredResults = results.filter((r) => allowedPaths.includes(r.path))
+					}
+
+					// Send results back to webview
+					await provider.postMessageToWebview({
+						type: "fileSearchResults",
+						results: filteredResults,
+						requestId: message.requestId,
+					})
+				} finally {
+					// Dispose temporary controller to prevent resource leak
+					tempController?.dispose()
+				}
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error)
 
@@ -1848,6 +2153,46 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "refreshCustomTools": {
+			try {
+				const cwd = getCurrentCwd()
+				const toolDirs = getRooDirectoriesForCwd(cwd, true).map((dir) => path.join(dir, "tools"))
+				const trust = WorkspaceTrustService.getInstance(provider.context)
+				// L0 + L1: skip in VS Code restricted mode; otherwise require explicit
+				// approval before importing project tool files (executes top-level code).
+				if (trust.isRestrictedMode()) {
+					await provider.postMessageToWebview({
+						type: "customToolsResult",
+						tools: [],
+						error: t("mcp:security.custom_tools_restricted"),
+					})
+					break
+				}
+				const files = await listCustomToolFiles(toolDirs)
+				if (!(await trust.ensureCustomToolsApproved(cwd, files))) {
+					await provider.postMessageToWebview({
+						type: "customToolsResult",
+						tools: [],
+						error: t("mcp:security.custom_tools_not_approved"),
+					})
+					break
+				}
+				await customToolRegistry.loadFromDirectories(toolDirs)
+
+				await provider.postMessageToWebview({
+					type: "customToolsResult",
+					tools: customToolRegistry.getAllSerialized(),
+				})
+			} catch (error) {
+				await provider.postMessageToWebview({
+					type: "customToolsResult",
+					tools: [],
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+
+			break
+		}
 		case "saveApiConfiguration":
 			if (message.text && message.apiConfiguration) {
 				try {
@@ -1864,19 +2209,24 @@ export const webviewMessageHandler = async (
 			break
 		case "upsertApiConfiguration":
 			if (message.text && message.apiConfiguration) {
-				if (message.apiConfiguration.apiProvider === "zgsm") {
+				if (message.apiConfiguration.apiProvider === "costrict") {
 					await provider.providerSettingsManager.saveMergeConfig(
 						{
-							zgsmBaseUrl: message.apiConfiguration.zgsmBaseUrl,
+							costrictBaseUrl:
+								message.apiConfiguration.costrictBaseUrl ||
+								CostrictAuthConfig.getInstance().getDefaultApiBaseUrl(),
 						},
 						(name, { apiProvider }) => {
-							return apiProvider === "zgsm" && name !== message.text
+							return apiProvider === "costrict" && name !== message.text
 						},
 					)
 				}
 				await provider.upsertProviderProfile(message.text, message.apiConfiguration)
-				if (message.apiConfiguration?.zgsmAccessToken) {
-					writeCostrictAccessToken(message.apiConfiguration?.zgsmAccessToken)
+				if (message.apiConfiguration?.costrictAccessToken && message.apiConfiguration?.costrictRefreshToken) {
+					writeCostrictRuntimeAuth(
+						message.apiConfiguration?.costrictAccessToken,
+						message.apiConfiguration?.costrictRefreshToken,
+					)
 				}
 			}
 			break
@@ -1889,6 +2239,8 @@ export const webviewMessageHandler = async (
 						break
 					}
 
+					const currentConfigName = getGlobalState("currentApiConfigName")
+
 					// Load the old configuration to get its ID.
 					const { id } = await provider.providerSettingsManager.getProfile({ name: oldName })
 
@@ -1897,10 +2249,19 @@ export const webviewMessageHandler = async (
 
 					// Delete the old configuration.
 					await provider.providerSettingsManager.deleteConfig(oldName)
+					await provider.renameStickyProviderProfileInTaskHistory(oldName, newName)
 
-					// Re-activate to update the global settings related to the
-					// currently activated provider profile.
-					await provider.activateProviderProfile({ name: newName })
+					if (currentConfigName === oldName) {
+						// Re-activate only when renaming the currently activated provider profile so
+						// currentApiConfigName, mode config, and sticky task state remain in sync.
+						await provider.activateProviderProfile({ name: newName })
+					} else {
+						await updateGlobalState(
+							"listApiConfigMeta",
+							await provider.providerSettingsManager.listConfig(),
+						)
+						await provider.postStateToWebview()
+					}
 				} catch (error) {
 					provider.log(
 						`Error rename api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1913,6 +2274,21 @@ export const webviewMessageHandler = async (
 		case "loadApiConfiguration":
 			if (message.text) {
 				try {
+					const state = await provider.getState()
+					const profile = await provider.providerSettingsManager.getProfile({ name: message.text })
+					const targetCostrictCodeMode = resolveCostrictCodeModeForMode(
+						state.mode,
+						state.costrictCodeMode,
+						state.customModes,
+					)
+
+					if (!isProviderAllowedForCostrictCodeMode(targetCostrictCodeMode, profile.apiProvider)) {
+						await vscode.window.showInformationMessage(
+							t("settings:codebase.general.onlyCostrictProviderSupport"),
+						)
+						break
+					}
+
 					await provider.activateProviderProfile({ name: message.text })
 				} catch (error) {
 					provider.log(
@@ -1925,6 +2301,21 @@ export const webviewMessageHandler = async (
 		case "loadApiConfigurationById":
 			if (message.text) {
 				try {
+					const state = await provider.getState()
+					const profile = await provider.providerSettingsManager.getProfile({ id: message.text })
+					const targetCostrictCodeMode = resolveCostrictCodeModeForMode(
+						state.mode,
+						state.costrictCodeMode,
+						state.customModes,
+					)
+
+					if (!isProviderAllowedForCostrictCodeMode(targetCostrictCodeMode, profile.apiProvider)) {
+						await vscode.window.showInformationMessage(
+							t("settings:codebase.general.onlyCostrictProviderSupport"),
+						)
+						break
+					}
+
 					await provider.activateProviderProfile({ id: message.text })
 				} catch (error) {
 					provider.log(
@@ -1947,10 +2338,11 @@ export const webviewMessageHandler = async (
 				}
 
 				const oldName = message.text
-
-				const newName = (await provider.providerSettingsManager.listConfig()).filter(
+				const currentConfigName = getGlobalState("currentApiConfigName")
+				const remainingConfigs = (await provider.providerSettingsManager.listConfig()).filter(
 					(c) => c.name !== oldName,
-				)[0]?.name
+				)
+				const newName = remainingConfigs[0]?.name
 
 				if (!newName) {
 					vscode.window.showErrorMessage(t("common:errors.delete_api_config"))
@@ -1959,7 +2351,17 @@ export const webviewMessageHandler = async (
 
 				try {
 					await provider.providerSettingsManager.deleteConfig(oldName)
-					await provider.activateProviderProfile({ name: newName })
+					await provider.clearDeletedProviderProfileFromTaskHistory(oldName)
+
+					if (currentConfigName === oldName) {
+						await provider.activateProviderProfile({ name: newName })
+					} else {
+						await updateGlobalState(
+							"listApiConfigMeta",
+							await provider.providerSettingsManager.listConfig(),
+						)
+						await provider.postStateToWebview()
+					}
 				} catch (error) {
 					provider.log(
 						`Error delete api configuration: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -1984,11 +2386,12 @@ export const webviewMessageHandler = async (
 			break
 		case "editMessageConfirm":
 			if (message.messageTs && message.text) {
+				const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
 				await handleEditMessageConfirm(
 					message.messageTs,
-					message.text,
+					resolved.text,
 					message.restoreCheckpoint,
-					message.images,
+					resolved.images,
 				)
 			}
 			break
@@ -2008,13 +2411,9 @@ export const webviewMessageHandler = async (
 		case "updateMcpTimeout":
 			if (message.serverName && typeof message.timeout === "number") {
 				try {
-					await provider
-						.getMcpHub()
-						?.updateServerTimeout(
-							message.serverName,
-							message.timeout,
-							message.source as "global" | "project",
-						)
+					await (
+						await provider.ensureMcpHub()
+					).updateServerTimeout(message.serverName, message.timeout, message.source as "global" | "project")
 				} catch (error) {
 					provider.log(
 						`Failed to update timeout for ${message.serverName}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -2145,25 +2544,15 @@ export const webviewMessageHandler = async (
 					const result = await provider.customModesManager.exportModeWithRules(message.slug, customPrompt)
 
 					if (result.success && result.yaml) {
-						// Get last used directory for export
-						const lastExportPath = getGlobalState("lastModeExportPath")
-						let defaultUri: vscode.Uri
-
-						if (lastExportPath) {
-							// Use the directory from the last export
-							const lastDir = path.dirname(lastExportPath)
-							defaultUri = vscode.Uri.file(path.join(lastDir, `${message.slug}-export.yaml`))
-						} else {
-							// Default to workspace or home directory
-							const workspaceFolders = vscode.workspace.workspaceFolders
-							if (workspaceFolders && workspaceFolders.length > 0) {
-								defaultUri = vscode.Uri.file(
-									path.join(workspaceFolders[0].uri.fsPath, `${message.slug}-export.yaml`),
-								)
-							} else {
-								defaultUri = vscode.Uri.file(`${message.slug}-export.yaml`)
-							}
-						}
+						const defaultUri = await resolveDefaultSaveUri(
+							provider.contextProxy,
+							"lastModeExportPath",
+							`${message.slug}-export.yaml`,
+							{
+								useWorkspace: true,
+								fallbackDir: path.join(os.homedir(), "Downloads"),
+							},
+						)
 
 						// Show save dialog
 						const saveUri = await vscode.window.showSaveDialog({
@@ -2176,7 +2565,7 @@ export const webviewMessageHandler = async (
 
 						if (saveUri && result.yaml) {
 							// Save the directory for next time
-							await updateGlobalState("lastModeExportPath", saveUri.fsPath)
+							await saveLastExportPath(provider.contextProxy, "lastModeExportPath", saveUri)
 
 							// Write the file to the selected location
 							await fs.writeFile(saveUri.fsPath, result.yaml, "utf-8")
@@ -2370,6 +2759,14 @@ export const webviewMessageHandler = async (
 			await provider.postStateToWebview()
 			break
 		}
+		case "debugSetting": {
+			await vscode.workspace
+				.getConfiguration(Package.commandIDPrefix)
+				.update("debug", message.bool ?? false, vscode.ConfigurationTarget.Global)
+			updateDefaultDebug(message.bool ?? false)
+			await provider.postStateToWebview()
+			break
+		}
 		case "cloudButtonClicked": {
 			// Navigate to the cloud tab.
 			provider.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
@@ -2449,6 +2846,45 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "openAiCodexSignIn": {
+			try {
+				const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+				const authUrl = openAiCodexOAuthManager.startAuthorizationFlow()
+
+				// Open the authorization URL in the browser
+				await vscode.env.openExternal(vscode.Uri.parse(authUrl))
+
+				// Wait for the callback in a separate promise (non-blocking)
+				openAiCodexOAuthManager
+					.waitForCallback()
+					.then(async () => {
+						vscode.window.showInformationMessage("Successfully signed in to OpenAI Codex")
+						await provider.postStateToWebview()
+					})
+					.catch((error) => {
+						provider.log(`OpenAI Codex OAuth callback failed: ${error}`)
+						if (!String(error).includes("timed out")) {
+							vscode.window.showErrorMessage(`OpenAI Codex sign in failed: ${error.message || error}`)
+						}
+					})
+			} catch (error) {
+				provider.log(`OpenAI Codex OAuth failed: ${error}`)
+				vscode.window.showErrorMessage("OpenAI Codex sign in failed.")
+			}
+			break
+		}
+		case "openAiCodexSignOut": {
+			try {
+				const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+				await openAiCodexOAuthManager.clearCredentials()
+				vscode.window.showInformationMessage("Signed out from OpenAI Codex")
+				await provider.postStateToWebview()
+			} catch (error) {
+				provider.log(`OpenAI Codex sign out failed: ${error}`)
+				vscode.window.showErrorMessage("OpenAI Codex sign out failed.")
+			}
+			break
+		}
 		// case "rooCloudManualUrl": {
 		// 	try {
 		// 		if (!message.text) {
@@ -2525,361 +2961,371 @@ export const webviewMessageHandler = async (
 		// }
 
 		case "saveCodeIndexSettingsAtomic": {
-			if (!message.codeIndexSettings) {
-				break
-			}
+			// 	if (!message.codeIndexSettings) {
+			// 		break
+			// 	}
 
-			const settings = message.codeIndexSettings
+			// 	const settings = message.codeIndexSettings
 
-			try {
-				// Check if embedder provider has changed
-				const currentConfig = getGlobalState("codebaseIndexConfig") || {}
-				const embedderProviderChanged =
-					currentConfig.codebaseIndexEmbedderProvider !== settings.codebaseIndexEmbedderProvider
+			// 	try {
+			// 		// Check if embedder provider has changed
+			// 		const currentConfig = getGlobalState("codebaseIndexConfig") || {}
+			// 		const embedderProviderChanged =
+			// 			currentConfig.codebaseIndexEmbedderProvider !== settings.codebaseIndexEmbedderProvider
 
-				// Save global state settings atomically
-				const globalStateConfig = {
-					...currentConfig,
-					codebaseIndexEnabled: settings.codebaseIndexEnabled,
-					codebaseIndexQdrantUrl: settings.codebaseIndexQdrantUrl,
-					codebaseIndexEmbedderProvider: settings.codebaseIndexEmbedderProvider,
-					codebaseIndexEmbedderBaseUrl: settings.codebaseIndexEmbedderBaseUrl,
-					codebaseIndexEmbedderModelId: settings.codebaseIndexEmbedderModelId,
-					codebaseIndexEmbedderModelDimension: settings.codebaseIndexEmbedderModelDimension, // Generic dimension
-					codebaseIndexOpenAiCompatibleBaseUrl: settings.codebaseIndexOpenAiCompatibleBaseUrl,
-					codebaseIndexBedrockRegion: settings.codebaseIndexBedrockRegion,
-					codebaseIndexBedrockProfile: settings.codebaseIndexBedrockProfile,
-					codebaseIndexSearchMaxResults: settings.codebaseIndexSearchMaxResults,
-					codebaseIndexSearchMinScore: settings.codebaseIndexSearchMinScore,
-					codebaseIndexOpenRouterSpecificProvider: settings.codebaseIndexOpenRouterSpecificProvider,
-				}
+			// 		// Save global state settings atomically
+			// 		const globalStateConfig = {
+			// 			...currentConfig,
+			// 			codebaseIndexEnabled: settings.codebaseIndexEnabled,
+			// 			codebaseIndexQdrantUrl: settings.codebaseIndexQdrantUrl,
+			// 			codebaseIndexEmbedderProvider: settings.codebaseIndexEmbedderProvider,
+			// 			codebaseIndexEmbedderBaseUrl: settings.codebaseIndexEmbedderBaseUrl,
+			// 			codebaseIndexEmbedderModelId: settings.codebaseIndexEmbedderModelId,
+			// 			codebaseIndexEmbedderModelDimension: settings.codebaseIndexEmbedderModelDimension, // Generic dimension
+			// 			codebaseIndexOpenAiCompatibleBaseUrl: settings.codebaseIndexOpenAiCompatibleBaseUrl,
+			// 			codebaseIndexBedrockRegion: settings.codebaseIndexBedrockRegion,
+			// 			codebaseIndexBedrockProfile: settings.codebaseIndexBedrockProfile,
+			// 			codebaseIndexSearchMaxResults: settings.codebaseIndexSearchMaxResults,
+			// 			codebaseIndexSearchMinScore: settings.codebaseIndexSearchMinScore,
+			// 			codebaseIndexOpenRouterSpecificProvider: settings.codebaseIndexOpenRouterSpecificProvider,
+			// 		}
 
-				// Save global state first
-				await updateGlobalState("codebaseIndexConfig", globalStateConfig)
+			// 		// Save global state first
+			// 		await updateGlobalState("codebaseIndexConfig", globalStateConfig)
 
-				// Save secrets directly using context proxy
-				if (settings.codeIndexOpenAiKey !== undefined) {
-					await provider.contextProxy.storeSecret("codeIndexOpenAiKey", settings.codeIndexOpenAiKey)
-				}
-				if (settings.codeIndexQdrantApiKey !== undefined) {
-					await provider.contextProxy.storeSecret("codeIndexQdrantApiKey", settings.codeIndexQdrantApiKey)
-				}
-				if (settings.codebaseIndexOpenAiCompatibleApiKey !== undefined) {
-					await provider.contextProxy.storeSecret(
-						"codebaseIndexOpenAiCompatibleApiKey",
-						settings.codebaseIndexOpenAiCompatibleApiKey,
-					)
-				}
-				if (settings.codebaseIndexGeminiApiKey !== undefined) {
-					await provider.contextProxy.storeSecret(
-						"codebaseIndexGeminiApiKey",
-						settings.codebaseIndexGeminiApiKey,
-					)
-				}
-				if (settings.codebaseIndexMistralApiKey !== undefined) {
-					await provider.contextProxy.storeSecret(
-						"codebaseIndexMistralApiKey",
-						settings.codebaseIndexMistralApiKey,
-					)
-				}
-				if (settings.codebaseIndexVercelAiGatewayApiKey !== undefined) {
-					await provider.contextProxy.storeSecret(
-						"codebaseIndexVercelAiGatewayApiKey",
-						settings.codebaseIndexVercelAiGatewayApiKey,
-					)
-				}
-				if (settings.codebaseIndexOpenRouterApiKey !== undefined) {
-					await provider.contextProxy.storeSecret(
-						"codebaseIndexOpenRouterApiKey",
-						settings.codebaseIndexOpenRouterApiKey,
-					)
-				}
+			// 		// Save secrets directly using context proxy
+			// 		if (settings.codeIndexOpenAiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret("codeIndexOpenAiKey", settings.codeIndexOpenAiKey)
+			// 		}
+			// 		if (settings.codeIndexQdrantApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret("codeIndexQdrantApiKey", settings.codeIndexQdrantApiKey)
+			// 		}
+			// 		if (settings.codebaseIndexOpenAiCompatibleApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret(
+			// 				"codebaseIndexOpenAiCompatibleApiKey",
+			// 				settings.codebaseIndexOpenAiCompatibleApiKey,
+			// 			)
+			// 		}
+			// 		if (settings.codebaseIndexGeminiApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret(
+			// 				"codebaseIndexGeminiApiKey",
+			// 				settings.codebaseIndexGeminiApiKey,
+			// 			)
+			// 		}
+			// 		if (settings.codebaseIndexMistralApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret(
+			// 				"codebaseIndexMistralApiKey",
+			// 				settings.codebaseIndexMistralApiKey,
+			// 			)
+			// 		}
+			// 		if (settings.codebaseIndexVercelAiGatewayApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret(
+			// 				"codebaseIndexVercelAiGatewayApiKey",
+			// 				settings.codebaseIndexVercelAiGatewayApiKey,
+			// 			)
+			// 		}
+			// 		if (settings.codebaseIndexOpenRouterApiKey !== undefined) {
+			// 			await provider.contextProxy.storeSecret(
+			// 				"codebaseIndexOpenRouterApiKey",
+			// 				settings.codebaseIndexOpenRouterApiKey,
+			// 			)
+			// 		}
 
-				// Send success response first - settings are saved regardless of validation
-				await provider.postMessageToWebview({
-					type: "codeIndexSettingsSaved",
-					success: true,
-					settings: globalStateConfig,
-				})
+			// 		// Send success response first - settings are saved regardless of validation
+			// 		await provider.postMessageToWebview({
+			// 			type: "codeIndexSettingsSaved",
+			// 			success: true,
+			// 			settings: globalStateConfig,
+			// 		})
 
-				// Update webview state
-				await provider.postStateToWebview()
+			// 		// Update webview state
+			// 		await provider.postStateToWebview()
 
-				// Then handle validation and initialization for the current workspace
-				const currentCodeIndexManager = provider.getCurrentWorkspaceCodeIndexManager()
-				if (currentCodeIndexManager) {
-					// If embedder provider changed, perform proactive validation
-					if (embedderProviderChanged) {
-						try {
-							// Force handleSettingsChange which will trigger validation
-							await currentCodeIndexManager.handleSettingsChange()
-						} catch (error) {
-							// Validation failed - the error state is already set by handleSettingsChange
-							provider.log(
-								`Embedder validation failed after provider change: ${error instanceof Error ? error.message : String(error)}`,
-							)
-							// Send validation error to webview
-							await provider.postMessageToWebview({
-								type: "indexingStatusUpdate",
-								values: currentCodeIndexManager.getCurrentStatus(),
-							})
-							// Exit early - don't try to start indexing with invalid configuration
-							break
-						}
-					} else {
-						// No provider change, just handle settings normally
-						try {
-							await currentCodeIndexManager.handleSettingsChange()
-						} catch (error) {
-							// Log but don't fail - settings are saved
-							provider.log(
-								`Settings change handling error: ${error instanceof Error ? error.message : String(error)}`,
-							)
-						}
-					}
+			// 		// Then handle validation and initialization for the current workspace
+			// 		const currentCodeIndexManager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 		if (currentCodeIndexManager) {
+			// 			// If embedder provider changed, perform proactive validation
+			// 			if (embedderProviderChanged) {
+			// 				try {
+			// 					// Force handleSettingsChange which will trigger validation
+			// 					await currentCodeIndexManager.handleSettingsChange()
+			// 				} catch (error) {
+			// 					// Validation failed - the error state is already set by handleSettingsChange
+			// 					provider.log(
+			// 						`Embedder validation failed after provider change: ${error instanceof Error ? error.message : String(error)}`,
+			// 					)
+			// 					// Send validation error to webview
+			// 					await provider.postMessageToWebview({
+			// 						type: "indexingStatusUpdate",
+			// 						values: currentCodeIndexManager.getCurrentStatus(),
+			// 					})
+			// 					// Exit early - don't try to start indexing with invalid configuration
+			// 					break
+			// 				}
+			// 			} else {
+			// 				// No provider change, just handle settings normally
+			// 				try {
+			// 					await currentCodeIndexManager.handleSettingsChange()
+			// 				} catch (error) {
+			// 					// Log but don't fail - settings are saved
+			// 					provider.log(
+			// 						`Settings change handling error: ${error instanceof Error ? error.message : String(error)}`,
+			// 					)
+			// 				}
+			// 			}
 
-					// Wait a bit more to ensure everything is ready
-					await new Promise((resolve) => setTimeout(resolve, 200))
+			// 			// Wait a bit more to ensure everything is ready
+			// 			await new Promise((resolve) => setTimeout(resolve, 200))
 
-					// Auto-start indexing if now enabled and configured
-					if (currentCodeIndexManager.isFeatureEnabled && currentCodeIndexManager.isFeatureConfigured) {
-						if (!currentCodeIndexManager.isInitialized) {
-							try {
-								await currentCodeIndexManager.initialize(provider.contextProxy)
-								provider.log(`Code index manager initialized after settings save`)
-							} catch (error) {
-								provider.log(
-									`Code index initialization failed: ${error instanceof Error ? error.message : String(error)}`,
-								)
-								// Send error status to webview
-								await provider.postMessageToWebview({
-									type: "indexingStatusUpdate",
-									values: currentCodeIndexManager.getCurrentStatus(),
-								})
-							}
-						}
-					}
-				} else {
-					// No workspace open - send error status
-					provider.log("Cannot save code index settings: No workspace folder open")
-					await provider.postMessageToWebview({
-						type: "indexingStatusUpdate",
-						values: {
-							systemStatus: "Error",
-							message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
-							processedItems: 0,
-							totalItems: 0,
-							currentItemUnit: "items",
-						},
-					})
-				}
-			} catch (error) {
-				provider.log(`Error saving code index settings: ${error.message || error}`)
-				await provider.postMessageToWebview({
-					type: "codeIndexSettingsSaved",
-					success: false,
-					error: error.message || "Failed to save settings",
-				})
-			}
+			// 			// Auto-start indexing if now enabled and configured
+			// 			if (currentCodeIndexManager.isFeatureEnabled && currentCodeIndexManager.isFeatureConfigured) {
+			// 				if (!currentCodeIndexManager.isInitialized) {
+			// 					try {
+			// 						await currentCodeIndexManager.initialize(provider.contextProxy)
+			// 						provider.log(`Code index manager initialized after settings save`)
+			// 					} catch (error) {
+			// 						provider.log(
+			// 							`Code index initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+			// 						)
+			// 						// Send error status to webview
+			// 						await provider.postMessageToWebview({
+			// 							type: "indexingStatusUpdate",
+			// 							values: currentCodeIndexManager.getCurrentStatus(),
+			// 						})
+			// 					}
+			// 				}
+			// 			}
+			// 		} else {
+			// 			// No workspace open - send error status
+			// 			provider.log("Cannot save code index settings: No workspace folder open")
+			// 			await provider.postMessageToWebview({
+			// 				type: "indexingStatusUpdate",
+			// 				values: {
+			// 					systemStatus: "Error",
+			// 					message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+			// 					processedItems: 0,
+			// 					totalItems: 0,
+			// 					currentItemUnit: "items",
+			// 				},
+			// 			})
+			// 		}
+			// 	} catch (error) {
+			// 		provider.log(`Error saving code index settings: ${error.message || error}`)
+			// 		await provider.postMessageToWebview({
+			// 			type: "codeIndexSettingsSaved",
+			// 			success: false,
+			// 			error: error.message || "Failed to save settings",
+			// 		})
+			// 	}
 			break
 		}
 
 		case "requestIndexingStatus": {
-			const manager = provider.getCurrentWorkspaceCodeIndexManager()
-			if (!manager) {
-				// No workspace open - send error status
-				provider.postMessageToWebview({
-					type: "indexingStatusUpdate",
-					values: {
-						systemStatus: "Error",
-						message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
-						processedItems: 0,
-						totalItems: 0,
-						currentItemUnit: "items",
-						workerspacePath: undefined,
-					},
-				})
-				return
-			}
+			// const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// if (!manager) {
+			// 	// No workspace open - send error status
+			// 	provider.postMessageToWebview({
+			// 		type: "indexingStatusUpdate",
+			// 		values: {
+			// 			systemStatus: "Error",
+			// 			message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+			// 			processedItems: 0,
+			// 			totalItems: 0,
+			// 			currentItemUnit: "items",
+			// 			workerspacePath: undefined,
+			// 		},
+			// 	})
+			// 	return
+			// }
 
-			const status = manager
-				? manager.getCurrentStatus()
-				: {
-						systemStatus: "Standby",
-						message: "No workspace folder open",
-						processedItems: 0,
-						totalItems: 0,
-						currentItemUnit: "items",
-						workspacePath: undefined,
-					}
+			// const status = manager
+			// 	? manager.getCurrentStatus()
+			// 	: {
+			// 			systemStatus: "Standby",
+			// 			message: "No workspace folder open",
+			// 			processedItems: 0,
+			// 			totalItems: 0,
+			// 			currentItemUnit: "items",
+			// 			workspacePath: undefined,
+			// 		}
 
-			provider.postMessageToWebview({
-				type: "indexingStatusUpdate",
-				values: status,
-			})
+			// provider.postMessageToWebview({
+			// 	type: "indexingStatusUpdate",
+			// 	values: status,
+			// })
 			break
 		}
 		case "requestCodeIndexSecretStatus": {
-			// Check if secrets are set using the VSCode context directly for async access
-			const hasOpenAiKey = !!(await provider.context.secrets.get("codeIndexOpenAiKey"))
-			const hasQdrantApiKey = !!(await provider.context.secrets.get("codeIndexQdrantApiKey"))
-			const hasOpenAiCompatibleApiKey = !!(await provider.context.secrets.get(
-				"codebaseIndexOpenAiCompatibleApiKey",
-			))
-			const hasGeminiApiKey = !!(await provider.context.secrets.get("codebaseIndexGeminiApiKey"))
-			const hasMistralApiKey = !!(await provider.context.secrets.get("codebaseIndexMistralApiKey"))
-			const hasVercelAiGatewayApiKey = !!(await provider.context.secrets.get(
-				"codebaseIndexVercelAiGatewayApiKey",
-			))
-			const hasOpenRouterApiKey = !!(await provider.context.secrets.get("codebaseIndexOpenRouterApiKey"))
+			// // Check if secrets are set using the VSCode context directly for async access
+			// const hasOpenAiKey = !!(await provider.context.secrets.get("codeIndexOpenAiKey"))
+			// const hasQdrantApiKey = !!(await provider.context.secrets.get("codeIndexQdrantApiKey"))
+			// const hasOpenAiCompatibleApiKey = !!(await provider.context.secrets.get(
+			// 	"codebaseIndexOpenAiCompatibleApiKey",
+			// ))
+			// const hasGeminiApiKey = !!(await provider.context.secrets.get("codebaseIndexGeminiApiKey"))
+			// const hasMistralApiKey = !!(await provider.context.secrets.get("codebaseIndexMistralApiKey"))
+			// const hasVercelAiGatewayApiKey = !!(await provider.context.secrets.get(
+			// 	"codebaseIndexVercelAiGatewayApiKey",
+			// ))
+			// const hasOpenRouterApiKey = !!(await provider.context.secrets.get("codebaseIndexOpenRouterApiKey"))
 
-			provider.postMessageToWebview({
-				type: "codeIndexSecretStatus",
-				values: {
-					hasOpenAiKey,
-					hasQdrantApiKey,
-					hasOpenAiCompatibleApiKey,
-					hasGeminiApiKey,
-					hasMistralApiKey,
-					hasVercelAiGatewayApiKey,
-					hasOpenRouterApiKey,
-				},
-			})
+			// provider.postMessageToWebview({
+			// 	type: "codeIndexSecretStatus",
+			// 	values: {
+			// 		hasOpenAiKey,
+			// 		hasQdrantApiKey,
+			// 		hasOpenAiCompatibleApiKey,
+			// 		hasGeminiApiKey,
+			// 		hasMistralApiKey,
+			// 		hasVercelAiGatewayApiKey,
+			// 		hasOpenRouterApiKey,
+			// 	},
+			// })
 			break
 		}
 		case "startIndexing": {
-			try {
-				const manager = provider.getCurrentWorkspaceCodeIndexManager()
-				if (!manager) {
-					// No workspace open - send error status
-					provider.postMessageToWebview({
-						type: "indexingStatusUpdate",
-						values: {
-							systemStatus: "Error",
-							message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
-							processedItems: 0,
-							totalItems: 0,
-							currentItemUnit: "items",
-						},
-					})
-					provider.log("Cannot start indexing: No workspace folder open")
-					return
-				}
-				if (manager.isFeatureEnabled && manager.isFeatureConfigured) {
-					// Mimic extension startup behavior: initialize first, which will
-					// check if Qdrant container is active and reuse existing collection
-					await manager.initialize(provider.contextProxy)
+			// try {
+			// 	const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 	if (!manager) {
+			// 		provider.postMessageToWebview({
+			// 			type: "indexingStatusUpdate",
+			// 			values: {
+			// 				systemStatus: "Error",
+			// 				message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+			// 				processedItems: 0,
+			// 				totalItems: 0,
+			// 				currentItemUnit: "items",
+			// 			},
+			// 		})
+			// 		provider.log("Cannot start indexing: No workspace folder open")
+			// 		return
+			// 	}
 
-					// Only call startIndexing if we're in a state that requires it
-					// (e.g., Standby or Error). If already Indexed or Indexing, the
-					// initialize() call above will have already started the watcher.
-					const currentState = manager.state
-					if (currentState === "Standby" || currentState === "Error") {
-						// startIndexing now handles error recovery internally
-						manager.startIndexing()
+			// 	// "Start Indexing" implicitly enables the workspace
+			// 	await manager.setWorkspaceEnabled(true)
 
-						// If startIndexing recovered from error, we need to reinitialize
-						if (!manager.isInitialized) {
-							await manager.initialize(provider.contextProxy)
-							// Try starting again after initialization
-							if (manager.state === "Standby" || manager.state === "Error") {
-								manager.startIndexing()
-							}
-						}
-					}
-				}
-			} catch (error) {
-				provider.log(`Error starting indexing: ${error instanceof Error ? error.message : String(error)}`)
-			}
+			// 	if (manager.isFeatureEnabled && manager.isFeatureConfigured) {
+			// 		await manager.initialize(provider.contextProxy)
+
+			// 		const currentState = manager.state
+			// 		if (currentState === "Standby" || currentState === "Error") {
+			// 			manager.startIndexing()
+
+			// 			if (!manager.isInitialized) {
+			// 				await manager.initialize(provider.contextProxy)
+			// 				if (manager.state === "Standby" || manager.state === "Error") {
+			// 					manager.startIndexing()
+			// 				}
+			// 			}
+			// 		}
+			// 	}
+			// } catch (error) {
+			// 	provider.log(`Error starting indexing: ${error instanceof Error ? error.message : String(error)}`)
+			// }
+			break
+		}
+		case "stopIndexing": {
+			// try {
+			// 	const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 	if (!manager) {
+			// 		provider.log("Cannot stop indexing: No workspace folder open")
+			// 		return
+			// 	}
+			// 	manager.stopIndexing()
+			// 	provider.postMessageToWebview({
+			// 		type: "indexingStatusUpdate",
+			// 		values: manager.getCurrentStatus(),
+			// 	})
+			// } catch (error) {
+			// 	provider.log(`Error stopping indexing: ${error instanceof Error ? error.message : String(error)}`)
+			// }
+			break
+		}
+		case "toggleWorkspaceIndexing": {
+			// try {
+			// 	const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 	if (!manager) {
+			// 		provider.log("Cannot toggle workspace indexing: No workspace folder open")
+			// 		return
+			// 	}
+			// 	const enabled = message.bool ?? false
+			// 	await manager.setWorkspaceEnabled(enabled)
+			// 	if (enabled && manager.isFeatureEnabled && manager.isFeatureConfigured) {
+			// 		await manager.initialize(provider.contextProxy)
+			// 		manager.startIndexing()
+			// 	} else if (!enabled) {
+			// 		manager.stopIndexing()
+			// 	}
+			// 	provider.postMessageToWebview({
+			// 		type: "indexingStatusUpdate",
+			// 		values: manager.getCurrentStatus(),
+			// 	})
+			// } catch (error) {
+			// 	provider.log(
+			// 		`Error toggling workspace indexing: ${error instanceof Error ? error.message : String(error)}`,
+			// 	)
+			// }
+			break
+		}
+		case "setAutoEnableDefault": {
+			// try {
+			// 	const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 	if (!manager) {
+			// 		provider.log("Cannot set auto-enable default: No workspace folder open")
+			// 		return
+			// 	}
+			// 	// Capture prior state for every manager before persisting the global change
+			// 	const allManagers = CodeIndexManager.getAllInstances()
+			// 	const priorStates = new Map(allManagers.map((m) => [m, m.isWorkspaceEnabled]))
+			// 	await manager.setAutoEnableDefault(message.bool ?? true)
+			// 	// Apply stop/start to every affected manager
+			// 	for (const m of allManagers) {
+			// 		const wasEnabled = priorStates.get(m)!
+			// 		const isNowEnabled = m.isWorkspaceEnabled
+			// 		if (wasEnabled && !isNowEnabled) {
+			// 			m.stopIndexing()
+			// 		} else if (!wasEnabled && isNowEnabled && m.isFeatureEnabled && m.isFeatureConfigured) {
+			// 			await m.initialize(provider.contextProxy)
+			// 			m.startIndexing()
+			// 		}
+			// 	}
+			// 	provider.postMessageToWebview({
+			// 		type: "indexingStatusUpdate",
+			// 		values: manager.getCurrentStatus(),
+			// 	})
+			// } catch (error) {
+			// 	provider.log(
+			// 		`Error setting auto-enable default: ${error instanceof Error ? error.message : String(error)}`,
+			// 	)
+			// }
 			break
 		}
 		case "clearIndexData": {
-			try {
-				const manager = provider.getCurrentWorkspaceCodeIndexManager()
-				if (!manager) {
-					provider.log("Cannot clear index data: No workspace folder open")
-					provider.postMessageToWebview({
-						type: "indexCleared",
-						values: {
-							success: false,
-							error: t("embeddings:orchestrator.indexingRequiresWorkspace"),
-						},
-					})
-					return
-				}
-				await manager.clearIndexData()
-				provider.postMessageToWebview({ type: "indexCleared", values: { success: true } })
-			} catch (error) {
-				provider.log(`Error clearing index data: ${error instanceof Error ? error.message : String(error)}`)
-				provider.postMessageToWebview({
-					type: "indexCleared",
-					values: {
-						success: false,
-						error: error instanceof Error ? error.message : String(error),
-					},
-				})
-			}
-			break
-		}
-		case "zgsmPollCodebaseIndexStatus": {
-			try {
-				const { apiConfiguration } = await provider.getState()
-
-				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("Only CoStrict provider supports this service", "error", "ZgsmCodebaseIndexManager")
-					return
-				}
-
-				// Get current workspace path
-				const workspacePath = getWorkspacePath()
-				if (!workspacePath) {
-					provider.postMessageToWebview({
-						type: "codebaseIndexStatusResponse",
-						payload: {
-							success: false,
-							error: "No workspace folder open",
-						},
-					})
-					return
-				}
-
-				// Call ZgsmCodebaseIndexManager.getIndexStatus()
-				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
-				const response = await zgsmCodebaseIndexManager.getIndexStatus(workspacePath)
-				const errorCodeManager = ErrorCodeManager.getInstance()
-
-				const updateFailedReason = (item: IndexStatusInfo) => {
-					if (item.status === "failed") {
-						item.failedReason = errorCodeManager.getErrorMessageByCode(item.failedReason).message
-					}
-				}
-
-				if (response?.data?.codegraph) {
-					updateFailedReason(response.data.codegraph)
-				}
-				if (response?.data?.embedding) {
-					updateFailedReason(response.data.embedding)
-				}
-
-				await provider.postMessageToWebview({
-					type: "codebaseIndexStatusResponse",
-					payload: {
-						workspace: workspacePath,
-						status: response.data,
-					},
-				})
-			} catch (error) {
-				provider.log(
-					`Error polling codebase index status: ${error instanceof Error ? error.message : String(error)}`,
-				)
-				await provider.postMessageToWebview({
-					type: "codebaseIndexStatusResponse",
-					payload: {
-						success: false,
-						error: error instanceof Error ? error.message : String(error),
-					},
-				})
-			}
+			// try {
+			// 	const manager = provider.getCurrentWorkspaceCodeIndexManager()
+			// 	if (!manager) {
+			// 		provider.log("Cannot clear index data: No workspace folder open")
+			// 		provider.postMessageToWebview({
+			// 			type: "indexCleared",
+			// 			values: {
+			// 				success: false,
+			// 				error: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+			// 			},
+			// 		})
+			// 		return
+			// 	}
+			// 	await manager.clearIndexData()
+			// 	provider.postMessageToWebview({ type: "indexCleared", values: { success: true } })
+			// } catch (error) {
+			// 	provider.log(`Error clearing index data: ${error instanceof Error ? error.message : String(error)}`)
+			// 	provider.postMessageToWebview({
+			// 		type: "indexCleared",
+			// 		values: {
+			// 			success: false,
+			// 			error: error instanceof Error ? error.message : String(error),
+			// 		},
+			// 	})
+			// }
 			break
 		}
 		case "focusPanelRequest": {
@@ -3009,7 +3455,7 @@ export const webviewMessageHandler = async (
 
 		case "switchTab": {
 			if (message.tab) {
-				// Capture tab shown event for all switchTab messages (which are user-initiated)
+				// Capture tab shown event for all switchTab messages (which are user-initiated).
 				if (TelemetryService.hasInstance()) {
 					TelemetryService.instance.captureTabShown(message.tab)
 				}
@@ -3020,42 +3466,61 @@ export const webviewMessageHandler = async (
 					tab: message.tab,
 					values: message.values,
 				})
+				// Notify provider of active tab change to enable/disable hibernation
+				provider.setActiveTab(message.tab)
 			}
 			break
 		}
 		case "requestCommands": {
 			try {
-				const { getCommands } = await import("../../services/command/commands")
-				const commands = await getCommands(getCurrentCwd())
-
-				// Convert to the format expected by the frontend
-				const commandList = commands.map((command) => ({
-					name: command.name,
-					source: command.source,
-					filePath: command.filePath,
-					description: command.description,
-					argumentHint: command.argumentHint,
-				}))
-
-				await provider.postMessageToWebview({
-					type: "commands",
-					commands: commandList,
-				})
+				const commandList = await getDiscoveredCommands()
+				await provider.postMessageToWebview({ type: "commands", commands: commandList })
 			} catch (error) {
 				provider.log(`Error fetching commands: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`)
-				// Send empty array on error
-				await provider.postMessageToWebview({
-					type: "commands",
-					commands: [],
-				})
+				await provider.postMessageToWebview({ type: "commands", commands: [] })
 			}
+			break
+		}
+		case "requestModes": {
+			try {
+				const modes = await provider.getModes()
+				await provider.postMessageToWebview({ type: "modes", modes })
+			} catch (error) {
+				provider.log(`Error fetching modes: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`)
+				await provider.postMessageToWebview({ type: "modes", modes: [] })
+			}
+			break
+		}
+		case "requestSkills": {
+			await handleRequestSkills(provider)
+			break
+		}
+		case "createSkill": {
+			await handleCreateSkill(provider, message)
+			break
+		}
+		case "deleteSkill": {
+			await handleDeleteSkill(provider, message)
+			break
+		}
+		case "moveSkill": {
+			await handleMoveSkill(provider, message)
+			break
+		}
+		case "updateSkillModes": {
+			await handleUpdateSkillModes(provider, message)
+			break
+		}
+		case "openSkillFile": {
+			await handleOpenSkillFile(provider, message)
 			break
 		}
 		case "openCommandFile": {
 			try {
 				if (message.text) {
+					const state = await provider.getState()
 					const { getCommand } = await import("../../services/command/commands")
-					const command = await getCommand(getCurrentCwd(), message.text)
+					const command = await getCommand(getCurrentCwd(), message.text, state.language)
 
 					if (command && command.filePath) {
 						openFile(command.filePath)
@@ -3074,8 +3539,9 @@ export const webviewMessageHandler = async (
 		case "deleteCommand": {
 			try {
 				if (message.text && message.values?.source) {
+					const state = await provider.getState()
 					const { getCommand } = await import("../../services/command/commands")
-					const command = await getCommand(getCurrentCwd(), message.text)
+					const command = await getCommand(getCurrentCwd(), message.text, state.language)
 
 					if (command && command.filePath) {
 						// Delete the command file
@@ -3191,8 +3657,9 @@ export const webviewMessageHandler = async (
 				openFile(filePath)
 
 				// Refresh commands list
+				const state = await provider.getState()
 				const { getCommands } = await import("../../services/command/commands")
-				const commands = await getCommands(getCurrentCwd() || "")
+				const commands = await getCommands(getCurrentCwd() || "", state.language)
 				const commandList = commands.map((command) => ({
 					name: command.name,
 					source: command.source,
@@ -3222,142 +3689,75 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
-		case "zgsmCodebaseIndexEnabled": {
+		case "getReviewFiles": {
 			try {
-				// Get current workspace path
-				const workspacePath = getWorkspacePath()
-				if (!workspacePath) {
-					provider.log("Unable to get workspace path", "error", "ZgsmCodebaseIndexManager")
-					break
-				}
-
-				const oldEnabled = getGlobalState("zgsmCodebaseIndexEnabled")
-
-				if (oldEnabled === message.bool) return
-
-				const { apiConfiguration } = await provider.getState()
-
-				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("Only CoStrict provider supports this service", "error", "ZgsmCodebaseIndexManager")
-					return
-				}
-				// Get switch status from message.bool
-				const isEnabled = message.bool
-				if (isEnabled === undefined) {
-					provider.log(
-						"zgsmCodebaseIndexEnabled message missing bool parameter",
-						"error",
-						"ZgsmCodebaseIndexManager",
-					)
-					vscode.window.showErrorMessage("Codebase index switch status is invalid")
-					break
-				}
-
-				// Build IndexSwitchRequest object
-				const switchRequest: IndexSwitchRequest = {
-					workspace: workspacePath,
-					switch: isEnabled ? "on" : "off",
-				}
-
-				// Get ZgsmCodebaseIndexManager instance and call toggleIndexSwitch method
-				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
-				const result = await zgsmCodebaseIndexManager.toggleIndexSwitch(switchRequest)
-
-				if (result.success) {
-					// Save state to global storage
-					await updateGlobalState("zgsmCodebaseIndexEnabled", isEnabled)
-
-					provider.log(
-						`Codebase index feature has been ${isEnabled ? "enabled" : "disabled"}: ${workspacePath}`,
-						"info",
-						"ZgsmCodebaseIndexManager",
-					)
-					zgsmCodebaseIndexManager.restartClient()
-					await provider.postMessageToWebview({
-						type: "zgsmCodebaseIndexEnabled",
-						payload: isEnabled,
-					})
-					workspaceEventMonitor.initialize()
-				} else {
-					await updateGlobalState("zgsmCodebaseIndexEnabled", oldEnabled)
-
-					provider.log(
-						`Codebase index switch operation failed: ${result.message}`,
-						"error",
-						"ZgsmCodebaseIndexManager",
-					)
-					await provider.postMessageToWebview({
-						type: "zgsmCodebaseIndexEnabled",
-						payload: oldEnabled,
-					})
-				}
+				const cwd = getCurrentCwd()
+				const files = await getUncommittedFiles(cwd)
+				await provider.postMessageToWebview({
+					type: "reviewFilesResponse",
+					payload: { files },
+				})
 			} catch (error) {
-				const errorMessage =
-					error instanceof Error
-						? error.message
-						: "Unknown error occurred during codebase index switch operation"
-				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-			} finally {
-				// Update UI status
-				await provider.postStateToWebview()
+				console.error("Error getting review files:", error)
+				await provider.postMessageToWebview({
+					type: "reviewFilesResponse",
+					payload: { files: [] },
+				})
 			}
 			break
 		}
-		case "zgsmRebuildCodebaseIndex": {
-			try {
-				const { apiConfiguration } = await provider.getState()
+		case "createReviewTask": {
+			const reviewInstance = CodeReviewService.getInstance()
+			const { files, mode } = message.payload! as CreateReviewTaskPayload
+			const cwd = getCurrentCwd()
 
-				if (apiConfiguration?.apiProvider !== "zgsm") {
-					provider.log("Only CoStrict provider supports this service", "error", "ZgsmCodebaseIndexManager")
-					return
-				}
-				const zgsmCodebaseIndexManager = ZgsmCodebaseIndexManager.getInstance()
+			const untrackedFiles =
+				files?.filter((item) => item.status === "??" || item.status === "U").map((item) => item.path) || []
+			let intentAddedFiles: string[] = []
 
-				// Get workspace path
-				const workspacePath = getWorkspacePath() || ""
-				const rebuildType = message.values?.type || "all"
-				const path = message.values?.path || workspacePath
-
-				// Build IndexBuildRequest
-				const indexBuildRequest = {
-					workspace: workspacePath,
-					path: path,
-					type: rebuildType,
-				}
-
-				// Call ZgsmCodebaseIndexManager.triggerIndexBuild()
-				const result = await zgsmCodebaseIndexManager.triggerIndexBuild(indexBuildRequest)
-
-				if (result.success) {
-					provider.log(
-						`Successfully triggered index rebuild: ${rebuildType}`,
-						"info",
-						"ZgsmCodebaseIndexManager",
-					)
-				} else {
-					provider.log(
-						`Failed to trigger index rebuild: ${result.message}`,
-						"error",
-						"ZgsmCodebaseIndexManager",
-					)
-				}
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : "Unknown error occurred when triggering index rebuild"
-				provider.log(errorMessage, "error", "ZgsmCodebaseIndexManager")
-			} finally {
-				await provider.postStateToWebview()
+			if (untrackedFiles.length > 0) {
+				intentAddedFiles = await addFilesIntent(cwd, untrackedFiles)
 			}
+
+			const reviewPrompt = await reviewInstance.buildReviewPrompt(
+				(mode as "review" | "security-review") ?? "review",
+				"@git-changes",
+			)
+			await reviewInstance.createReviewTask(
+				reviewPrompt,
+				{
+					type: ReviewTargetType.FILE,
+					data: files?.map((item) => ({
+						file_path: item.path,
+					})),
+				},
+				{
+					mode,
+					onTaskComplete: async () => {
+						if (intentAddedFiles.length > 0) {
+							await restoreFilesFromStaged(cwd, intentAddedFiles)
+						}
+					},
+				},
+			)
 			break
 		}
-		case "startCodereview": {
-			try {
-				const { targets } = message.values ?? {}
-				if (targets && targets.length) {
-					const reviewInstance = CodeReviewService.getInstance()
-					reviewInstance.startReview(targets)
-				}
-			} catch (err) {}
+		case "showFileDiff": {
+			const { filePath, status, oldFilePath } = message.values || {}
+			if (isJetbrainsPlatform()) {
+				return
+			}
+			if (!filePath || !status) {
+				console.error("Missing required parameters for showFileDiff")
+				break
+			}
+
+			await showFileDiffFromGitStatus({
+				cwd: getCurrentCwd(),
+				filePath,
+				status,
+				oldFilePath,
+			})
 			break
 		}
 		case "settingsButtonclicked": {
@@ -3368,7 +3768,7 @@ export const webviewMessageHandler = async (
 			})
 			break
 		}
-		case "copyError": {
+		case "copyApiError": {
 			const { message: errorMessage, originModelId, selectedLLM } = message.values ?? {}
 			const { apiConfiguration } = await provider.getState()
 			const httpProxy = process.env.http_proxy || process.env.HTTP_PROXY
@@ -3381,26 +3781,31 @@ export const webviewMessageHandler = async (
 			const requestIdMatch = errorMessage?.match(/RequestID:\s*([a-f0-9-]+)/i)
 			const requestId = requestIdMatch?.[1]
 
-			// Get raw error message if request ID exists and provider is zgsm
+			// Get raw error message if request ID exists and provider is costrict
 			let rawErrorMessage = ""
-			if (requestId && apiConfiguration.apiProvider === "zgsm") {
+			if (requestId && apiConfiguration.apiProvider === "costrict") {
 				const rawError = ErrorCodeManager.getInstance().getRawError(requestId)
 				if (rawError?.message) {
 					rawErrorMessage = `rawErrorMessage: ${rawError.message}`
 				}
 			}
 
+			// Get costrict user ID
+			const userInfo = CostrictAuthService?.getInstance()?.getUserInfo()
+			const costrictUserId = userInfo?.id || ""
+
 			try {
 				await vscode.env.clipboard.writeText(dedent`
-					message: ${errorMessage}
-					provider: ${apiConfiguration.apiProvider}
-					Model: ${apiConfiguration.apiProvider === "zgsm" ? selectedLLM || originModelId || apiConfiguration.zgsmModelId : apiConfiguration.apiModelId}
-					${apiConfiguration.apiProvider === "zgsm" ? `BaseUrl: ${apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()}` : ""}
-					vscodeVersion: ${vscode.version}
-					pluginVersion: ${Package.version}
-					editorType: ${editorType}
-					httpProxy: ${httpProxy}
-					httpsProxy: ${httpsProxy}
+					[Message]: ${errorMessage}
+					[Provider]: ${apiConfiguration.apiProvider}
+					[UserId]: ${costrictUserId}
+					[Model]: ${apiConfiguration.apiProvider === "costrict" ? selectedLLM || originModelId || apiConfiguration.costrictModelId : apiConfiguration.apiModelId}
+					${apiConfiguration.apiProvider === "costrict" ? `[BaseUrl]: ${apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()}` : ""}
+					[EditorType]: ${editorType}
+					[EditorVersion]: ${vscode.version}
+					[PluginVersion]: ${Package.version}
+					[HttpProxy]: ${httpProxy}
+					[HttpsProxy]: ${httpsProxy}
 					${rawErrorMessage ? `${rawErrorMessage}` : ""}
 				`)
 				vscode.window.showInformationMessage(t("common:window.success.copy_success"))
@@ -3420,7 +3825,8 @@ export const webviewMessageHandler = async (
 		 */
 
 		case "queueMessage": {
-			provider.getCurrentTask()?.messageQueueService.addMessage(message.text ?? "", message.images)
+			const resolved = await resolveIncomingImages({ text: message.text, images: message.images })
+			provider.getCurrentTask()?.messageQueueService.addMessage(resolved.text, resolved.images)
 			break
 		}
 		case "removeQueuedMessage": {
@@ -3470,35 +3876,56 @@ export const webviewMessageHandler = async (
 			})
 			break
 		}
-		case "fetchZgsmInviteCode": {
+		case "fetchCostrictInviteCode": {
 			const { apiConfiguration } = await provider.getState()
 
-			// zgsmQuotaInfo
-			const data = await fetchZgsmInviteCode(
-				apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
-				apiConfiguration.zgsmAccessToken,
+			// costrictQuotaInfo
+			const data = await fetchCostrictInviteCode(
+				apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl(),
+				apiConfiguration.costrictAccessToken,
 			)
 			if (data) {
 				await provider.postMessageToWebview({
-					type: "zgsmInviteCode",
+					type: "costrictInviteCode",
 					values: data,
 				})
 			}
 			break
 		}
-		case "fetchZgsmQuotaInfo": {
+		case "fetchCostrictQuotaInfo": {
 			const { apiConfiguration } = await provider.getState()
 
-			// zgsmQuotaInfo
-			const data = await fetchZgsmQuotaInfo(
-				apiConfiguration.zgsmBaseUrl || ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl(),
-				apiConfiguration.zgsmAccessToken,
+			// costrictQuotaInfo
+			const data = await fetchCostrictQuotaInfo(
+				apiConfiguration.costrictBaseUrl || CostrictAuthConfig.getInstance().getDefaultApiBaseUrl(),
+				apiConfiguration.costrictAccessToken,
 			)
 			if (data) {
 				await provider.postMessageToWebview({
-					type: "zgsmQuotaInfo",
+					type: "costrictQuotaInfo",
 					values: data,
 				})
+			}
+			break
+		}
+
+		case "openMarkdownPreview": {
+			if (message.text) {
+				try {
+					const tmpDir = os.tmpdir()
+					const timestamp = Date.now()
+					const tempFileName = `roo-preview-${timestamp}.md`
+					const tempFilePath = path.join(tmpDir, tempFileName)
+
+					await fs.writeFile(tempFilePath, message.text, "utf8")
+
+					const doc = await vscode.workspace.openTextDocument(tempFilePath)
+					await vscode.commands.executeCommand("markdown.showPreview", doc.uri)
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					provider.log(`Error opening markdown preview: ${errorMessage}`)
+					vscode.window.showErrorMessage(`Failed to open markdown preview: ${errorMessage}`)
+				}
 			}
 			break
 		}
@@ -3528,6 +3955,38 @@ export const webviewMessageHandler = async (
 				provider.log(`Error fetching Claude Code rate limits: ${errorMessage}`)
 				provider.postMessageToWebview({
 					type: "claudeCodeRateLimits",
+					error: errorMessage,
+				})
+			}
+			break
+		}
+
+		case "requestOpenAiCodexRateLimits": {
+			try {
+				const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
+				const accessToken = await openAiCodexOAuthManager.getAccessToken()
+
+				if (!accessToken) {
+					provider.postMessageToWebview({
+						type: "openAiCodexRateLimits",
+						error: "Not authenticated with OpenAI Codex",
+					})
+					break
+				}
+
+				const accountId = await openAiCodexOAuthManager.getAccountId()
+				const { fetchOpenAiCodexRateLimitInfo } = await import("../../integrations/openai-codex/rate-limits")
+				const rateLimits = await fetchOpenAiCodexRateLimitInfo(accessToken, { accountId })
+
+				provider.postMessageToWebview({
+					type: "openAiCodexRateLimits",
+					values: rateLimits,
+				})
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Error fetching OpenAI Codex rate limits: ${errorMessage}`)
+				provider.postMessageToWebview({
+					type: "openAiCodexRateLimits",
 					error: errorMessage,
 				})
 			}
@@ -3587,6 +4046,389 @@ export const webviewMessageHandler = async (
 				provider.log(`Error opening debug history: ${errorMessage}`)
 				vscode.window.showErrorMessage(`Failed to open debug history: ${errorMessage}`)
 			}
+			break
+		}
+
+		case "downloadErrorDiagnostics": {
+			const currentTask = provider.getCurrentTask()
+			if (!currentTask) {
+				vscode.window.showErrorMessage("No active task to generate diagnostics for")
+				break
+			}
+
+			await generateErrorDiagnostics({
+				taskId: currentTask.taskId,
+				globalStoragePath: provider.contextProxy.globalStorageUri.fsPath,
+				values: message.values,
+				log: (msg) => provider.log(msg),
+			})
+			break
+		}
+
+		case "getReviewHistory": {
+			try {
+				const reviewInstance = CodeReviewService.getInstance()
+				const history = await reviewInstance.getReviewHistory()
+				await provider.postMessageToWebview({
+					type: "reviewHistoryResponse",
+					values: { history },
+				})
+			} catch (error) {
+				provider.log(`Error getting review history: ${error}`, "error")
+				await provider.postMessageToWebview({
+					type: "reviewHistoryResponse",
+					values: { history: [], error: error instanceof Error ? error.message : String(error) },
+				})
+			}
+			break
+		}
+
+		case "getReviewIssueById": {
+			try {
+				const { reviewTaskId } = message.values || {}
+				if (!reviewTaskId) {
+					await provider.postMessageToWebview({
+						type: "reviewIssueByIdLoaded",
+						values: { reviewTaskId: "", issues: [] },
+					})
+					break
+				}
+				const reviewInstance = CodeReviewService.getInstance()
+				const result = await reviewInstance.getReviewHistoryById(reviewTaskId)
+				await provider.postMessageToWebview({
+					type: "reviewIssueByIdLoaded",
+					values: {
+						reviewTaskId,
+						issues: result?.issues || [],
+					},
+				})
+			} catch (error) {
+				provider.log(`Error getting review history entry: ${error}`, "error")
+				await provider.postMessageToWebview({
+					type: "reviewIssueByIdLoaded",
+					values: { reviewTaskId: "", issues: [] },
+				})
+			}
+			break
+		}
+
+		case "deleteReviewHistoryItem": {
+			try {
+				const { reviewTaskId } = message.values || {}
+				if (!reviewTaskId) {
+					vscode.window.showErrorMessage("Missing review task ID")
+					break
+				}
+				const reviewInstance = CodeReviewService.getInstance()
+				await reviewInstance.deleteReviewHistoryItem(reviewTaskId)
+				await provider.postMessageToWebview({
+					type: "reviewHistoryEntryDeleted",
+					values: { reviewTaskId },
+				})
+			} catch (error) {
+				provider.log(`Error deleting review history entry: ${error}`, "error")
+				vscode.window.showErrorMessage(
+					error instanceof Error ? error.message : "Failed to delete review history entry",
+				)
+			}
+			break
+		}
+
+		case "showReviewComment": {
+			try {
+				if (isJetbrainsPlatform()) {
+					return
+				}
+				const { issue, reviewTaskId } = message.values || {}
+				if (!issue) {
+					vscode.window.showErrorMessage("Missing issue")
+					break
+				}
+				const reviewInstance = CodeReviewService.getInstance()
+				await reviewInstance.showReviewComment(issue, reviewTaskId)
+			} catch (error) {
+				provider.log(`Error showing review comment: ${error}`, "error")
+				vscode.window.showErrorMessage(error instanceof Error ? error.message : "Failed to show review comment")
+			}
+			break
+		}
+
+		/**
+		 * Git Worktree Management
+		 */
+
+		case "listWorktrees": {
+			try {
+				const { worktrees, isGitRepo, isMultiRoot, isSubfolder, gitRootPath, error } =
+					await handleListWorktrees(provider)
+
+				await provider.postMessageToWebview({
+					type: "worktreeList",
+					worktrees,
+					isGitRepo,
+					isMultiRoot,
+					isSubfolder,
+					gitRootPath,
+					error,
+				})
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+
+				await provider.postMessageToWebview({
+					type: "worktreeList",
+					worktrees: [],
+					isGitRepo: false,
+					isMultiRoot: false,
+					isSubfolder: false,
+					gitRootPath: "",
+					error: errorMessage,
+				})
+			}
+
+			break
+		}
+
+		case "createWorktree": {
+			try {
+				const { success, message: text } = await handleCreateWorktree(
+					provider,
+					{
+						path: message.worktreePath!,
+						branch: message.worktreeBranch,
+						baseBranch: message.worktreeBaseBranch,
+						createNewBranch: message.worktreeCreateNewBranch,
+					},
+					(progress) => {
+						provider.postMessageToWebview({
+							type: "worktreeCopyProgress",
+							copyProgressBytesCopied: progress.bytesCopied,
+							copyProgressItemName: progress.itemName,
+						})
+					},
+				)
+
+				await provider.postMessageToWebview({ type: "worktreeResult", success, text })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				await provider.postMessageToWebview({ type: "worktreeResult", success: false, text: errorMessage })
+			}
+
+			break
+		}
+
+		case "deleteWorktree": {
+			try {
+				const { success, message: text } = await handleDeleteWorktree(
+					provider,
+					message.worktreePath!,
+					message.worktreeForce ?? false,
+				)
+
+				await provider.postMessageToWebview({ type: "worktreeResult", success, text })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				await provider.postMessageToWebview({ type: "worktreeResult", success: false, text: errorMessage })
+			}
+
+			break
+		}
+
+		case "switchWorktree": {
+			try {
+				const { success, message: text } = await handleSwitchWorktree(
+					provider,
+					message.worktreePath!,
+					message.worktreeNewWindow ?? true,
+				)
+
+				await provider.postMessageToWebview({ type: "worktreeResult", success, text })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				await provider.postMessageToWebview({ type: "worktreeResult", success: false, text: errorMessage })
+			}
+
+			break
+		}
+
+		case "getAvailableBranches": {
+			try {
+				const { localBranches, remoteBranches, currentBranch } = await handleGetAvailableBranches(provider)
+
+				await provider.postMessageToWebview({
+					type: "branchList",
+					localBranches,
+					remoteBranches,
+					currentBranch,
+				})
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+
+				await provider.postMessageToWebview({
+					type: "branchList",
+					localBranches: [],
+					remoteBranches: [],
+					currentBranch: "",
+					error: errorMessage,
+				})
+			}
+
+			break
+		}
+
+		case "getWorktreeDefaults": {
+			try {
+				const { suggestedBranch, suggestedPath } = await handleGetWorktreeDefaults(provider)
+				await provider.postMessageToWebview({ type: "worktreeDefaults", suggestedBranch, suggestedPath })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+
+				await provider.postMessageToWebview({
+					type: "worktreeDefaults",
+					suggestedBranch: "",
+					suggestedPath: "",
+					error: errorMessage,
+				})
+			}
+
+			break
+		}
+
+		case "getWorktreeIncludeStatus": {
+			try {
+				const worktreeIncludeStatus = await handleGetWorktreeIncludeStatus(provider)
+				await provider.postMessageToWebview({ type: "worktreeIncludeStatus", worktreeIncludeStatus })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+
+				await provider.postMessageToWebview({
+					type: "worktreeIncludeStatus",
+					worktreeIncludeStatus: {
+						exists: false,
+						hasGitignore: false,
+						gitignoreContent: undefined,
+					},
+					error: errorMessage,
+				})
+			}
+
+			break
+		}
+
+		case "checkBranchWorktreeInclude": {
+			try {
+				const branch = message.worktreeBranch
+				if (!branch) {
+					await provider.postMessageToWebview({
+						type: "branchWorktreeIncludeResult",
+						hasWorktreeInclude: false,
+						error: "No branch specified",
+					})
+					break
+				}
+				const hasWorktreeInclude = await handleCheckBranchWorktreeInclude(provider, branch)
+				await provider.postMessageToWebview({
+					type: "branchWorktreeIncludeResult",
+					branch,
+					hasWorktreeInclude,
+				})
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				await provider.postMessageToWebview({
+					type: "branchWorktreeIncludeResult",
+					hasWorktreeInclude: false,
+					error: errorMessage,
+				})
+			}
+
+			break
+		}
+
+		case "createWorktreeInclude": {
+			try {
+				const { success, message: text } = await handleCreateWorktreeInclude(
+					provider,
+					message.worktreeIncludeContent ?? "",
+				)
+
+				await provider.postMessageToWebview({ type: "worktreeResult", success, text })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Error creating worktree include: ${errorMessage}`)
+				await provider.postMessageToWebview({ type: "worktreeResult", success: false, text: errorMessage })
+			}
+
+			break
+		}
+
+		case "checkoutBranch": {
+			try {
+				const { success, message: text } = await handleCheckoutBranch(provider, message.worktreeBranch!)
+				await provider.postMessageToWebview({ type: "worktreeResult", success, text })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				await provider.postMessageToWebview({ type: "worktreeResult", success: false, text: errorMessage })
+			}
+
+			break
+		}
+
+		case "browseForWorktreePath": {
+			try {
+				const options: vscode.OpenDialogOptions = {
+					canSelectFiles: false,
+					canSelectFolders: true,
+					canSelectMany: false,
+					openLabel: t("worktrees:selectWorktreeLocation"),
+					title: t("worktrees:selectFolderForWorktree"),
+					defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri
+						? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, "..")
+						: undefined,
+				}
+
+				const result = await vscode.window.showOpenDialog(options)
+				if (result && result[0]) {
+					await provider.postMessageToWebview({
+						type: "folderSelected",
+						path: result[0].fsPath,
+					})
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Error opening folder picker: ${errorMessage}`)
+			}
+
+			break
+		}
+
+		case "browseForCustomStoragePath": {
+			try {
+				const currentPath = vscode.workspace
+					.getConfiguration(Package.commandIDPrefix)
+					.get<string>("customStoragePath", "")
+
+				const options: vscode.OpenDialogOptions = {
+					canSelectFiles: false,
+					canSelectFolders: true,
+					canSelectMany: false,
+					openLabel: t("common:select"),
+					title: t("common:dialogs.selectCheckpointStorageFolder"),
+					defaultUri: currentPath
+						? vscode.Uri.file(currentPath)
+						: vscode.workspace.workspaceFolders?.[0]?.uri,
+				}
+
+				const result = await vscode.window.showOpenDialog(options)
+				if (result && result[0]) {
+					await provider.postMessageToWebview({
+						type: "customStoragePathSelected",
+						path: result[0].fsPath,
+					})
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Error opening custom storage path picker: ${errorMessage}`)
+			}
+
 			break
 		}
 

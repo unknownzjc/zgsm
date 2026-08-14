@@ -105,7 +105,7 @@ export class QdrantVectorStore implements IVectorStore {
 
 		try {
 			// Attempt to parse as complete URL - return as-is, let constructor handle ports
-			const parsedUrl = new URL(trimmedUrl)
+			new URL(trimmedUrl)
 			return trimmedUrl
 		} catch {
 			// Failed to parse as URL - treat as hostname
@@ -385,7 +385,7 @@ export class QdrantVectorStore implements IVectorStore {
 			return false
 		}
 		const validKeys = ["filePath", "codeChunk", "startLine", "endLine"]
-		const hasValidKeys = validKeys.every((key) => key in payload)
+		const hasValidKeys = validKeys?.every?.((key) => key in payload)
 		return hasValidKeys
 	}
 

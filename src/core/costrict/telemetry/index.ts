@@ -1,16 +1,33 @@
-import { TelemetryService, CostrictTelemetryClient } from "@roo-code/telemetry"
+import { TelemetryService, CostrictTelemetryClient, CostrictRawStoreClient } from "@roo-code/telemetry"
 import type { ClineProvider } from "../../webview/ClineProvider"
-import { ZgsmAuthConfig } from "../auth"
+import { CostrictAuthConfig } from "../auth"
+import { RawTaskReporter } from "./rawTaskReporter"
+import { RawCommitReporter } from "./rawCommitReporter"
 export * from "./constants"
 
-export function initTelemetry(provider: ClineProvider) {
+let rawTaskReporter: RawTaskReporter | undefined
+let rawCommitReporter: RawCommitReporter | undefined
+
+export function initTelemetry(provider: ClineProvider, additionalHeaders: Record<string, string> = {}): void {
 	const telemetryService = TelemetryService.instance
-	const zgsmBaseUrl = provider.getValue("zgsmBaseUrl")
-	const baseUrl = zgsmBaseUrl ? zgsmBaseUrl : ZgsmAuthConfig.getInstance().getDefaultApiBaseUrl()
+	const costrictBaseUrl = provider.getValue("costrictBaseUrl")
+	const baseUrl = costrictBaseUrl ? costrictBaseUrl : CostrictAuthConfig.getInstance().getDefaultApiBaseUrl()
 	try {
-		telemetryService.register(new CostrictTelemetryClient(`${baseUrl}`, false))
+		telemetryService.register(new CostrictTelemetryClient(`${baseUrl}`, additionalHeaders, false))
+		const rawStoreClient = new CostrictRawStoreClient(`${baseUrl}`, additionalHeaders, false)
+		telemetryService.register(rawStoreClient)
 		telemetryService.setProvider(provider)
+		rawTaskReporter = new RawTaskReporter(rawStoreClient)
+		rawCommitReporter = new RawCommitReporter(rawStoreClient)
 	} catch (error) {
-		console.warn("Failed to register CostrictTelemetryClient:", error)
+		console.warn("Failed to register Costrict telemetry clients:", error)
 	}
+}
+
+export function getRawTaskReporter(): RawTaskReporter | undefined {
+	return rawTaskReporter
+}
+
+export function getRawCommitReporter(): RawCommitReporter | undefined {
+	return rawCommitReporter
 }

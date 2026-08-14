@@ -1,6 +1,6 @@
 import i18next from "i18next"
-import { zgsmTranslations, mergeLanguageResources } from "./costrict-i18n/setup"
-import { ZGSM_LANGUAGES } from "../shared/language"
+import { costrictTranslations, mergeLanguageResources } from "./costrict-i18n/setup"
+import { COSTRICT_LANGUAGES } from "../shared/language"
 
 // Build translations object
 const translations: Record<string, Record<string, any>> = {}
@@ -20,10 +20,13 @@ if (!isTestEnv) {
 		try {
 			// Find all language directories
 			const languageDirs = fs.readdirSync(localesDir, { withFileTypes: true })
-			const ALLOW_LANGUAGES = Object.keys(ZGSM_LANGUAGES)
+			const ALLOW_LANGUAGES = Object.keys(COSTRICT_LANGUAGES)
 
 			const languages = languageDirs
-				.filter((dirent: { isDirectory: () => boolean }) => dirent.isDirectory())
+				.filter(
+					(dirent: { isDirectory: () => boolean; name: string }) =>
+						dirent.isDirectory() && !dirent.name.startsWith("."),
+				)
 				.map((dirent: { name: string }) => dirent.name)
 				.filter((language: string) => ALLOW_LANGUAGES.includes(language))
 
@@ -32,7 +35,13 @@ if (!isTestEnv) {
 				const langPath = path.join(localesDir, language)
 
 				// Find all JSON files in the language directory
-				const files = fs.readdirSync(langPath).filter((file: string) => file.endsWith(".json"))
+				const files = fs
+					.readdirSync(langPath, { withFileTypes: true })
+					.filter(
+						(dirent: { isFile: () => boolean; name: string }) =>
+							dirent.isFile() && dirent.name.endsWith(".json") && !dirent.name.startsWith("."),
+					)
+					.map((dirent: { name: string }) => dirent.name)
 
 				// Initialize language in translations object
 				if (!translations[language]) {
@@ -64,7 +73,7 @@ if (!isTestEnv) {
 }
 
 // Merge CoStrict translations
-const mergedTranslations = mergeLanguageResources(translations, zgsmTranslations)
+const mergedTranslations = mergeLanguageResources(translations, costrictTranslations)
 // console.log(`Merged translations:`, mergedTranslations)
 
 // Initialize i18next with configuration

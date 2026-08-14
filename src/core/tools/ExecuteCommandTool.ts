@@ -4,7 +4,7 @@ import * as vscode from "vscode"
 
 import delay from "delay"
 
-import { CommandExecutionStatus, DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT } from "@roo-code/types"
+import { CommandExecutionStatus, DEFAULT_TERMINAL_OUTPUT_PREVIEW_SIZE, PersistedCommandOutput } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { Task } from "../task/Task"
@@ -15,8 +15,10 @@ import { unescapeHtmlEntities } from "../../utils/text-normalization"
 import { ExitCodeDetails, RooTerminalCallbacks, RooTerminalProcess } from "../../integrations/terminal/types"
 import { TerminalRegistry } from "../../integrations/terminal/TerminalRegistry"
 import { Terminal } from "../../integrations/terminal/Terminal"
+import { OutputInterceptor } from "../../integrations/terminal/OutputInterceptor"
 import { Package } from "../../shared/package"
 import { t } from "../../i18n"
+import { getTaskDirectoryPath } from "../../utils/storage"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import { isJetbrainsPlatform } from "../../utils/platform"
 
@@ -25,21 +27,24 @@ class ShellIntegrationError extends Error {}
 interface ExecuteCommandParams {
 	command: string
 	cwd?: string
+	timeout?: number | null
+}
+
+export function resolveAgentTimeoutMs(timeoutSeconds: number | null | undefined): number {
+	const requestedAgentTimeout = typeof timeoutSeconds === "number" && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 0
+
+	// In CLI runtime, stdin harnesses expect command lifetime to be governed
+	// solely by commandExecutionTimeout (user setting), not model-provided
+	// background timeouts.
+	return process.env.ROO_CLI_RUNTIME === "1" ? 0 : requestedAgentTimeout
 }
 
 export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 	readonly name = "execute_command" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): ExecuteCommandParams {
-		return {
-			command: params.command || "",
-			cwd: params.cwd,
-		}
-	}
-
 	async execute(params: ExecuteCommandParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const { command, cwd: customCwd } = params
-		const { handleError, pushToolResult, askApproval, removeClosingTag, toolProtocol } = callbacks
+		const { command, cwd: customCwd, timeout: timeoutSeconds } = params
+		const { handleError, pushToolResult, askApproval } = callbacks
 
 		try {
 			if (!command) {
@@ -49,18 +54,19 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 				return
 			}
 
-			const ignoredFileAttemptedToAccess = task.rooIgnoreController?.validateCommand(command)
+			const canonicalCommand = unescapeHtmlEntities(command)
+
+			const ignoredFileAttemptedToAccess = task.rooIgnoreController?.validateCommand(canonicalCommand)
 
 			if (ignoredFileAttemptedToAccess) {
 				await task.say("rooignore_error", ignoredFileAttemptedToAccess)
-				pushToolResult(formatResponse.rooIgnoreError(ignoredFileAttemptedToAccess, toolProtocol))
+				pushToolResult(formatResponse.rooIgnoreError(ignoredFileAttemptedToAccess))
 				return
 			}
 
 			task.consecutiveMistakeCount = 0
 
-			const unescapedCommand = unescapeHtmlEntities(command)
-			const didApprove = await askApproval("command", unescapedCommand)
+			const didApprove = await askApproval("command", canonicalCommand)
 
 			if (!didApprove) {
 				return
@@ -70,38 +76,36 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 			const provider = await task.providerRef.deref()
 			const providerState = await provider?.getState()
 
-			const {
-				terminalOutputLineLimit = 500,
-				terminalOutputCharacterLimit = DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
-				terminalShellIntegrationDisabled = true,
-			} = providerState ?? {}
+			const { terminalShellIntegrationDisabled = true } = providerState ?? {}
 
 			// Get command execution timeout from VSCode configuration (in seconds)
 			const commandExecutionTimeoutSeconds = vscode.workspace
-				.getConfiguration(Package.name)
+				.getConfiguration(Package.commandIDPrefix)
 				.get<number>("commandExecutionTimeout", 0)
 
 			// Get command timeout allowlist from VSCode configuration
 			const commandTimeoutAllowlist = vscode.workspace
-				.getConfiguration(Package.name)
+				.getConfiguration(Package.commandIDPrefix)
 				.get<string[]>("commandTimeoutAllowlist", [])
 
 			// Check if command matches any prefix in the allowlist
 			const isCommandAllowlisted = commandTimeoutAllowlist.some((prefix) =>
-				unescapedCommand.startsWith(prefix.trim()),
+				canonicalCommand.startsWith(prefix.trim()),
 			)
 
 			// Convert seconds to milliseconds for internal use, but skip timeout if command is allowlisted
 			const commandExecutionTimeout = isCommandAllowlisted ? 0 : commandExecutionTimeoutSeconds * 1000
 
+			// Convert agent-specified timeout from seconds to milliseconds
+			const agentTimeout = resolveAgentTimeoutMs(timeoutSeconds)
+
 			const options: ExecuteCommandOptions = {
 				executionId,
-				command: unescapedCommand,
+				command: canonicalCommand,
 				customCwd,
 				terminalShellIntegrationDisabled,
-				terminalOutputLineLimit,
-				terminalOutputCharacterLimit,
 				commandExecutionTimeout,
+				agentTimeout,
 			}
 
 			try {
@@ -116,6 +120,9 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 				const status: CommandExecutionStatus = { executionId, status: "fallback" }
 				provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
 				await task.say("shell_integration_warning")
+
+				// Invalidate pending ask from first execution to prevent race condition
+				task.supersedePendingAsk()
 
 				if (error instanceof ShellIntegrationError) {
 					const [rejected, result] = await executeCommandInTerminal(task, {
@@ -144,9 +151,7 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 
 	override async handlePartial(task: Task, block: ToolUse<"execute_command">): Promise<void> {
 		const command = block.params.command
-		await task
-			.ask("command", this.removeClosingTag("command", command, block.partial), block.partial)
-			.catch(() => {})
+		await task.ask("command", command ?? "", block.partial).catch(() => {})
 	}
 }
 
@@ -155,9 +160,8 @@ export type ExecuteCommandOptions = {
 	command: string
 	customCwd?: string
 	terminalShellIntegrationDisabled?: boolean
-	terminalOutputLineLimit?: number
-	terminalOutputCharacterLimit?: number
 	commandExecutionTimeout?: number
+	agentTimeout?: number
 }
 
 export async function executeCommandInTerminal(
@@ -167,9 +171,8 @@ export async function executeCommandInTerminal(
 		command,
 		customCwd,
 		terminalShellIntegrationDisabled = true,
-		terminalOutputLineLimit = 500,
-		terminalOutputCharacterLimit = DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 		commandExecutionTimeout = 0,
+		agentTimeout = 0,
 	}: ExecuteCommandOptions,
 ): Promise<[boolean, ToolResponse]> {
 	// Convert milliseconds back to seconds for display purposes.
@@ -194,6 +197,7 @@ export async function executeCommandInTerminal(
 	let runInBackground = false
 	let completed = false
 	let result: string = ""
+	let persistedResult: PersistedCommandOutput | undefined
 	let exitDetails: ExitCodeDetails | undefined
 	let shellIntegrationError: string | undefined
 	let hasAskedForCommandOutput = false
@@ -201,17 +205,106 @@ export async function executeCommandInTerminal(
 	const terminalProvider = terminalShellIntegrationDisabled ? "execa" : "vscode"
 	const provider = await task.providerRef.deref()
 
+	// Get global storage path for persisted output artifacts
+	const globalStoragePath = provider?.context?.globalStorageUri?.fsPath
+	let interceptor: OutputInterceptor | undefined
+
+	// Create OutputInterceptor if we have storage available
+	if (globalStoragePath) {
+		const taskDir = await getTaskDirectoryPath(globalStoragePath, task.taskId)
+		const storageDir = path.join(taskDir, "command-output")
+		const providerState = await provider?.getState()
+		const terminalOutputPreviewSize =
+			providerState?.terminalOutputPreviewSize ?? DEFAULT_TERMINAL_OUTPUT_PREVIEW_SIZE
+
+		interceptor = new OutputInterceptor({
+			executionId,
+			taskId: task.taskId,
+			command,
+			storageDir,
+			previewSize: terminalOutputPreviewSize,
+		})
+	}
+
 	let accumulatedOutput = ""
+	// Bound accumulated output buffer size to prevent unbounded memory growth for long-running commands.
+	// The interceptor preserves full output; this buffer is only for UI display (100KB limit).
+	const maxAccumulatedOutputSize = 100_000
+	const commandOutputStreamThrottleMs = 150
+	let latestCompressedOutput = ""
+	let lastQueuedCommandOutput = ""
+	let lastCommandOutputEmitAt = 0
+	let pendingCommandOutputEmitTimer: NodeJS.Timeout | undefined
+	let commandOutputSayChain: Promise<void> = Promise.resolve()
+
+	const queueCommandOutputMessage = (text: string, partial: boolean, force = false): Promise<void> => {
+		if (!force && text === lastQueuedCommandOutput) {
+			return commandOutputSayChain
+		}
+
+		lastQueuedCommandOutput = text
+		commandOutputSayChain = commandOutputSayChain
+			.then(async () => {
+				await task.say("command_output", text, undefined, partial, undefined, undefined, {
+					isNonInteractive: true,
+				})
+			})
+			.catch((error) => {
+				console.error("[ExecuteCommandTool] Failed to publish command output:", error)
+			})
+
+		return commandOutputSayChain
+	}
+
+	const schedulePartialCommandOutputUpdate = () => {
+		if (!latestCompressedOutput || completed) {
+			return
+		}
+
+		const emitUpdate = () => {
+			pendingCommandOutputEmitTimer = undefined
+			lastCommandOutputEmitAt = Date.now()
+			void queueCommandOutputMessage(latestCompressedOutput, true)
+		}
+
+		const elapsed = Date.now() - lastCommandOutputEmitAt
+		if (elapsed >= commandOutputStreamThrottleMs) {
+			emitUpdate()
+			return
+		}
+
+		if (!pendingCommandOutputEmitTimer) {
+			pendingCommandOutputEmitTimer = setTimeout(emitUpdate, commandOutputStreamThrottleMs - elapsed)
+		}
+	}
+
+	// Track when onCompleted callback finishes to avoid race condition.
+	// The callback is async but Terminal/ExecaTerminal don't await it, so we track completion
+	// explicitly to ensure persistedResult is set before we use it.
+	let onCompletedPromise: Promise<void> | undefined
+	let resolveOnCompleted: (() => void) | undefined
+	onCompletedPromise = new Promise((resolve) => {
+		resolveOnCompleted = resolve
+	})
+
 	const callbacks: RooTerminalCallbacks = {
 		onLine: async (lines: string, process: RooTerminalProcess) => {
 			accumulatedOutput += lines
-			const compressedOutput = Terminal.compressTerminalOutput(
-				accumulatedOutput,
-				terminalOutputLineLimit,
-				terminalOutputCharacterLimit,
-			)
+
+			// Trim accumulated output to prevent unbounded memory growth
+			if (accumulatedOutput.length > maxAccumulatedOutputSize) {
+				accumulatedOutput = accumulatedOutput.slice(-maxAccumulatedOutputSize)
+			}
+
+			// Write to interceptor for persisted output
+			interceptor?.write(lines)
+
+			// Continue sending compressed output to webview for UI display (unchanged behavior)
+			const compressedOutput = Terminal.compressTerminalOutput(accumulatedOutput)
+			latestCompressedOutput = compressedOutput
 			const status: CommandExecutionStatus = { executionId, status: "output", output: compressedOutput }
 			provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+			schedulePartialCommandOutputUpdate()
 
 			if (runInBackground || hasAskedForCommandOutput) {
 				return
@@ -232,19 +325,41 @@ export async function executeCommandInTerminal(
 				// Silently handle ask errors (e.g., "Current ask promise was ignored")
 			}
 		},
-		onCompleted: (output: string | undefined) => {
-			result = Terminal.compressTerminalOutput(
-				output ?? "",
-				terminalOutputLineLimit,
-				terminalOutputCharacterLimit,
-			)
+		onCompleted: async (output: string | undefined) => {
+			try {
+				clearTimeout(pendingCommandOutputEmitTimer)
+				pendingCommandOutputEmitTimer = undefined
 
-			task.say("command_output", result)
-			completed = true
+				// Finalize interceptor and get persisted result.
+				// We await finalize() to ensure the artifact file is fully flushed
+				// before we advertise the artifact_id to the LLM.
+				if (interceptor) {
+					persistedResult = await interceptor.finalize()
+				}
+
+				// Continue using compressed output for UI display
+				result = Terminal.compressTerminalOutput(output ?? "")
+				latestCompressedOutput = result
+
+				// Preserve order: wait for queued partial updates, then emit the final
+				// non-partial command_output update.
+				await commandOutputSayChain
+				await queueCommandOutputMessage(result, false, true)
+				completed = true
+			} finally {
+				// Signal that onCompleted has finished, so the main code can safely use persistedResult
+				resolveOnCompleted?.()
+			}
 		},
 		onShellExecutionStarted: (pid: number | undefined) => {
 			task.currentProcessPid = pid // Save pid to task for reliable cancellation
-			const status: CommandExecutionStatus = { executionId, status: "started", pid, command }
+			const status: CommandExecutionStatus = {
+				executionId,
+				status: "started",
+				pid,
+				command,
+				agentTimeoutMs: agentTimeout,
+			}
 			provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
 		},
 		onShellExecutionComplete: (details: ExitCodeDetails) => {
@@ -285,50 +400,73 @@ export async function executeCommandInTerminal(
 	const process = terminal.runCommand(command, callbacks)
 	task.terminalProcess = process
 	task.persistedTerminalProcess = process // Keep a persistent reference for continue operation
+	task.currentTerminalExecutionId = executionId // Track active executionId for abort validation
 
-	// Implement command execution timeout (skip if timeout is 0).
-	if (commandExecutionTimeout > 0) {
-		let timeoutId: NodeJS.Timeout | undefined
-		let isTimedOut = false
+	// Dual-timeout logic:
+	// - Agent timeout: transitions the command to background (continues running)
+	// - User timeout: aborts the command (kills it)
+	// Both timers run independently — the user timeout remains active as a safety net
+	// even after the agent timeout moves the command to the background.
+	let agentTimeoutId: NodeJS.Timeout | undefined
+	let userTimeoutId: NodeJS.Timeout | undefined
+	let isUserTimedOut = false
 
-		const timeoutPromise = new Promise<void>((_, reject) => {
-			timeoutId = setTimeout(() => {
-				isTimedOut = true
-				task.terminalProcess?.abort()
-				reject(new Error(`Command execution timed out after ${commandExecutionTimeout}ms`))
-			}, commandExecutionTimeout)
-		})
+	try {
+		const racers: Promise<void>[] = [process]
 
-		try {
-			await Promise.race([process, timeoutPromise])
-		} catch (error) {
-			if (isTimedOut) {
-				const status: CommandExecutionStatus = { executionId, status: "timeout" }
-				provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
-				await task.say("error", t("common:errors:command_timeout", { seconds: commandExecutionTimeoutSeconds }))
-				task.didToolFailInCurrentTurn = true
-				clearTerminalProcess(task)
-
-				return [
-					false,
-					`The command was terminated after exceeding a user-configured ${commandExecutionTimeoutSeconds}s timeout. Do not try to re-run the command.`,
-				]
-			}
-			throw error
-		} finally {
-			if (timeoutId) {
-				clearTimeout(timeoutId)
-			}
-
-			clearTerminalProcess(task)
+		// Agent timeout: transition to background (command keeps running)
+		if (agentTimeout > 0) {
+			racers.push(
+				new Promise<void>((resolve) => {
+					agentTimeoutId = setTimeout(() => {
+						runInBackground = true
+						const status: CommandExecutionStatus = {
+							executionId,
+							status: "backgrounded",
+							timeoutMs: agentTimeout,
+						}
+						provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+						process.continue()
+						task.supersedePendingAsk()
+						resolve()
+					}, agentTimeout)
+				}),
+			)
 		}
-	} else {
-		// No timeout - just wait for the process to complete.
-		try {
-			await process
-		} finally {
-			clearTerminalProcess(task)
+
+		// User timeout: abort the command (existing behavior)
+		if (commandExecutionTimeout > 0) {
+			racers.push(
+				new Promise<void>((_, reject) => {
+					userTimeoutId = setTimeout(() => {
+						isUserTimedOut = true
+						task.terminalProcess?.abort()
+						reject(new Error(`Command execution timed out after ${commandExecutionTimeout}ms`))
+					}, commandExecutionTimeout)
+				}),
+			)
 		}
+
+		await Promise.race(racers)
+	} catch (error) {
+		if (isUserTimedOut) {
+			const status: CommandExecutionStatus = { executionId, status: "timeout" }
+			provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+			await task.say("error", t("common:errors:command_timeout", { seconds: commandExecutionTimeoutSeconds }))
+			task.didToolFailInCurrentTurn = true
+			clearTerminalProcess(task)
+
+			return [
+				false,
+				`The command was terminated after exceeding a user-configured ${commandExecutionTimeoutSeconds}s timeout. Do not try to re-run the command.`,
+			]
+		}
+		throw error
+	} finally {
+		clearTimeout(agentTimeoutId)
+		clearTimeout(userTimeoutId)
+		clearTimeout(pendingCommandOutputEmitTimer)
+		clearTerminalProcess(task)
 	}
 
 	if (shellIntegrationError) {
@@ -342,6 +480,13 @@ export async function executeCommandInTerminal(
 	// grouping command_output messages despite any gaps anyways).
 	await delay(50)
 
+	// Wait for onCompleted callback to finish if shell execution completed.
+	// This ensures persistedResult is set before we try to use it, fixing the race
+	// condition where exitDetails is set (sync) before the async onCompleted finishes.
+	if (exitDetails && onCompletedPromise) {
+		await onCompletedPromise
+	}
+
 	if (message) {
 		const { text, images } = message
 		await task.say("user_feedback", text, images)
@@ -352,13 +497,20 @@ export async function executeCommandInTerminal(
 				[
 					`Command is still running in terminal from '${terminal.getCurrentWorkingDirectory().toPosix()}'.`,
 					result.length > 0 ? `Here's the output so far:\n${result}\n` : "\n",
-					`The user provided the following feedback:`,
-					`<feedback>\n${text}\n</feedback>`,
+					`<user_message>\n${text}\n</user_message>`,
 				].join("\n"),
 				images,
 			),
 		]
 	} else if (completed || exitDetails) {
+		const currentWorkingDir = terminal.getCurrentWorkingDirectory().toPosix()
+
+		// Use persisted output format when output was truncated and spilled to disk
+		if (persistedResult?.truncated) {
+			return [false, formatPersistedOutput(persistedResult, exitDetails, currentWorkingDir)]
+		}
+
+		// Use inline format for small outputs (original behavior with exit status)
 		let exitStatus: string = ""
 
 		if (exitDetails !== undefined) {
@@ -383,9 +535,10 @@ export async function executeCommandInTerminal(
 			exitStatus = `Exit code: <undefined, notify user>`
 		}
 
-		let workingDirInfo = ` within working directory '${terminal.getCurrentWorkingDirectory().toPosix()}'`
-
-		return [false, `Command executed in terminal ${workingDirInfo}. ${exitStatus}\nOutput:\n${result}`]
+		return [
+			false,
+			`Command executed in terminal within working directory '${currentWorkingDir}'. ${exitStatus}\nOutput:\n${result}`,
+		]
 	} else {
 		return [
 			false,
@@ -403,6 +556,7 @@ function clearTerminalProcess(task: Task) {
 
 	if (!isJetbrainsPlatform() && task) {
 		task.terminalProcess = undefined
+		task.currentTerminalExecutionId = undefined
 		return
 	}
 
@@ -411,6 +565,70 @@ function clearTerminalProcess(task: Task) {
 			task.terminalProcess = undefined
 		}
 	}, 1000)
+}
+/**
+ * Format exit status from ExitCodeDetails
+ */
+function formatExitStatus(exitDetails: ExitCodeDetails | undefined): string {
+	if (exitDetails === undefined) {
+		return "Exit code: <undefined, notify user>"
+	}
+
+	if (exitDetails.signalName) {
+		let status = `Process terminated by signal ${exitDetails.signalName}`
+		if (exitDetails.coreDumpPossible) {
+			status += " - core dump possible"
+		}
+		return status
+	}
+
+	if (exitDetails.exitCode === undefined) {
+		return "Exit code: <undefined, notify user>"
+	}
+
+	let status = ""
+	if (exitDetails.exitCode !== 0) {
+		status += "Command execution was not successful, inspect the cause and adjust as needed.\n"
+	}
+	status += `Exit code: ${exitDetails.exitCode}`
+	return status
+}
+
+/**
+ * Format persisted output result for tool response when output was truncated
+ */
+function formatPersistedOutput(
+	result: PersistedCommandOutput,
+	exitDetails: ExitCodeDetails | undefined,
+	workingDir: string,
+): string {
+	const exitStatus = formatExitStatus(exitDetails)
+	const sizeStr = formatBytes(result.totalBytes)
+	const artifactId = result.artifactPath ? path.basename(result.artifactPath) : ""
+
+	return [
+		`Command executed in '${workingDir}'. ${exitStatus}`,
+		"",
+		`Output (${sizeStr}) persisted. Artifact ID: ${artifactId}`,
+		"",
+		"Preview:",
+		result.preview,
+		"",
+		"Use read_command_output tool to view full output if needed.",
+	].join("\n")
+}
+
+/**
+ * Format bytes to human-readable string
+ */
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) {
+		return `${bytes}B`
+	}
+	if (bytes < 1024 * 1024) {
+		return `${(bytes / 1024).toFixed(1)}KB`
+	}
+	return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 export const executeCommandTool = new ExecuteCommandTool()

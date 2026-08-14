@@ -30,14 +30,9 @@
 		},
 		"infor": {
 			"enable_disable_function_quick_menu": "啟用/禁用\"快捷選單\"和\"補全\""
-		},
-		"relogin_input": {
-			"title": "重新登錄",
-			"placeholder": "Default: https://zgsm.sangfor.com",
-			"error_portocol": "僅支持HTTP/HTTPS協議",
-			"error_url": "無效的 URL 格式"
 		}
 	},
+	"login_url_copied": "登入連結已複製到剪貼簿",
 	"button": {
 		"enable_function_quick_menu": "啟用快捷選單",
 		"disable": "禁用",
@@ -209,9 +204,62 @@
 	},
 	"history": {
 		"warn": "歷史任務快取超過 {{size}}，您可以手動清理歷史記錄以釋放磁碟空間",
-		"viewAllHistory": "檢視所有工作"
+		"viewAllHistory": "檢視所有工作",
+		"backingUpTasks": "請稍候，請勿進行其他操作，正在備份工作歷史...",
+		"restoringTasks": "請稍候，請勿進行其他操作，正在復原工作歷史..."
+	},
+	"autoCleanup": {
+		"completed": "自動清理完成：已刪除 {{count}} 個任務，釋放 {{space}} 空間"
 	},
 	"notification": {
 		"confirm": "確定"
+	},
+	"builtinSkills": {
+		"init": "內建技能（{{skills}}）已安裝至 {{path}}",
+		"updated": "內建技能（{{skills}}）已更新至 {{path}}"
+	},
+	"ipc": {
+		"connectionFailed": "IPC 連接失敗，無法連接到本機伺服器",
+		"reloadWindow": "重新載入視窗",
+		"manualRetry": "手動重試"
+	},
+	"csCloud": {
+		"loading": {
+			"startingCloud": "正在啟動 CoStrict Cloud...",
+			"initializing": "正在初始化介面...",
+			"loadingCloud": "正在載入 CoStrict Cloud..."
+		},
+		"progress": {
+			"startingCloud": "正在啟動 CoStrict Cloud"
+		},
+		"disabled": {
+			"message": "CoStrict Assistant UI 已停用。請透過 costrict.assistantUI.enabled 啟用。"
+		},
+		"error": {
+			"title": "服務啟動發生問題",
+			"descRetry": "後端服務未能正常啟動，請稍候片刻，我們會自動嘗試恢復。",
+			"descNoCsc": "未偵測到 csc，請先按提示安裝並啟動 CoStrict Cloud。",
+			"startupFailed": "cs-cloud 啟動失敗",
+			"cscNotInstalled": "未安裝 csc",
+			"restart": "重新啟動",
+			"switchToClassic": "切換到 Classic 模式 →",
+			"autoRetryCountdown": "{{count}} 秒後自動重試…",
+			"starting": "正在啟動…",
+			"switching": "切換中…"
+		},
+		"crashed": {
+			"title": "服務暫時無法使用",
+			"desc": "後端服務已斷開，正在嘗試自動恢復連線。",
+			"reconnect": "重新連線",
+			"switchToClassic": "切換到 Classic 模式 →",
+			"autoRetryCountdown": "{{count}} 秒後自動重試…",
+			"connecting": "正在連線…",
+			"switching": "切換中…"
+		},
+		"git": {
+			"checkoutSuccess": "已切換到分支 {{branch}}",
+			"checkoutFailed": "切換分支失敗：{{message}}"
+		},
+		"diagnostics": "Assistant UI 診斷：正在檢查 cs-cloud..."
 	}
 }

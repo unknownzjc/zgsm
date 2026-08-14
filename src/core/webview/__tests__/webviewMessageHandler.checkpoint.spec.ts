@@ -14,7 +14,7 @@ vi.mock("vscode", async (importOriginal) => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -83,6 +83,10 @@ describe("webviewMessageHandler - checkpoint operations", () => {
 			contextProxy: {
 				globalStorageUri: { fsPath: "/test/storage" },
 			},
+			getState: vi.fn().mockResolvedValue({
+				maxImageFileSize: 5,
+				maxTotalImageSize: 20,
+			}),
 		}
 	})
 
@@ -152,7 +156,7 @@ describe("webviewMessageHandler - checkpoint operations", () => {
 				operation: "edit",
 				editData: {
 					editedContent: "Edited checkpoint message",
-					images: undefined,
+					images: [],
 					apiConversationHistoryIndex: 0,
 				},
 			})

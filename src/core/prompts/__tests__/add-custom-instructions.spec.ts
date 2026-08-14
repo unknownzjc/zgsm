@@ -1,6 +1,7 @@
 // npx vitest core/prompts/__tests__/add-custom-instructions.spec.ts
 
-vi.mock("os", () => ({
+vi.mock("os", async (importOriginal) => ({
+	...(await importOriginal()),
 	default: {
 		homedir: () => "/home/user",
 		platform: () => "linux",
@@ -121,7 +122,7 @@ __setMockImplementation(
 // Mock vscode language
 vi.mock("vscode", () => ({
 	env: {
-		language: "en",
+		language: "zh-CN",
 	},
 	workspace: {
 		workspaceFolders: [{ uri: { fsPath: "/test/path" } }],
@@ -148,7 +149,7 @@ vi.mock("vscode", () => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -238,15 +239,12 @@ describe("addCustomInstructions", () => {
 			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			"architect", // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
 			undefined, // partialReadsEnabled
 		)
@@ -261,46 +259,17 @@ describe("addCustomInstructions", () => {
 			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			"ask", // mode
 			undefined, // customModePrompts
 			undefined, // customModes
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			true, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
 			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/add-custom-instructions/ask-mode-prompt.snap")
-	})
-
-	it("should include MCP server creation info when enabled", async () => {
-		const mockMcpHub = createMockMcpHub(true)
-
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false, // supportsImages
-			mockMcpHub, // mcpHub
-			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes,
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			undefined, // experiments
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			undefined, // partialReadsEnabled
-		)
-
-		expect(prompt).toContain("Creating an MCP Server")
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/add-custom-instructions/mcp-server-creation-enabled.snap")
 	})
 
 	it("should exclude MCP server creation info when disabled", async () => {
@@ -312,44 +281,18 @@ describe("addCustomInstructions", () => {
 			false, // supportsImages
 			mockMcpHub, // mcpHub
 			undefined, // diffStrategy
-			undefined, // browserViewportSize
 			defaultModeSlug, // mode
 			undefined, // customModePrompts
 			undefined, // customModes,
 			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
 			undefined, // experiments
-			false, // enableMcpServerCreation
-			"en", // language
+			undefined, // language
 			undefined, // rooIgnoreInstructions
 			undefined, // partialReadsEnabled
 		)
 
 		expect(prompt).not.toContain("Creating an MCP Server")
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/add-custom-instructions/mcp-server-creation-disabled.snap")
-	})
-
-	it("should include partial read instructions when partialReadsEnabled is true", async () => {
-		const prompt = await SYSTEM_PROMPT(
-			mockContext,
-			"/test/path",
-			false, // supportsImages
-			undefined, // mcpHub
-			undefined, // diffStrategy
-			undefined, // browserViewportSize
-			defaultModeSlug, // mode
-			undefined, // customModePrompts
-			undefined, // customModes,
-			undefined, // globalCustomInstructions
-			undefined, // diffEnabled
-			undefined, // experiments
-			true, // enableMcpServerCreation
-			"en", // language
-			undefined, // rooIgnoreInstructions
-			true, // partialReadsEnabled
-		)
-
-		expect(prompt).toMatchFileSnapshot("./__snapshots__/add-custom-instructions/partial-reads-enabled.snap")
 	})
 
 	it("should prioritize mode-specific rules for code mode", async () => {

@@ -78,11 +78,11 @@ describe("Project Wiki Command Integration", () => {
 
 			expect(command).toBeDefined()
 			if (command) {
-				// 验证命令内容包含预期的关键词（中文内容）
+				// 验证命令内容包含预期的关键词（支持双语内容）
 				const content = command.content
-				expect(content).toContain("项目")
+				expect(content).toContain("Repository")
 				expect(content).toContain("wiki")
-				expect(content).toContain("分析")
+				expect(content).toContain("Analysis")
 			}
 		})
 	})

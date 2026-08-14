@@ -41,8 +41,7 @@ vi.mock("fs", () => ({
 vi.mock("../litellm")
 vi.mock("../openrouter")
 vi.mock("../requesty")
-vi.mock("../unbound")
-vi.mock("../io-intelligence")
+vi.mock("../costrict")
 
 // Mock ContextProxy with a simple static instance
 vi.mock("../../../core/config/ContextProxy", () => ({
@@ -59,22 +58,90 @@ vi.mock("../../../core/config/ContextProxy", () => ({
 import type { Mock } from "vitest"
 import * as fsSync from "fs"
 import NodeCache from "node-cache"
-import { getModels, getModelsFromCache } from "../modelCache"
+import { getModels, getModelsFromCache, getModelsWithMetadata, refreshModelsWithMetadata } from "../modelCache"
 import { getLiteLLMModels } from "../litellm"
 import { getOpenRouterModels } from "../openrouter"
 import { getRequestyModels } from "../requesty"
-import { getUnboundModels } from "../unbound"
-import { getIOIntelligenceModels } from "../io-intelligence"
+import { getCostrictModels } from "../costrict"
 
 const mockGetLiteLLMModels = getLiteLLMModels as Mock<typeof getLiteLLMModels>
 const mockGetOpenRouterModels = getOpenRouterModels as Mock<typeof getOpenRouterModels>
 const mockGetRequestyModels = getRequestyModels as Mock<typeof getRequestyModels>
-const mockGetUnboundModels = getUnboundModels as Mock<typeof getUnboundModels>
-const mockGetIOIntelligenceModels = getIOIntelligenceModels as Mock<typeof getIOIntelligenceModels>
+const mockGetCostrictModels = getCostrictModels as Mock<typeof getCostrictModels>
 
 const DUMMY_REQUESTY_KEY = "requesty-key-for-testing"
-const DUMMY_UNBOUND_KEY = "unbound-key-for-testing"
-const DUMMY_IOINTELLIGENCE_KEY = "io-intelligence-key-for-testing"
+
+describe("model list authority metadata", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		const mockCache: any = new NodeCache()
+		mockCache.get.mockReturnValue(undefined)
+		vi.mocked(fsSync.existsSync).mockReturnValue(false)
+	})
+
+	afterEach(() => {
+		const mockCache: any = new NodeCache()
+		mockCache.get.mockReturnValue(undefined)
+	})
+
+	it("marks a direct provider response as authoritative", async () => {
+		const models = {
+			"openrouter/fresh-model": {
+				maxTokens: 8192,
+				contextWindow: 128000,
+				supportsPromptCache: false,
+			},
+		}
+		mockGetOpenRouterModels.mockResolvedValue(models)
+
+		await expect(getModelsWithMetadata({ provider: "openrouter" })).resolves.toEqual({
+			models,
+			authoritative: true,
+		})
+	})
+
+	it("marks a cache hit as non-authoritative", async () => {
+		const models = {
+			"openrouter/cached-model": {
+				maxTokens: 8192,
+				contextWindow: 128000,
+				supportsPromptCache: false,
+			},
+		}
+		const mockCache: any = new NodeCache()
+		mockCache.get.mockReturnValue(models)
+
+		await expect(getModelsWithMetadata({ provider: "openrouter" })).resolves.toEqual({
+			models,
+			authoritative: false,
+		})
+	})
+
+	it("marks refresh fallback data as non-authoritative", async () => {
+		const models = {
+			"costrict/cached-model": {
+				id: "costrict/cached-model",
+				maxTokens: 8192,
+				contextWindow: 128000,
+				supportsPromptCache: false,
+			},
+		}
+		const mockCache: any = new NodeCache()
+		mockCache.get.mockReturnValue(models)
+		mockGetCostrictModels.mockRejectedValue(new Error("API error"))
+
+		await expect(
+			refreshModelsWithMetadata({
+				provider: "costrict",
+				baseUrl: "https://api.example.com",
+				apiKey: "test-api-key",
+			}),
+		).resolves.toEqual({
+			models,
+			authoritative: false,
+		})
+	})
+})
 
 describe("getModels with new GetModelsOptions", () => {
 	beforeEach(() => {
@@ -133,40 +200,6 @@ describe("getModels with new GetModelsOptions", () => {
 		const result = await getModels({ provider: "requesty", apiKey: DUMMY_REQUESTY_KEY })
 
 		expect(mockGetRequestyModels).toHaveBeenCalledWith(undefined, DUMMY_REQUESTY_KEY)
-		expect(result).toEqual(mockModels)
-	})
-
-	it("calls getUnboundModels with optional API key", async () => {
-		const mockModels = {
-			"unbound/model": {
-				maxTokens: 4096,
-				contextWindow: 8192,
-				supportsPromptCache: false,
-				description: "Unbound model",
-			},
-		}
-		mockGetUnboundModels.mockResolvedValue(mockModels)
-
-		const result = await getModels({ provider: "unbound", apiKey: DUMMY_UNBOUND_KEY })
-
-		expect(mockGetUnboundModels).toHaveBeenCalledWith(DUMMY_UNBOUND_KEY)
-		expect(result).toEqual(mockModels)
-	})
-
-	it("calls IOIntelligenceModels for IO-Intelligence provider", async () => {
-		const mockModels = {
-			"io-intelligence/model": {
-				maxTokens: 4096,
-				contextWindow: 8192,
-				supportsPromptCache: false,
-				description: "IO Intelligence Model",
-			},
-		}
-		mockGetIOIntelligenceModels.mockResolvedValue(mockModels)
-
-		const result = await getModels({ provider: "io-intelligence", apiKey: DUMMY_IOINTELLIGENCE_KEY })
-
-		expect(mockGetIOIntelligenceModels).toHaveBeenCalled()
 		expect(result).toEqual(mockModels)
 	})
 
@@ -334,6 +367,53 @@ describe("empty cache protection", () => {
 
 			expect(result).toEqual(mockModels)
 			expect(mockSet).toHaveBeenCalledWith("openrouter", mockModels)
+		})
+
+		it("returns disk cache immediately and triggers background refresh when refreshOnDiskCacheHit is enabled", async () => {
+			const diskModels = {
+				"costrict/disk-model": {
+					maxTokens: 4096,
+					contextWindow: 128000,
+					supportsPromptCache: false,
+					description: "Disk cached model",
+				},
+			}
+			const refreshedApiModels = [
+				{
+					id: "costrict/fresh-model",
+					maxTokens: 8192,
+					contextWindow: 256000,
+					supportsPromptCache: true,
+					description: "Fresh model",
+				},
+			]
+			const refreshedModels = {
+				"costrict/fresh-model": refreshedApiModels[0],
+			}
+
+			mockGet.mockReturnValueOnce(undefined).mockReturnValueOnce(diskModels)
+			vi.mocked(fsSync.existsSync).mockReturnValue(true)
+			vi.mocked(fsSync.readFileSync).mockReturnValue(JSON.stringify(diskModels))
+			mockGetCostrictModels.mockResolvedValue(refreshedApiModels)
+
+			const result = await getModels({
+				provider: "costrict",
+				baseUrl: "https://api.example.com",
+				apiKey: "test-api-key",
+				refreshOnDiskCacheHit: true,
+			})
+
+			expect(result).toEqual(diskModels)
+			expect(mockGetCostrictModels).toHaveBeenCalledWith(
+				"https://api.example.com",
+				"test-api-key",
+				undefined,
+				1000,
+			)
+
+			await vi.waitFor(() => {
+				expect(mockSet).toHaveBeenCalledWith("costrict", refreshedModels)
+			})
 		})
 	})
 

@@ -6,6 +6,8 @@ import {
 	getGlobalRooDirectory,
 	getProjectRooDirectoryForCwd,
 	getProjectCostrictSpecDirectoryForCwd,
+	getGlobalCostrictDirectory,
+	getGlobalCostrictCLIDirectory,
 } from "../roo-config"
 import { getBuiltInCommands, getBuiltInCommand } from "./built-in-commands"
 
@@ -21,6 +23,7 @@ export interface Command {
 	filePath: string
 	description?: string
 	argumentHint?: string
+	mode?: string
 }
 
 /**
@@ -123,29 +126,43 @@ async function tryResolveSymlinkedCommand(filePath: string): Promise<string | un
 	return undefined
 }
 
+function getGlobalCommandDirectories(): string[] {
+	return [
+		path.join(getGlobalRooDirectory(), "commands"),
+		path.join(getGlobalCostrictDirectory(), "commands"),
+		path.join(getGlobalCostrictCLIDirectory(), "commands"),
+	]
+}
+
+function getProjectCommandDirectories(cwd: string): string[] {
+	return [
+		path.join(getProjectRooDirectoryForCwd(cwd), "commands"),
+		path.join(getProjectCostrictSpecDirectoryForCwd(cwd), "openspec", "commands"),
+	]
+}
+
 /**
  * Get all available commands from built-in, global, and project directories
  * Priority order: project > global > built-in (later sources override earlier ones)
  */
-export async function getCommands(cwd: string): Promise<Command[]> {
+export async function getCommands(cwd: string, language?: string): Promise<Command[]> {
 	const commands = new Map<string, Command>()
 
 	// Add built-in commands first (lowest priority)
-	const builtInCommands = await getBuiltInCommands()
+	const builtInCommands = await getBuiltInCommands(language)
 	for (const command of builtInCommands) {
 		commands.set(command.name, command)
 	}
 
 	// Scan global commands (override built-in)
-	const globalDir = path.join(getGlobalRooDirectory(), "commands")
-	await scanCommandDirectory(globalDir, "global", commands)
+	for (const globalDir of getGlobalCommandDirectories()) {
+		await scanCommandDirectory(globalDir, "global", commands)
+	}
 
 	// Scan project commands (highest priority - override both global and built-in)
-	const projectDir = path.join(getProjectRooDirectoryForCwd(cwd), "commands")
-	await scanCommandDirectory(projectDir, "project", commands)
-
-	const projectSpecCommandsDir = path.join(getProjectCostrictSpecDirectoryForCwd(cwd), "openspec", "commands")
-	await scanCommandDirectory(projectSpecCommandsDir, "project", commands)
+	for (const projectDir of getProjectCommandDirectories(cwd)) {
+		await scanCommandDirectory(projectDir, "project", commands)
+	}
 
 	return Array.from(commands.values())
 }
@@ -154,32 +171,29 @@ export async function getCommands(cwd: string): Promise<Command[]> {
  * Get a specific command by name (optimized to avoid scanning all commands)
  * Priority order: project > global > built-in
  */
-export async function getCommand(cwd: string, name: string): Promise<Command | undefined> {
+export async function getCommand(cwd: string, name: string, language?: string): Promise<Command | undefined> {
 	// Try to find the command directly without scanning all commands
-	const projectSpecCommandsDir = path.join(getProjectCostrictSpecDirectoryForCwd(cwd), "openspec", "commands")
-	const projectDir = path.join(getProjectRooDirectoryForCwd(cwd), "commands")
-	const globalDir = path.join(getGlobalRooDirectory(), "commands")
+	const projectDirs = getProjectCommandDirectories(cwd)
+	const globalDirs = getGlobalCommandDirectories()
 
-	// Check project directory first (highest priority)
-	const projectCommand = await tryLoadCommand(projectDir, name, "project")
-	if (projectCommand) {
-		return projectCommand
+	// Check project directories first (highest priority)
+	for (const projectDir of projectDirs) {
+		const projectCommand = await tryLoadCommand(projectDir, name, "project")
+		if (projectCommand) {
+			return projectCommand
+		}
 	}
 
-	// Check project directory first (highest priority)
-	const projectSpecCommand = await tryLoadCommand(projectSpecCommandsDir, name, "project")
-	if (projectSpecCommand) {
-		return projectSpecCommand
-	}
-
-	// Check global directory if not found in project
-	const globalCommand = await tryLoadCommand(globalDir, name, "global")
-	if (globalCommand) {
-		return globalCommand
+	// Check global directories if not found in project
+	for (const globalDir of globalDirs) {
+		const globalCommand = await tryLoadCommand(globalDir, name, "global")
+		if (globalCommand) {
+			return globalCommand
+		}
 	}
 
 	// Check built-in commands if not found in project or global (lowest priority)
-	return await getBuiltInCommand(name)
+	return await getBuiltInCommand(name, language)
 }
 
 /**
@@ -229,6 +243,7 @@ async function tryLoadCommand(
 		let parsed
 		let description: string | undefined
 		let argumentHint: string | undefined
+		let mode: string | undefined
 		let commandContent: string
 
 		try {
@@ -242,11 +257,13 @@ async function tryLoadCommand(
 				typeof parsed.data["argument-hint"] === "string" && parsed.data["argument-hint"].trim()
 					? parsed.data["argument-hint"].trim()
 					: undefined
+			mode = typeof parsed.data.mode === "string" && parsed.data.mode.trim() ? parsed.data.mode.trim() : undefined
 			commandContent = parsed.content.trim()
 		} catch {
 			// If frontmatter parsing fails, treat the entire content as command content
 			description = undefined
 			argumentHint = undefined
+			mode = undefined
 			commandContent = content.trim()
 		}
 
@@ -257,6 +274,7 @@ async function tryLoadCommand(
 			filePath: resolvedPath,
 			description,
 			argumentHint,
+			mode,
 		}
 	} catch {
 		// Directory doesn't exist or can't be read
@@ -267,8 +285,8 @@ async function tryLoadCommand(
 /**
  * Get command names for autocomplete
  */
-export async function getCommandNames(cwd: string): Promise<string[]> {
-	const commands = await getCommands(cwd)
+export async function getCommandNames(cwd: string, language?: string): Promise<string[]> {
+	const commands = await getCommands(cwd, language)
 	return commands.map((cmd) => cmd.name)
 }
 
@@ -310,6 +328,7 @@ async function scanCommandDirectory(
 				let parsed
 				let description: string | undefined
 				let argumentHint: string | undefined
+				let mode: string | undefined
 				let commandContent: string
 
 				try {
@@ -323,11 +342,16 @@ async function scanCommandDirectory(
 						typeof parsed.data["argument-hint"] === "string" && parsed.data["argument-hint"].trim()
 							? parsed.data["argument-hint"].trim()
 							: undefined
+					mode =
+						typeof parsed.data.mode === "string" && parsed.data.mode.trim()
+							? parsed.data.mode.trim()
+							: undefined
 					commandContent = parsed.content.trim()
 				} catch {
 					// If frontmatter parsing fails, treat the entire content as command content
 					description = undefined
 					argumentHint = undefined
+					mode = undefined
 					commandContent = content.trim()
 				}
 
@@ -340,6 +364,7 @@ async function scanCommandDirectory(
 						filePath: resolvedPath,
 						description,
 						argumentHint,
+						mode,
 					})
 				}
 			} catch (error) {

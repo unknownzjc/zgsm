@@ -1,5 +1,4 @@
 import { OpenAI } from "openai"
-import { OpenAiNativeHandler } from "../../../api/providers/openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { IEmbedder, EmbeddingResponse, EmbedderInfo } from "../interfaces"
 import {
@@ -18,16 +17,17 @@ import { handleOpenAIError } from "../../../api/providers/utils/openai-error-han
 /**
  * OpenAI implementation of the embedder interface with batching and rate limiting
  */
-export class OpenAiEmbedder extends OpenAiNativeHandler implements IEmbedder {
+export class OpenAiEmbedder implements IEmbedder {
 	private embeddingsClient: OpenAI
 	private readonly defaultModelId: string
+	private readonly options: ApiHandlerOptions & { openAiEmbeddingModelId?: string }
 
 	/**
 	 * Creates a new OpenAI embedder
 	 * @param options API handler options
 	 */
 	constructor(options: ApiHandlerOptions & { openAiEmbeddingModelId?: string }) {
-		super(options)
+		this.options = options
 		const apiKey = this.options.openAiNativeApiKey ?? "not-provided"
 
 		// Wrap OpenAI client creation to handle invalid API key characters

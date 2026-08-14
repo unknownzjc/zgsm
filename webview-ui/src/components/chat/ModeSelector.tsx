@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react"
 
 import { type ModeConfig, type CustomModePrompts, TelemetryEventName } from "@roo-code/types"
 
-import { type Mode, filterModesByZgsmCodeMode, getAllModes } from "@roo/modes"
+import { type Mode, filterModesByCostrictCodeMode, getAllModes, defaultModeSlug } from "@roo/modes"
 
 import { vscode } from "@/utils/vscode"
 import { telemetryClient } from "@/utils/TelemetryClient"
@@ -22,6 +22,8 @@ interface ModeSelectorProps {
 	value: Mode
 	onChange: (value: Mode) => void
 	disabled?: boolean
+	isReviewing?: boolean
+	isStreaming?: boolean
 	title: string
 	triggerClassName?: string
 	modeShortcutText: string
@@ -34,6 +36,8 @@ export const ModeSelector = ({
 	value,
 	onChange,
 	disabled = false,
+	isReviewing = false,
+	isStreaming = false,
 	title,
 	triggerClassName = "",
 	modeShortcutText,
@@ -46,8 +50,9 @@ export const ModeSelector = ({
 	const searchInputRef = React.useRef<HTMLInputElement>(null)
 	const selectedItemRef = React.useRef<HTMLDivElement>(null)
 	const scrollContainerRef = React.useRef<HTMLDivElement>(null)
-	const portalContainer = useRooPortal("roo-portal")
-	const { hasOpenedModeSelector, setHasOpenedModeSelector, zgsmCodeMode, apiConfiguration } = useExtensionState()
+	const lastNotifiedInvalidModeRef = React.useRef<string | null>(null)
+	const portalContainer = useRooPortal("costrict-portal")
+	const { hasOpenedModeSelector, setHasOpenedModeSelector, costrictCodeMode, apiConfiguration } = useExtensionState()
 	const { t } = useAppTranslation()
 	const trackModeSelectorOpened = React.useCallback(() => {
 		// Track telemetry every time the mode selector is opened.
@@ -60,27 +65,56 @@ export const ModeSelector = ({
 		}
 	}, [hasOpenedModeSelector, setHasOpenedModeSelector])
 
-	// Get all modes including custom modes and merge custom prompt descriptions.
-	const modes = React.useMemo(() => {
-		const allModes = filterModesByZgsmCodeMode(
-			getAllModes(customModes),
-			zgsmCodeMode || "vibe",
-			apiConfiguration?.apiProvider,
-		)
-		return allModes.map((mode) => ({
+	// Keep the full mode list separate from the provider-filtered list.
+	// During costrict mode switches, `costrictCodeMode` and `mode` can update in separate ticks.
+	// Treating a temporarily filtered-out mode as "invalid" causes ModeSwitch transitions
+	// like plan <-> strict to be forced back to the default code mode.
+	const allModes = React.useMemo(() => {
+		return getAllModes(customModes).map((mode) => ({
 			...mode,
-			description:
-				t(`modes:descriptions.${mode.slug}`, {
-					defaultValue: customModePrompts?.[mode.slug]?.description,
-				}) ?? mode.description,
+			description: t(`modes:descriptions.${mode.slug}`, {
+				defaultValue: customModePrompts?.[mode.slug]?.description ?? mode.description,
+			}),
 		}))
-	}, [customModes, zgsmCodeMode, apiConfiguration?.apiProvider, t, customModePrompts])
+	}, [customModes, t, customModePrompts])
 
-	// Find the selected mode.
+	const modes = React.useMemo(() => {
+		return filterModesByCostrictCodeMode(allModes, costrictCodeMode || "vibe", apiConfiguration?.apiProvider)
+	}, [allModes, costrictCodeMode, apiConfiguration?.apiProvider])
+
+	// Find the selected mode from the full list first so transient filter changes don't
+	// misreport a valid mode as missing while ModeSwitch is syncing both states.
 	const selectedMode = React.useMemo(() => {
-		const mode = modes.find((mode) => mode.slug === value)
-		return mode || modes[0]
-	}, [modes, value])
+		return allModes.find((mode) => mode.slug === value) ?? allModes.find((mode) => mode.slug === defaultModeSlug)
+	}, [allModes, value])
+
+	// Notify parent only when the current mode truly doesn't exist anymore (for example,
+	// after a workspace switch deleted a custom mode). A mode hidden by the current costrict
+	// filter is still valid and should not be forced back to the default mode.
+	React.useEffect(() => {
+		if (
+			apiConfiguration?.apiProvider === "costrict" &&
+			["quick-explore", "task-check", "subcoding", "review", "security-review", "subreview"].includes(value)
+		)
+			return
+		const isKnownMode = allModes.some((mode) => mode.slug === value)
+
+		if (isKnownMode) {
+			lastNotifiedInvalidModeRef.current = null
+			return
+		}
+
+		if (lastNotifiedInvalidModeRef.current === value) {
+			return
+		}
+
+		const fallbackMode = allModes.find((mode) => mode.slug === defaultModeSlug)
+		if (fallbackMode) {
+			lastNotifiedInvalidModeRef.current = value
+			onChange(fallbackMode.slug as Mode)
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- onChange omitted to prevent loops when parent doesn't memoize
+	}, [allModes, value, apiConfiguration?.apiProvider])
 
 	// Memoize searchable items for fuzzy search with separate name and
 	// description search.
@@ -201,9 +235,13 @@ export const ModeSelector = ({
 
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} data-testid="mode-selector-root">
-			<StandardTooltip content={`${title}${title ? ` (${zgsmCodeMode})` : ""}`}>
+			<StandardTooltip content={`${title}${title ? ` (${costrictCodeMode})` : ""}`}>
 				<PopoverTrigger
-					disabled={disabled}
+					disabled={
+						disabled ||
+						isReviewing ||
+						(["quick-explore", "task-check", "subcoding"].includes(value) && isStreaming)
+					}
 					data-testid="mode-selector-trigger"
 					className={cn(
 						"inline-flex items-center gap-1.5 relative whitespace-nowrap px-1.5 py-1 text-xs",
@@ -212,16 +250,22 @@ export const ModeSelector = ({
 						"transition-all duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder focus-visible:ring-inset",
 						disabled
 							? "opacity-50 cursor-not-allowed"
-							: "opacity-90 hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
+							: "opacity-90 hover:opacity-100 bg-vscode-input-background hover:border-[rgba(255,255,255,0.15)] cursor-pointer",
 						triggerClassName,
 						!disabled && !hasOpenedModeSelector
 							? "bg-primary opacity-90 hover:bg-primary-hover text-vscode-button-foreground"
 							: null,
 					)}>
-					<span className="truncate">
-						{selectedMode?.name || t("chat:selectMode")}
-						{selectedMode?.name ? ` (${zgsmCodeMode})` : ""}
-					</span>
+					{isReviewing || ["quick-explore", "task-check", "subcoding"].includes(value) ? (
+						<span className="animate-pulse font-bold bg-gradient-to-r from-vscode-foreground to-vscode-foreground/50 bg-clip-text text-transparent drop-shadow-[0_0_8px_theme('colors.vscode.charts.blue')] shadow-[0_0_20px_theme('colors.vscode.charts.blue')]">
+							{value}...
+						</span>
+					) : (
+						<span className="truncate bg-vscode-input-background">
+							{selectedMode?.name || t("chat:selectMode")}
+							{selectedMode?.name ? ` (${costrictCodeMode})` : ""}
+						</span>
+					)}
 				</PopoverTrigger>
 			</StandardTooltip>
 			<PopoverContent

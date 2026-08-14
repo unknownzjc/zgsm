@@ -4,10 +4,13 @@ import process from "process"
 import { getShell } from "../../utils/shell"
 
 import type { RooTerminal } from "./types"
+import { BaseTerminal } from "./BaseTerminal"
 import { BaseTerminalProcess } from "./BaseTerminalProcess"
 import { getIdeaShellEnvWithUpdatePath } from "../../utils/ideaShellEnvLoader"
-import { isJetbrainsPlatform } from "../../utils/platform"
+import { isCliPatform, isJetbrainsPlatform } from "../../utils/platform"
 import { t } from "../../i18n"
+import delay from "delay"
+import { isGbkEncodedCommand } from "./constants"
 
 export class ExecaTerminalProcess extends BaseTerminalProcess {
 	private terminalRef: WeakRef<RooTerminal>
@@ -38,10 +41,12 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 
 	public override async run(command: string) {
 		this.command = command
+
 		try {
 			this.isHot = true
+
 			this.subprocess = execa({
-				shell: getShell(),
+				shell: !isCliPatform() ? getShell() : BaseTerminal.getExecaShellPath() || true,
 				cwd: this.terminal.getCurrentWorkingDirectory(),
 				all: true,
 				encoding: "buffer",
@@ -52,6 +57,8 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					// Ensure UTF-8 encoding for Ruby, CocoaPods, etc.
 					LANG: "en_US.UTF-8",
 					LC_ALL: "en_US.UTF-8",
+					LANGUAGE: "en_US.UTF-8",
+					PYTHONIOENCODING: "utf-8",
 				},
 			})`${command}`
 
@@ -76,8 +83,13 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 				})
 			}
 
+			// Check if this is a background command (ends with &)
+			const isBackgroundCommand = /&\s*(#.*)?$/.test(command.trim())
 			const rawStream = this.subprocess.iterable({ from: "all", preserveNewlines: true })
-			const decoder = new TextDecoder("utf-8")
+			const useGbkEncoding = isGbkEncodedCommand(command)
+
+			// Select the decoder based on the command type.
+			const decoder = new TextDecoder(useGbkEncoding ? "gbk" : "utf-8", { fatal: false })
 			const stream = (async function* () {
 				for await (const chunk of rawStream) {
 					if (typeof chunk === "string") {
@@ -89,23 +101,39 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			})()
 
 			await this.terminal.setActiveStream(stream, Promise.resolve(this.pid))
+			let outputCount = 0
+			delay(1500).then(() => {
+				if (this.aborted || outputCount > 0) {
+					return
+				}
 
+				const warning = `[${isBackgroundCommand ? "background " : ""}command running] ${command.length > 80 ? `${command.slice(0, 80)}...` : command}\n`
+				this.emit("line", warning)
+				this.startHotTimer(warning)
+			})
 			for await (const line of stream) {
 				if (this.aborted) {
 					break
 				}
-
+				if (outputCount < 3) outputCount++
 				this.fullOutput += line
 
 				const now = Date.now()
 
-				if (this.isListening && (now - this.lastEmitTime_ms > 500 || this.lastEmitTime_ms === 0)) {
+				if (
+					this.isListening &&
+					(now - this.lastEmitTime_ms > 1000 || this.lastEmitTime_ms === 0 || outputCount <= 3)
+				) {
 					this.emitRemainingBufferIfListening()
 					this.lastEmitTime_ms = now
 				}
 
 				this.startHotTimer(line)
 			}
+
+			await delay(150)
+			this.emitRemainingBufferIfListening()
+			this.startHotTimer(this.fullOutput.slice(-2000))
 
 			if (this.aborted) {
 				let timeoutId: NodeJS.Timeout | undefined
@@ -150,8 +178,10 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			this.subprocess = undefined
 		}
 
-		await this.terminal.setActiveStream(undefined, Promise.resolve(this.pid))
-		this.emitRemainingBufferIfListening()
+		await Promise.all([
+			this.terminal.setActiveStream(undefined, Promise.resolve(this.pid)),
+			this.emitRemainingBufferIfListening(),
+		])
 		this.stopHotTimer()
 		this.emit("completed", this.fullOutput)
 		this.emit("continue")
@@ -189,7 +219,6 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 				try {
 					process.kill(this.pid, "SIGKILL")
 				} catch (e) {
-					// "error"
 					if (e.code === "ESRCH") {
 						const error = new Error(
 							t("common:errors.command_esrch", { pid: this.pid, command: this.command }),
@@ -218,7 +247,6 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			psTree(this.pid, async (err, children) => {
 				if (!err) {
 					const pids = children.map((p) => parseInt(p.PID))
-					console.error(`[ExecaTerminalProcess#abort] SIGKILL children -> ${pids.join(", ")}`)
 
 					for (const pid of pids) {
 						try {

@@ -1,15 +1,17 @@
 import type { AssertEqual, Equals, Keys, Values, ExperimentId, Experiments } from "@roo-code/types"
 
+export const parallelToolCallsEnabled = false
+
 export const EXPERIMENT_IDS = {
 	CHAT_SEARCH: "chatSearch",
-	ALWAYS_INCLUDE_FILE_DETAILS: "alwaysIncludeFileDetails",
+	USE_KPT_TREE: "useKPTtree",
 	COMMIT_REVIEW: "commitReview",
-	MULTI_FILE_APPLY_DIFF: "multiFileApplyDiff",
-	POWER_STEERING: "powerSteering",
+	USE_LITE_PROMPTS: "useLitePrompts",
 	PREVENT_FOCUS_DISRUPTION: "preventFocusDisruption",
 	IMAGE_GENERATION: "imageGeneration",
 	RUN_SLASH_COMMAND: "runSlashCommand",
-	MULTIPLE_NATIVE_TOOL_CALLS: "multipleNativeToolCalls",
+	CUSTOM_TOOLS: "customTools",
+	SMART_MISTAKE_DETECTION: "smartMistakeDetection",
 } as const satisfies Record<string, ExperimentId>
 
 // type _AssertExperimentIds = AssertEqual<Equals<ExperimentId, Values<typeof EXPERIMENT_IDS>>>
@@ -22,14 +24,14 @@ interface ExperimentConfig {
 
 export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
 	CHAT_SEARCH: { enabled: false },
-	ALWAYS_INCLUDE_FILE_DETAILS: { enabled: undefined },
-	COMMIT_REVIEW: { enabled: undefined },
-	MULTI_FILE_APPLY_DIFF: { enabled: false },
-	POWER_STEERING: { enabled: false },
+	SMART_MISTAKE_DETECTION: { enabled: false },
+	USE_KPT_TREE: { enabled: undefined },
+	COMMIT_REVIEW: { enabled: false },
+	USE_LITE_PROMPTS: { enabled: false },
 	PREVENT_FOCUS_DISRUPTION: { enabled: false },
 	IMAGE_GENERATION: { enabled: false },
 	RUN_SLASH_COMMAND: { enabled: false },
-	MULTIPLE_NATIVE_TOOL_CALLS: { enabled: false },
+	CUSTOM_TOOLS: { enabled: false },
 }
 
 export const experimentDefault = Object.fromEntries(

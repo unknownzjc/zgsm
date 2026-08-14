@@ -90,24 +90,23 @@ export interface ReviewIssue {
 	fix_code: string
 }
 
-export enum TaskStatus {
+export enum ReviewTaskStatus {
 	INITIAL = "initial",
 	RUNNING = "running",
 	COMPLETED = "completed",
 	ERROR = "error",
 }
 
-export interface TaskData {
+export interface ReviewTaskData {
 	issues: ReviewIssue[]
 	progress: number | null
-	reviewProgress?: string
 	error?: string
 	message?: string
 }
 
 export interface ReviewTaskPayload {
-	status: TaskStatus
-	data: TaskData
+	status: ReviewTaskStatus
+	data: ReviewTaskData
 }
 
 /**
@@ -126,6 +125,8 @@ export enum ReviewTargetType {
 	FOLDER = "folder",
 	/** Code snippet - review specified line range of code */
 	CODE = "code",
+	/** Commit - review commit */
+	COMMIT = "commit",
 }
 
 /**
@@ -151,13 +152,19 @@ export enum ReviewTargetType {
 export interface ReviewTarget {
 	/** Review target type */
 	type: ReviewTargetType
-	/** File path (relative to workspace root) */
-	file_path: string
-	/** Line range - only valid when type is CODE, format: [start_line, end_line] */
-	line_range?: [number, number]
+	/** Commit hash - only valid when type is COMMIT */
+	commit?: string
+	data?: {
+		/** File path (relative to workspace root) */
+		file_path: string
+		/** Line range - only valid when type is CODE, format: [start_line, end_line] */
+		line_range?: [number, number]
+	}[]
 }
 
-export interface ReviewPagePayload {
-	isCodebaseReady: boolean
-	targets: ReviewTarget[]
+export interface ReviewHistoryEntry {
+	review_task_id: string
+	title: string
+	timestamp: string
+	conclusion?: string
 }

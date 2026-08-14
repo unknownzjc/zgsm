@@ -57,13 +57,27 @@ CommandInput.displayName = CommandPrimitive.Input.displayName
 const CommandList = React.forwardRef<
 	React.ElementRef<typeof CommandPrimitive.List>,
 	React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-	<CommandPrimitive.List
-		ref={ref}
-		className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
-		{...props}
-	/>
-))
+>(({ className, onWheel, ...props }, ref) => {
+	const handleWheel = React.useCallback(
+		(e: React.WheelEvent<HTMLDivElement>) => {
+			// Prevent wheel event from propagating to parent scrollable elements.
+			// CSS overscroll-behavior: contain already handles scroll boundary chaining,
+			// but stopPropagation ensures the event doesn't reach parent listeners.
+			e.stopPropagation()
+			onWheel?.(e)
+		},
+		[onWheel],
+	)
+
+	return (
+		<CommandPrimitive.List
+			ref={ref}
+			className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden overscroll-contain", className)}
+			onWheel={handleWheel}
+			{...props}
+		/>
+	)
+})
 
 CommandList.displayName = CommandPrimitive.List.displayName
 

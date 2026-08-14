@@ -1,20 +1,22 @@
 import fs from "fs/promises"
 import path from "path"
 
+import { type ClineSayTool, DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
+
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
-import { ClineSayTool } from "../../shared/ExtensionMessage"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
 import { fileExistsAtPath } from "../../utils/fs"
-import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { sanitizeUnifiedDiff, computeDiffStats } from "../diff/stats"
+import { getRawTaskReporter } from "../costrict/telemetry"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import { parsePatch, ParseError, processAllHunks } from "./apply-patch"
 import type { ApplyPatchFileChange } from "./apply-patch"
+import { readFileWithEncodingDetection } from "../../utils/encoding"
 
 interface ApplyPatchParams {
 	patch: string
@@ -23,15 +25,38 @@ interface ApplyPatchParams {
 export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 	readonly name = "apply_patch" as const
 
-	parseLegacy(params: Partial<Record<string, string>>): ApplyPatchParams {
-		return {
-			patch: params.patch || "",
+	private static readonly FILE_HEADER_MARKERS = ["*** Add File: ", "*** Delete File: ", "*** Update File: "] as const
+
+	private extractFirstPathFromPatch(patch: string | undefined): string | undefined {
+		if (!patch) {
+			return undefined
 		}
+
+		const lines = patch.split("\n")
+		const hasTrailingNewline = patch.endsWith("\n")
+		const completeLines = hasTrailingNewline ? lines : lines.slice(0, -1)
+
+		for (const rawLine of completeLines) {
+			const line = rawLine.trim()
+
+			for (const marker of ApplyPatchTool.FILE_HEADER_MARKERS) {
+				if (!line.startsWith(marker)) {
+					continue
+				}
+
+				const candidatePath = line.substring(marker.length).trim()
+				if (candidatePath.length > 0) {
+					return candidatePath
+				}
+			}
+		}
+
+		return undefined
 	}
 
 	async execute(params: ApplyPatchParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { patch } = params
-		const { askApproval, handleError, pushToolResult, toolProtocol } = callbacks
+		const { askApproval, handleError, pushToolResult } = callbacks
 
 		try {
 			// Validate required parameters
@@ -65,7 +90,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			// Process each hunk
 			const readFile = async (filePath: string): Promise<string> => {
 				const absolutePath = path.resolve(task.cwd, filePath)
-				return await fs.readFile(absolutePath, "utf8")
+				return await readFileWithEncodingDetection(absolutePath)
 			}
 
 			let changes: ApplyPatchFileChange[]
@@ -88,7 +113,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 				const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)
 				if (!accessAllowed) {
 					await task.say("rooignore_error", relPath)
-					pushToolResult(formatResponse.rooIgnoreError(relPath, toolProtocol))
+					pushToolResult(formatResponse.rooIgnoreError(relPath))
 					return
 				}
 
@@ -199,6 +224,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		// Track file edit operation
 		await task.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
+		getRawTaskReporter()?.captureDiffEntry(task.taskId, {
+			label: relPath,
+			before: "",
+			after: newContent,
+		})
 		task.didEditFile = true
 
 		const message = await task.diffViewProvider.pushToolWriteResult(task, task.cwd, true)
@@ -250,6 +280,12 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 		}
 
 		// Delete the file
+		let originalContent = ""
+		try {
+			originalContent = await readFileWithEncodingDetection(absolutePath)
+		} catch {
+			originalContent = ""
+		}
 		try {
 			await fs.unlink(absolutePath)
 		} catch (error) {
@@ -259,6 +295,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			return
 		}
 
+		getRawTaskReporter()?.captureDiffEntry(task.taskId, {
+			label: relPath,
+			before: originalContent,
+			after: "",
+		})
 		task.didEditFile = true
 		pushToolResult(`Successfully deleted ${relPath}`)
 		task.processQueuedMessages()
@@ -318,6 +359,7 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			tool: "appliedDiff",
 			path: getReadablePath(task.cwd, relPath),
 			diff: sanitizedDiff,
+			originalContent,
 			isOutsideWorkspace,
 		}
 
@@ -407,6 +449,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			}
 
 			await task.fileContextTracker.trackFileContext(change.movePath, "roo_edited" as RecordSource)
+			getRawTaskReporter()?.captureDiffEntry(task.taskId, {
+				label: change.movePath,
+				before: originalContent,
+				after: newContent,
+			})
 		} else {
 			// Save changes to the same file
 			if (isPreventFocusDisruptionEnabled) {
@@ -416,6 +463,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 			}
 
 			await task.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
+			getRawTaskReporter()?.captureDiffEntry(task.taskId, {
+				label: relPath,
+				before: originalContent,
+				after: newContent,
+			})
 		}
 
 		task.didEditFile = true
@@ -428,6 +480,11 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 	override async handlePartial(task: Task, block: ToolUse<"apply_patch">): Promise<void> {
 		const patch: string | undefined = block.params.patch
+		const candidateRelPath = this.extractFirstPathFromPatch(patch)
+		const fallbackDisplayPath = path.basename(task.cwd) || "workspace"
+		const resolvedRelPath = candidateRelPath ?? ""
+		const absolutePath = path.resolve(task.cwd, resolvedRelPath)
+		const displayPath = candidateRelPath ? getReadablePath(task.cwd, candidateRelPath) : fallbackDisplayPath
 
 		let patchPreview: string | undefined
 		if (patch) {
@@ -438,9 +495,9 @@ export class ApplyPatchTool extends BaseTool<"apply_patch"> {
 
 		const sharedMessageProps: ClineSayTool = {
 			tool: "appliedDiff",
-			path: "",
+			path: displayPath || path.basename(task.cwd) || "workspace",
 			diff: patchPreview || "Parsing patch...",
-			isOutsideWorkspace: false,
+			isOutsideWorkspace: isPathOutsideWorkspace(absolutePath),
 		}
 
 		await task.ask("tool", JSON.stringify(sharedMessageProps), block.partial).catch(() => {})

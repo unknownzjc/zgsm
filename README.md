@@ -1,85 +1,193 @@
 <div align="center">
-    <h1>CoStrict  (prev. Shenma)</h1>
-    <h2>Strict AI coder for enterprises</h2>
-</div>
-<br>
-<div align="center">
-English | <a href="https://github.com/zgsm-ai/costrict/blob/main/README.zh-CN.md" target="_blank">简体中文</a>
-</div>
-<br>
-<br>
 
-CoStrict is a **free, open-source AI-assisted programming tool** that supports private deployment for enterprises, making it the optimal choice for enterprise serious programming. Its core capabilities are outstanding: **Strict Mode，Code Review** , Code Completion, etc. Feature highlights include: enterprise-level business understanding, standardized AI development processes, Vibe Mode, MCP service, multiple advanced free models, API/model customization, mode selection/customization, image context capabilities, and more. It supports multiple mainstream IDEs and leads the way in supporting VS Code and JetBrains IDEs. Compatible with popular languages including Python, Go, Java, JavaScript/ TypeScript, and C/C++."
+[![Announcement Banner](https://img.shields.io/badge/🌟_We_are_exploring_some_interesting_things,_please_keep_following_us!-2563EB?style=for-the-badge)](https://costrict.ai)
+
+</div>
 
 <div align="center">
 
-<a href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm" target="_blank"><img src="./assets/images/readme/download on vscode marketplace_en.png" alt="Download on VS Marketplace"></a>
-<img src="./assets/images/readme/rate review_en.png" alt="Rate Review">
-<a href="https://docs.costrict.ai/en/guide/installation/" target="_blank"><img src="./assets/images/readme/docs_center_en.png" alt="Docs Center"></a>
+<img src="https://img.shields.io/badge/version-latest-blue?style=flat-square" alt="Version">
+<img src="https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square" alt="License">
+<img src="https://img.shields.io/badge/platform-VS%20Code%20%7C%20JetBrains-orange?style=flat-square" alt="Platform">
+<img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs Welcome">
 
 </div>
 
-### Jetbrains plugin (<a href="https://github.com/zgsm-ai/costrict-jetbrains-agent" target="_blank">repo</a> | <a href="https://costrict.ai/download" target="_blank">download</a>)
+<div align="center">
 
-## Features
+# CoStrict
 
-- **Strict Mode:**
+<img src="./assets/images/shenma_robot_logo_big.png" alt="CoStrict Logo" width="60">
 
-Strict Mode standardizes the process of AI-generated code, making it more aligned with enterprise development scenarios. It systematically breaks down a single requirement into steps such as：Requirements Analysis, Architecture Design, Task Planning and Test Generation etc. acting as a standardized procedure for AI to ensure high-quality and highly controllable output.
+**Strict AI Coder for Enterprises**
 
-<a href="https://docs.costrict.ai/en/tutorial-videos/video/#strict-mode" target="_blank"><img src="./assets/images/readme/strict_mode_en_buffer.png" alt="Docs Center"></a>
+_Free • Open Source • Private Deployment_
 
-![Strict Mode](./assets/images/readme/strict_mode_en.png)
+[简体中文](./README.zh-CN.md) | English
 
-- **Code Review:**
+</div>
 
-Code Review enables indexing and parsing of entire code repositories, implementing company-wide RAG (Retrieval-Augmented Generation) for coding knowledge.
-It adopts the strategy of "specialized checks by a multi-expert model" + "cross-confirmation by multiple models."
-It supports users in conducting code checks on functions, selected code lines, code files, and entire project files.
+---
 
-<br>
+**CoStrict** is a free, open-source AI-powered coding assistant designed for enterprise-grade development. With support for private deployment, it's the optimal choice for organizations requiring secure, standardized AI development workflows.
 
-<a href="https://docs.costrict.ai/en/tutorial-videos/video/#ai-codereview" target="_blank"><img src="./assets/images/readme/codereview_buffer.png" alt="Docs Center"></a>
+## ✨ Core Capabilities
 
-![morefeature](./assets/images/readme/codereview_en.png)
+| Feature                | Description                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 🔒 **Strict Mode**     | Standardized AI code generation with requirements analysis, architecture design, task planning, and test generation |
+| 🔍 **Code Review**     | Repository-wide RAG-based code analysis with multi-expert model verification                                        |
+| ⚡ **Code Completion** | Context-aware code generation in seconds                                                                            |
+| 🎯 **Vibe Code**       | Rapid development through natural language dialogue                                                                 |
+| 🔗 **MCP Integration** | Standardized system connectivity for APIs, databases, and custom tools                                              |
+| 🎨 **Multi-modal**     | Support for image context and visual inputs                                                                         |
+| 🛠️ **Skills Support**  | Extensible skills system for specialized task workflows                                                             |
 
-- **More features:**
-    - **Code Completion:** Automatically generates subsequent code based on the cursor's context code, quickly outputs code in seconds
-    - **Vibe Code:** Vibe Code is designed for rapid development and simple tasks. It supports multi-turn natural language dialogue, allowing for real-time refinement and precise code generation.
-    - **MCP Service:** Seamlessly integrates with the MCP open ecosystem to enable standardized system connectivity. You can Integrate external APIs、Connect to databases、Develop custom tools through MCP services.
-    - **APIs & Model Customization:** Officially provided are multiple free advanced models like claude-sonnet-4; it also supports using third-party API providers such as Anthropic, OpenAI, etc.; you can also configure any API compatible with OpenAl; or use local models through I M Studio/Ollama
-    - **Mode Customization:** We provide various default modes to adapt to different scenarios, such as the Code mode with outstanding coding capabilities and the Orchestrator mode skilled in complex task decomposition. You can also customize mode according to your needs.
-    - **Context:** Shenma will automatically incorporate all repository data of large files into the context, and for code completion scenarios, it will also dynamically perceive the context based on the cursor position. You can also add files/folders, terminals, issues, etc. using the @ key to provide more precise context information for the input.
-    - **Image:** You can click the image icon below the dialog box to upload an image, or you can hold down the Shift key to drag and drop the image into the input box.
-    - **Multi-language Support:** Supports mainstream programming languages: Python, Go, Java, JavaScript, TypeScript, C/C++ and all other programming languages
-    - **Privacy & Security:** To ensure data security and provide better service at a lower cost, we offer a professional and comprehensive private deployment solution, ensuring code security through physical isolation and end-to-end encryption.
+## 📦 Installation
 
-    ![morefeature](./assets/images/readme/more-feature_en.png)
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <b>🌟 CoStrict Cloud</b><br><br>
+      <a href="https://docs.costrict.ai/cli/product-characteristics/cloud">
+        <img src="https://img.shields.io/badge/Cloud-Documentation-blue?style=for-the-badge" alt="Cloud Docs">
+      </a>
+    </td>
+    <td align="center" width="25%">
+      <b>VS Code Extension</b><br><br>
+      <a href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm-nightly">
+        <img src="https://img.shields.io/badge/Download-Nightly-success?style=for-the-badge" alt="Download">
+      </a>
+      <a href="https://marketplace.visualstudio.com/items?itemName=zgsm-ai.zgsm">
+        <img src="https://img.shields.io/badge/Download-Latest-success?style=for-the-badge" alt="Download">
+      </a>
+    </td>
+    <td align="center" width="25%">
+      <b>CLI Tool</b><br><br>
+      <a href="https://docs.costrict.ai/cli/guide/installation">
+        <img src="https://img.shields.io/badge/CLI-Documentation-blue?style=for-the-badge" alt="CLI Docs">
+      </a>
+      <a href="https://costrict.ai/download">
+        <img src="https://img.shields.io/badge/Download-Latest-success?style=for-the-badge" alt="Download">
+      </a>
+    </td>
+    <td align="center" width="25%">
+      <b>JetBrains Plugin</b><br><br>
+      <a href="https://github.com/zgsm-sangfor/costrict-for-jetbrains">
+        <img src="https://img.shields.io/badge/GitHub-Repository-informational?style=for-the-badge" alt="JetBrains Repo">
+      </a>
+      <a href="https://costrict.ai/download">
+        <img src="https://img.shields.io/badge/Download-Latest-success?style=for-the-badge" alt="Download">
+      </a>
+    </td>
+  </tr>
+</table>
 
-<br>
+## 🚀 Key Features
 
-## For more assistance
+### Strict Mode
 
-Refer to [Deployment Guide](https://docs.costrict.ai/en/guide/installation)
+Standardizes AI-generated code workflows for enterprise scenarios, ensuring high-quality and controllable outputs.
 
-Guidelines for private deployment: https://docs.costrict.ai/en/deployment/introduction
+<table bgcolor="#1e1e1e">
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://docs.costrict.ai/en/tutorial-videos/video/#strict-mode">
+        <img src="./assets/images/readme/strict_mode_en_buffer.webp" alt="Strict Mode Demo" width="100%">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <img src="./assets/images/readme/strict_mode_en.webp" alt="Strict Mode" width="100%">
+    </td>
+  </tr>
+</table>
 
-## Contributing
+### Code Review
 
-We welcome contributions! Please review [How To Contribute](assets/docs/devel/en-US/how-to-contribute.md) for guidelines.
+Repository-wide indexing and RAG-based analysis with multi-model verification strategies.
 
-## Community
+<table bgcolor="#1e1e1e">
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://docs.costrict.ai/en/tutorial-videos/video/#ai-codereview">
+        <img src="./assets/images/readme/codereview_buffer.webp" alt="Code Review Demo" width="100%">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <img src="./assets/images/readme/codereview_en.webp" alt="Code Review" width="100%">
+    </td>
+  </tr>
+</table>
 
-Communicate via [GitHub Issues](https://github.com/zgsm-ai/costrict/issues/new/choose) or pull requests.
+### More Features
 
-## Disclaimer
+- 🌐 **Multi-language Support** - Python, Go, Java, JavaScript/TypeScript, C/C++, and all programming languages
+- 🔐 **Privacy & Security** - Professional private deployment with physical isolation and end-to-end encryption
+- 🎛️ **API & Model Customization** - Built-in free models + support for Anthropic, OpenAI, OpenAI-compatible APIs, and local models
+- 📁 **Large Repository Context** - Automatic context inclusion with @ file/folder mentions
+- 🔧 **Mode Customization** - Multiple default modes (Code, Orchestrator) with custom mode support
+- 📝 **[OpenSpec Integration](https://github.com/Fission-AI/OpenSpec)** - Standardized change proposal workflows with `/openspec-init`
+- 🔗 **VSCode SCM Integration** - Seamless integration with Git for code review and collaboration
+- **Auto Cleanup History** - Automatically clean up history and reduce disk usage.
+- 📝 **History Import&Export** - Supports import and export of historical records to facilitate offline migration
+- 🔗 **Lite Mode** - Reduce context usage and reduce token consumption.
+  <img src="./assets/images/readme/more-feature_en.webp" alt="More Features" width="100%">
 
-**Please note** that CoStrict, Inc does **not** make any representations or warranties regarding any code, models, or other tools provided or made available in connection with CoStrict, any associated third-party tools, or any resulting outputs. You assume **all risks** associated with the use of any such tools or outputs; such tools are provided on an **"AS IS"** and **"AS AVAILABLE"** basis. Such risks may include, without limitation, intellectual property infringement, cyber vulnerabilities or attacks, bias, inaccuracies, errors, defects, viruses, downtime, property loss or damage, and/or personal injury. You are solely responsible for your use of any such tools or outputs (including, without limitation, the legality, appropriateness, and results thereof).
+## 📚 Documentation
 
-## License
+| Resource           | Link                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| Installation Guide | [docs.costrict.ai/en/guide/installation](https://docs.costrict.ai/en/guide/installation)           |
+| Private Deployment | [docs.costrict.ai/en/deployment/introduction](https://docs.costrict.ai/en/deployment/introduction) |
+| Tutorial Videos    | [docs.costrict.ai/en/tutorial-videos/video](https://docs.costrict.ai/en/tutorial-videos/video)     |
+| CLI Documentation  | [docs.costrict.ai/cli/guide/installation](https://docs.costrict.ai/cli/guide/installation)         |
+
+## 🤝 Community & Support
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="./assets/images/readme/wechat.png" width="120"><br>
+      <b>WeChat Group</b>
+    </td>
+    <td align="center" width="33%">
+      <img src="./assets/images/readme/communication_group.webp" width="120"><br>
+      <b>Feedback</b>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/zgsm-ai/costrict/issues/new/choose">
+        <img src="https://img.shields.io/badge/GitHub-Issues-blue?style=for-the-badge&logo=github" alt="GitHub Issues">
+      </a>
+    </td>
+  </tr>
+</table>
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](assets/docs/devel/en-US/how-to-contribute.md) for details.
+
+## 📄 License
 
 [Apache 2.0 © 2025 Sangfor, Inc.](./LICENSE)
 
-## Star History
+## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=zgsm-ai/costrict&type=Date)](https://www.star-history.com/#zgsm-ai/costrict&Date)
+<a href="https://www.star-history.com/#zgsm-ai/costrict&Date">
+  <img src="https://api.star-history.com/svg?repos=zgsm-ai/costrict&type=Date" alt="Star History Chart" width="100%">
+</a>
+
+## 🙏 Acknowledgments
+
+Special thanks to our open-source partners:
+
+[![Roo Code](https://img.shields.io/badge/Roo%20Code-Repository-blue?style=flat-square)](https://github.com/RooCodeInc/Roo-Code)
+[![OpenSpec](https://img.shields.io/badge/OpenSpec-Repository-blue?style=flat-square)](https://github.com/Fission-AI/OpenSpec)
+[![OpenCode](https://img.shields.io/badge/OpenCode-Repository-blue?style=flat-square)](https://github.com/anomalyco/opencode)
+[![agents.md](https://img.shields.io/badge/agents.md-Repository-blue?style=flat-square)](https://github.com/agentsmd/agents.md)
+[![agentskills](https://img.shields.io/badge/agentskills-Repository-blue?style=flat-square)](https://github.com/agentskills/agentskills)
+
+---
+
+## Disclaimer
+
+**Please note** that Sangfor, Inc does **not** make any representations or warranties regarding any code, models, or other tools provided or made available in connection with CoStrict, any associated third-party tools, or any resulting outputs. You assume **all risks** associated with the use of any such tools or outputs; such tools are provided on an **"AS IS"** and **"AS AVAILABLE"** basis. Such risks may include, without limitation, intellectual property infringement, cyber vulnerabilities or attacks, bias, inaccuracies, errors, defects, viruses, downtime, property loss or damage, and/or personal injury. You are solely responsible for your use of any such tools or outputs (including, without limitation, the legality, appropriateness, and results thereof).

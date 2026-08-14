@@ -19,7 +19,7 @@ describe("combineCommandSequences", () => {
 			expect(result[0]).toEqual({
 				type: "ask",
 				ask: "command",
-				text: "ls\nOutput:file1.txtfile2.txt",
+				text: "ls\nOutput:file1.txt\nfile2.txt",
 				ts: 1625097600000,
 			})
 		})

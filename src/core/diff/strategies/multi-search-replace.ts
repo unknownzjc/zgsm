@@ -1,5 +1,3 @@
-/* eslint-disable no-irregular-whitespace */
-
 import { distance } from "fastest-levenshtein"
 
 import { ToolProgressStatus } from "@roo-code/types"
@@ -8,7 +6,7 @@ import { addLineNumbers, everyLineHasLineNumbers, stripLineNumbers } from "../..
 import { ToolUse, DiffStrategy, DiffResult } from "../../../shared/tools"
 import { normalizeString } from "../../../utils/text-normalization"
 
-const BUFFER_LINES = 1000 // Number of extra context lines to show before and after matches
+const BUFFER_LINES = 5000 // Number of extra context lines to show before and after matches
 
 function getSimilarity(original: string, search: string): number {
 	// Empty searches are no longer supported
@@ -83,103 +81,12 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 	}
 
 	constructor(fuzzyThreshold?: number, bufferLines?: number) {
-		// Use provided threshold or default to exact matching (1.0)
+		// Use provided threshold or default to a slightly relaxed fuzzy match (0.9)
 		// Note: fuzzyThreshold is inverted in UI (0% = 1.0, 10% = 0.9)
 		// so we use it directly here
-		this.fuzzyThreshold = fuzzyThreshold ?? 1.0
+		this.fuzzyThreshold = fuzzyThreshold ?? 0.9
 		this.bufferLines = bufferLines ?? BUFFER_LINES
 	}
-
-	getToolDescription(args: { cwd: string; toolOptions?: { [key: string]: string } }): string {
-		return `## apply_diff
-Description: Request to apply PRECISE, TARGETED modifications to an existing file by searching for specific sections of content and replacing them. This tool is for SURGICAL EDITS ONLY - specific changes to existing code.
-You can perform multiple distinct search and replace operations within a single \`apply_diff\` call by providing multiple SEARCH/REPLACE blocks in the \`diff\` parameter. This is the preferred way to make several targeted changes efficiently.
-The SEARCH section must exactly match existing content including whitespace and indentation.
-If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
-When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
-ALWAYS make as many changes in a single 'apply_diff' request as possible using multiple SEARCH/REPLACE blocks
-
-Parameters:
-- path: (required) The path of the file to modify (relative to the current workspace directory ${args.cwd})
-- diff: (required) The search/replace block defining the changes.
-
-Diff format:
-\`\`\`
-<<<<<<< SEARCH
-:start_line: (required) The line number of original content where the search block starts.
--------
-[exact content to find including whitespace]
-=======
-[new content to replace with]
->>>>>>> REPLACE
-
-\`\`\`
-
-
-Example:
-
-Original file:
-\`\`\`
-1 | def calculate_total(items):
-2 |     total = 0
-3 |     for item in items:
-4 |         total += item
-5 |     return total
-\`\`\`
-
-Search/Replace content:
-\`\`\`
-<<<<<<< SEARCH
-:start_line:1
--------
-def calculate_total(items):
-    total = 0
-    for item in items:
-        total += item
-    return total
-=======
-def calculate_total(items):
-    """Calculate total with 10% markup"""
-    return sum(item * 1.1 for item in items)
->>>>>>> REPLACE
-
-\`\`\`
-
-Search/Replace content with multiple edits:
-\`\`\`
-<<<<<<< SEARCH
-:start_line:1
--------
-def calculate_total(items):
-    sum = 0
-=======
-def calculate_sum(items):
-    sum = 0
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-:start_line:4
--------
-        total += item
-    return total
-=======
-        sum += item
-    return sum 
->>>>>>> REPLACE
-\`\`\`
-
-
-Usage:
-<apply_diff>
-<path>File path here</path>
-<diff>
-Your search/replace content here
-You can use multi search/replace block in one diff block, but make sure to include the line numbers for each block.
-Only use a single line of '=======' between search and replacement content, because multiple '=======' will corrupt the file.
-</diff>
-</apply_diff>`
-	}
-
 	private unescapeMarkers(content: string): string {
 		return content
 			.replace(/^\\<<<<<<</gm, "<<<<<<<")
@@ -352,31 +259,31 @@ Only use a single line of '=======' between search and replacement content, beca
 			Regex parts:
 			
 			1. (?:^|\n)  
-			  Ensures the first marker starts at the beginning of the file or right after a newline.
+			  Ensures the first marker starts at the beginning of the file or right after a newline.
 
 			2. (?<!\\)<<<<<<< SEARCH\s*\n  
-			  Matches the line “<<<<<<< SEARCH” (ignoring any trailing spaces) – the negative lookbehind makes sure it isn’t escaped.
+			  Matches the line "<<<<<<< SEARCH" (ignoring any trailing spaces) – the negative lookbehind makes sure it isn't escaped.
 
 			3. ((?:\:start_line:\s*(\d+)\s*\n))?  
-			  Optionally matches a “:start_line:” line. The outer capturing group is group 1 and the inner (\d+) is group 2.
+			  Optionally matches a ":start_line:" line. The outer capturing group is group 1 and the inner (\d+) is group 2.
 
 			4. ((?:\:end_line:\s*(\d+)\s*\n))?  
-			  Optionally matches a “:end_line:” line. Group 3 is the whole match and group 4 is the digits.
+			  Optionally matches a ":end_line:" line. Group 3 is the whole match and group 4 is the digits.
 
 			5. ((?<!\\)-------\s*\n)?  
-			  Optionally matches the “-------” marker line (group 5).
+			  Optionally matches the "-------" marker line (group 5).
 
 			6. ([\s\S]*?)(?:\n)?  
-			  Non‐greedy match for the “search content” (group 6) up to the next marker.
+			  Non‐greedy match for the "search content" (group 6) up to the next marker.
 
 			7. (?:(?<=\n)(?<!\\)=======\s*\n)  
-			  Matches the “=======” marker on its own line.
+			  Matches the "=======" marker on its own line.
 
 			8. ([\s\S]*?)(?:\n)?  
-			  Non‐greedy match for the “replace content” (group 7).
+			  Non‐greedy match for the "replace content" (group 7).
 
 			9. (?:(?<=\n)(?<!\\)>>>>>>> REPLACE)(?=\n|$)  
-			  Matches the final “>>>>>>> REPLACE” marker on its own line (and requires a following newline or the end of file).
+			  Matches the final ">>>>>>> REPLACE" marker on its own line (and requires a following newline or the end of file).
 		*/
 
 		let matches = [
@@ -429,6 +336,11 @@ Only use a single line of '=======' between search and replacement content, beca
 
 			// Validate that search and replace content are not identical
 			if (searchContent === replaceContent) {
+				appliedCount++
+				console.warn(
+					`[MultiSearchReplaceDiffStrategy] Skipping replacement at line ${startLine} because search and replace content are identical`,
+				)
+				// TODO: Add a warning to the diff results (costrct change)
 				// diffResults.push({
 				// 	success: false,
 				// 	error:
@@ -437,7 +349,6 @@ Only use a single line of '=======' between search and replacement content, beca
 				// 		`- Search and replace must be different to make changes\n` +
 				// 		`- Use read_file to verify the content you want to change`,
 				// })
-				appliedCount++
 				continue
 			}
 

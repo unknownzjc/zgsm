@@ -1,5 +1,32 @@
 // npx vitest run src/api/providers/__tests__/vertex.spec.ts
 
+// Mock TelemetryService - must come before other imports
+vitest.mock("@roo-code/telemetry", () => ({
+	TelemetryService: {
+		instance: {},
+	},
+}))
+
+// Mock vscode first to avoid import errors
+vitest.mock("vscode", () => ({
+	window: {
+		createOutputChannel: vitest.fn().mockReturnValue({
+			appendLine: vitest.fn(),
+		}),
+		registerWebviewViewProvider: vitest.fn(),
+		createTextEditorDecorationType: vitest.fn().mockReturnValue({}),
+	},
+	extensions: {
+		all: [],
+		getExtension: vitest.fn().mockReturnValue({
+			extensionUri: { fsPath: "/mock/extension/uri" },
+		}),
+	},
+	env: {
+		uriScheme: "vscode",
+	},
+}))
+
 import { Anthropic } from "@anthropic-ai/sdk"
 import { vi } from "vitest"
 import { TelemetryService } from "@roo-code/telemetry"
@@ -13,12 +40,6 @@ describe("VertexHandler", () => {
 	let handler: VertexHandler
 
 	beforeEach(() => {
-		// Mock TelemetryService
-		vi.spyOn(TelemetryService, "hasInstance").mockReturnValue(true)
-		vi.spyOn(TelemetryService, "instance", "get").mockReturnValue({
-			captureException: vi.fn(),
-			captureEvent: vi.fn(),
-		} as any)
 		// Create mock functions
 		const mockGenerateContentStream = vitest.fn()
 		const mockGenerateContent = vitest.fn()
@@ -141,6 +162,32 @@ describe("VertexHandler", () => {
 			expect(modelInfo.info).toBeDefined()
 			expect(modelInfo.info.maxTokens).toBe(8192)
 			expect(modelInfo.info.contextWindow).toBe(1048576)
+		})
+
+		it("should exclude apply_diff and include edit in tool preferences", () => {
+			const testHandler = new VertexHandler({
+				apiModelId: "gemini-2.0-flash-001",
+				vertexProjectId: "test-project",
+				vertexRegion: "us-central1",
+			})
+
+			const modelInfo = testHandler.getModel()
+			expect(modelInfo.info.excludedTools).toContain("apply_diff")
+			expect(modelInfo.info.includedTools).toContain("edit")
+		})
+
+		it("should not duplicate tool entries if already present", () => {
+			const testHandler = new VertexHandler({
+				apiModelId: "gemini-2.0-flash-001",
+				vertexProjectId: "test-project",
+				vertexRegion: "us-central1",
+			})
+
+			const modelInfo = testHandler.getModel()
+			const excludedCount = modelInfo.info.excludedTools!.filter((t: string) => t === "apply_diff").length
+			const includedCount = modelInfo.info.includedTools!.filter((t: string) => t === "edit").length
+			expect(excludedCount).toBe(1)
+			expect(includedCount).toBe(1)
 		})
 	})
 })

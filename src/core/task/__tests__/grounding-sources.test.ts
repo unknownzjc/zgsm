@@ -13,7 +13,7 @@ vi.mock("vscode", async (importOriginal) => ({
 			extensionPath: "/mock/extension/path",
 			extensionUri: { fsPath: "/mock/extension/path", path: "/mock/extension/path", scheme: "file" },
 			packageJSON: {
-				name: "zgsm",
+				name: "costrict",
 				publisher: "zgsm-ai",
 				version: "2.0.27",
 			},
@@ -91,13 +91,9 @@ vi.mock("@roo-code/telemetry", () => ({
 	},
 }))
 
-// Mock @roo-code/cloud to prevent socket.io-client initialization issues
 vi.mock("@roo-code/cloud", () => ({
 	CloudService: {
 		isEnabled: () => false,
-	},
-	BridgeOrchestrator: {
-		subscribeToTask: vi.fn(),
 	},
 }))
 
@@ -128,7 +124,7 @@ vi.mock("fs/promises", () => ({
 
 // Mock mentions
 vi.mock("../../mentions", () => ({
-	parseMentions: vi.fn().mockImplementation((text) => Promise.resolve(text)),
+	parseMentions: vi.fn().mockImplementation((text) => Promise.resolve({ text, mode: undefined, contentBlocks: [] })),
 	openMention: vi.fn(),
 	getLatestTerminalOutput: vi.fn(),
 }))
@@ -182,6 +178,7 @@ describe("Task grounding sources handling", () => {
 		// Mock provider with necessary methods
 		mockProvider = {
 			postStateToWebview: vi.fn().mockResolvedValue(undefined),
+			postStateToWebviewWithoutTaskHistory: vi.fn().mockResolvedValue(undefined),
 			getState: vi.fn().mockResolvedValue({
 				mode: "code",
 				experiments: {},
@@ -198,7 +195,6 @@ describe("Task grounding sources handling", () => {
 		mockApiConfiguration = {
 			apiProvider: "gemini",
 			geminiApiKey: "test-key",
-			enableGrounding: true,
 		} as ProviderSettings
 	})
 

@@ -1,4 +1,5 @@
 import { parseCommand } from "../../shared/parse-command"
+import { getShell } from "../../utils/shell"
 
 /**
  * Detect dangerous parameter substitutions that could lead to command execution.
@@ -13,13 +14,35 @@ import { parseCommand } from "../../shared/parse-command"
  * - ${var=value} with escape sequences - Can embed commands via \140 (backtick), \x60, or \u0060
  * - ${!var} - Indirect variable references
  * - <<<$(...) or <<<`...` - Here-strings with command substitution
- * - =(...) - Zsh process substitution that executes commands
+ * - =(...) - Zsh process substitution that executes commands (array assignments like `var=(...)` are excluded)
  * - *(e:...:) or similar - Zsh glob qualifiers with code execution
  *
  * @param source - The command string to analyze
  * @returns true if dangerous substitution patterns are detected, false otherwise
  */
 export function containsDangerousSubstitution(source: string): boolean {
+	// Get the current shell path for accurate dangerous pattern detection
+	const shellPath = process.platform === "win32" ? getShell(true).toLowerCase() : ""
+
+	// CMD-specific dangerous patterns
+	// ^ is a special escape character in CMD that can be used to bypass Unix-style command sanitizers
+	// Check for caret followed by any shell metacharacter: ", space, &, |, <, >, ^
+	if (shellPath.includes("cmd.exe") && /\^["\s&|<>^]/.test(source)) {
+		console.warn("cmd dangerous:", source)
+		return true
+	}
+
+	// PowerShell-specific dangerous patterns
+	// Backtick (`) is the escape character in PowerShell
+	// Check for backtick followed by common metacharacters or used in expressions
+	if (
+		(shellPath.includes("pwsh.exe") || shellPath.includes("powershell.exe")) &&
+		/`["\s$;&|<>(){}[\]]/.test(source)
+	) {
+		console.warn("powershell dangerous:", source)
+		return true
+	}
+
 	// Check for dangerous parameter expansion operators that can execute commands
 	// ${var@P} - Prompt string expansion (interprets escape sequences and executes embedded commands)
 	// ${var@Q} - Quote removal
@@ -46,7 +69,7 @@ export function containsDangerousSubstitution(source: string): boolean {
 
 	// Check for zsh process substitution =(...) which executes commands
 	// =(...) creates a temporary file containing the output of the command, but executes it
-	const zshProcessSubstitution = /=\([^)]+\)/.test(source)
+	const zshProcessSubstitution = /(?:(?<=^)|(?<=[\s;|&(<]))=\([^)]+\)/.test(source)
 
 	// Check for zsh glob qualifiers with code execution (e:...:)
 	// Patterns like *(e:whoami:) or ?(e:rm -rf /:) execute commands during glob expansion
@@ -284,7 +307,7 @@ export function getCommandDecision(
 	}
 
 	// If all sub-commands are approved, approve the whole command
-	if (decisions.every((decision) => decision === "auto_approve")) {
+	if (decisions?.every?.((decision) => decision === "auto_approve")) {
 		return "auto_approve"
 	}
 

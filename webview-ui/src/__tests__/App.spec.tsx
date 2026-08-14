@@ -1,7 +1,7 @@
 // npx vitest run src/__tests__/App.spec.tsx
 
 import React from "react"
-import { render, screen, act, cleanup } from "@/utils/test-utils"
+import { render, screen, act, cleanup, fireEvent } from "@/utils/test-utils"
 
 import AppWithProviders from "../App"
 
@@ -42,6 +42,17 @@ vi.mock("@src/components/settings/SettingsView", () => ({
 		return (
 			<div data-testid="settings-view" onClick={onDone}>
 				Settings View
+			</div>
+		)
+	},
+}))
+
+vi.mock("@src/components/code-review", () => ({
+	__esModule: true,
+	default: function CodeReviewPage({ isHidden }: { isHidden: boolean }) {
+		return (
+			<div data-testid="code-review-view" data-hidden={isHidden}>
+				Code Review View
 			</div>
 		)
 	},
@@ -162,23 +173,42 @@ vi.mock("@src/context/ExtensionStateContext", () => ({
 // Mock environment variables
 vi.mock("process.env", () => ({
 	NODE_ENV: "test",
-	PKG_VERSION: "1.0.0-test",
+	COSTRICT_PKG_VERSION: "1.0.0-test",
 }))
+
+const createExtensionState = (overrides: Record<string, any> = {}) => ({
+	didHydrateState: true,
+	showWelcome: false,
+	shouldShowAnnouncement: false,
+	experiments: {},
+	language: "en",
+	telemetrySetting: "enabled",
+	telemetryKey: undefined,
+	machineId: undefined,
+	renderContext: "sidebar",
+	mdmCompliant: true,
+	apiConfiguration: {
+		apiProvider: "openai",
+	},
+	hasClosedCodeReviewWelcomeTips: true,
+	didHydrateCliState: false,
+	setDidHydrateSClitate: vi.fn(),
+	reviewTask: {
+		status: "initial",
+		data: {
+			issues: [],
+			progress: 0,
+		},
+	},
+	setReviewTask: vi.fn(),
+	...overrides,
+})
 
 describe("App", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		window.removeEventListener("message", () => {})
-
-		// Set up default mock return value
-		mockUseExtensionState.mockReturnValue({
-			didHydrateState: true,
-			showWelcome: false,
-			shouldShowAnnouncement: false,
-			experiments: {},
-			language: "en",
-			telemetrySetting: "enabled",
-		})
+		mockUseExtensionState.mockReturnValue(createExtensionState())
 	})
 
 	afterEach(() => {
@@ -186,11 +216,12 @@ describe("App", () => {
 		window.removeEventListener("message", () => {})
 	})
 
-	const triggerMessage = (action: string) => {
+	const triggerActionMessage = (action: string, extraData?: Record<string, unknown>) => {
 		const messageEvent = new MessageEvent("message", {
 			data: {
 				type: "action",
 				action,
+				...extraData,
 			},
 		})
 		window.dispatchEvent(messageEvent)
@@ -202,13 +233,13 @@ describe("App", () => {
 		const chatView = screen.getByTestId("chat-view")
 		expect(chatView).toBeInTheDocument()
 		expect(chatView.getAttribute("data-hidden")).toBe("false")
-	})
+	}, 10000)
 
 	it("switches to settings view when receiving settingsButtonClicked action", async () => {
 		render(<AppWithProviders />)
 
 		act(() => {
-			triggerMessage("settingsButtonClicked")
+			triggerActionMessage("settingsButtonClicked")
 		})
 
 		const settingsView = await screen.findByTestId("settings-view")
@@ -222,7 +253,7 @@ describe("App", () => {
 		render(<AppWithProviders />)
 
 		act(() => {
-			triggerMessage("historyButtonClicked")
+			triggerActionMessage("historyButtonClicked")
 		})
 
 		const historyView = await screen.findByTestId("history-view")
@@ -236,7 +267,7 @@ describe("App", () => {
 		render(<AppWithProviders />)
 
 		act(() => {
-			triggerMessage("settingsButtonClicked")
+			triggerActionMessage("settingsButtonClicked")
 		})
 
 		const settingsView = await screen.findByTestId("settings-view")
@@ -254,7 +285,7 @@ describe("App", () => {
 		render(<AppWithProviders />)
 
 		act(() => {
-			triggerMessage(`${view}ButtonClicked`)
+			triggerActionMessage(`${view}ButtonClicked`)
 		})
 
 		const viewElement = await screen.findByTestId(`${view}-view`)
@@ -267,12 +298,78 @@ describe("App", () => {
 		expect(chatView.getAttribute("data-hidden")).toBe("false")
 		expect(screen.queryByTestId(`${view}-view`)).not.toBeInTheDocument()
 	})
+
+	it("shows the agent and code review tabs for costrict provider", () => {
+		mockUseExtensionState.mockReturnValue(
+			createExtensionState({
+				apiConfiguration: {
+					apiProvider: "costrict",
+				},
+			}),
+		)
+
+		render(<AppWithProviders />)
+
+		expect(screen.getByRole("tab", { name: "common:costrictCli.tabs.agent" })).toBeInTheDocument()
+		expect(screen.getByRole("tab", { name: "common:costrictCli.tabs.codeReview" })).toBeInTheDocument()
+	})
+
+	it("shows the code review tab for costrict provider and activates it on click", async () => {
+		mockUseExtensionState.mockReturnValue(
+			createExtensionState({
+				apiConfiguration: {
+					apiProvider: "costrict",
+				},
+			}),
+		)
+
+		render(<AppWithProviders />)
+
+		const codeReviewTab = screen.getByRole("tab", { name: "common:costrictCli.tabs.codeReview" })
+		fireEvent.click(codeReviewTab)
+
+		expect(codeReviewTab).toHaveAttribute("aria-selected", "true")
+		const codeReviewView = await screen.findByTestId("code-review-view")
+		expect(codeReviewView.getAttribute("data-hidden")).toBe("false")
+	})
+
+	it("does not show the costrict-only tabs for non-costrict providers", () => {
+		render(<AppWithProviders />)
+
+		expect(screen.getByRole("tab", { name: "common:costrictCli.tabs.agent" })).toBeInTheDocument()
+		expect(screen.queryByRole("tab", { name: "common:costrictCli.tabs.codeReview" })).not.toBeInTheDocument()
+	})
+
+	it("does not render the old App header actions when the code review tab is active", async () => {
+		mockUseExtensionState.mockReturnValue(
+			createExtensionState({
+				apiConfiguration: {
+					apiProvider: "costrict",
+				},
+			}),
+		)
+
+		render(<AppWithProviders />)
+
+		act(() => {
+			triggerActionMessage("switchTab", { tab: "codeReview" })
+		})
+
+		const codeReviewView = await screen.findByTestId("code-review-view")
+		expect(codeReviewView.getAttribute("data-hidden")).toBe("false")
+		expect(screen.queryByText("chat:startNewTask.title")).not.toBeInTheDocument()
+		expect(document.querySelector(".codicon-add")).not.toBeInTheDocument()
+		expect(document.querySelector(".codicon-cloud")).not.toBeInTheDocument()
+		expect(document.querySelector(".codicon-question")).toBeInTheDocument()
+		expect(document.querySelector(".codicon-history")).toBeInTheDocument()
+	})
+
 	// todo: fix this test
 	// it("switches to marketplace view when receiving marketplaceButtonClicked action", async () => {
 	// 	render(<AppWithProviders />)
 
 	// 	act(() => {
-	// 		triggerMessage("marketplaceButtonClicked")
+	// 		triggerActionMessage("marketplaceButtonClicked")
 	// 	})
 
 	// 	const marketplaceView = await screen.findByTestId("marketplace-view")
@@ -286,7 +383,7 @@ describe("App", () => {
 	// 	render(<AppWithProviders />)
 
 	// 	act(() => {
-	// 		triggerMessage("marketplaceButtonClicked")
+	// 		triggerActionMessage("marketplaceButtonClicked")
 	// 	})
 
 	// 	const marketplaceView = await screen.findByTestId("marketplace-view")

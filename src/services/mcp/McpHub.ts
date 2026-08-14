@@ -1,3 +1,7 @@
+import * as fs from "fs/promises"
+import * as path from "path"
+
+import * as vscode from "vscode"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
@@ -13,28 +17,35 @@ import {
 import chokidar, { FSWatcher } from "chokidar"
 import delay from "delay"
 import deepEqual from "fast-deep-equal"
-import * as fs from "fs/promises"
-import * as path from "path"
-import * as vscode from "vscode"
 import { z } from "zod"
-import { t } from "../../i18n"
 
-import { ClineProvider } from "../../core/webview/ClineProvider"
-import { GlobalFileNames } from "../../shared/globalFileNames"
-import {
+import type {
 	McpResource,
 	McpResourceResponse,
 	McpResourceTemplate,
 	McpServer,
 	McpTool,
 	McpToolCallResponse,
-} from "../../shared/mcp"
+} from "@roo-code/types"
+import { AsyncPollingConfigSchema } from "@roo-code/types"
+
+import { t } from "../../i18n"
+
+import { ClineProvider } from "../../core/webview/ClineProvider"
+
+import { GlobalFileNames } from "../../shared/globalFileNames"
+
 import { fileExistsAtPath } from "../../utils/fs"
 import { arePathsEqual, getWorkspacePath } from "../../utils/path"
 import { injectVariables } from "../../utils/config"
 import { NotificationService } from "./costrict/NotificationService"
+import { McpAsyncExecutionService } from "./asyncPolling/McpAsyncExecutionService"
+import { McpAsyncTaskStore } from "./asyncPolling/McpAsyncTaskStore"
 import { safeWriteJson } from "../../utils/safeWriteJson"
-import { sanitizeMcpName } from "../../utils/mcp-name"
+import { sanitizeMcpName, toolNamesMatch } from "../../utils/mcp-name"
+import { isJetbrainsPlatform } from "../../utils/platform"
+import { WorkspaceTrustService } from "../security/workspaceTrust"
+import { getIdeaShellEnvWithUpdatePath } from "../../utils/ideaShellEnvLoader"
 
 // Discriminated union for connection states
 export type ConnectedMcpConnection = {
@@ -57,6 +68,7 @@ export type McpConnection = ConnectedMcpConnection | DisconnectedMcpConnection
 export enum DisableReason {
 	MCP_DISABLED = "mcpDisabled",
 	SERVER_DISABLED = "serverDisabled",
+	NOT_APPROVED = "notApproved",
 }
 
 // Base configuration schema for common settings
@@ -66,6 +78,7 @@ const BaseConfigSchema = z.object({
 	alwaysAllow: z.array(z.string()).default([]),
 	watchPaths: z.array(z.string()).optional(), // paths to watch for changes and restart server
 	disabledTools: z.array(z.string()).default([]),
+	asyncPolling: AsyncPollingConfigSchema.optional(),
 })
 
 // Custom error messages for better user feedback
@@ -158,14 +171,28 @@ export class McpHub {
 	private isProgrammaticUpdate: boolean = false
 	private flagResetTimer?: NodeJS.Timeout
 	private sanitizedNameRegistry: Map<string, string> = new Map()
+	private initializationPromise: Promise<void>
+	private asyncExecutionService: McpAsyncExecutionService | undefined
+	private asyncTaskStore: McpAsyncTaskStore | undefined
+	private asyncStorageRoot: string | undefined
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
 		this.watchMcpSettingsFile()
 		this.watchProjectMcpFile().catch(console.error)
 		this.setupWorkspaceFoldersWatcher()
-		this.initializeGlobalMcpServers()
-		this.initializeProjectMcpServers()
+		this.initializationPromise = Promise.all([
+			this.initializeGlobalMcpServers(),
+			this.initializeProjectMcpServers(),
+		]).then(() => {})
+	}
+
+	/**
+	 * Waits until all MCP servers have finished their initial connection attempts.
+	 * Each server individually handles its own timeout, so this will not block indefinitely.
+	 */
+	async waitUntilReady(): Promise<void> {
+		await this.initializationPromise
 	}
 	/**
 	 * Registers a client (e.g., ClineProvider) using this hub.
@@ -391,6 +418,8 @@ export class McpHub {
 	}
 
 	private async updateProjectMcpServers(): Promise<void> {
+		// L0: do not read/connect project MCP in VS Code restricted mode.
+		if (this.getTrustService()?.isRestrictedMode()) return
 		try {
 			const projectMcpPath = await this.getProjectMcpPath()
 			if (!projectMcpPath) return
@@ -592,6 +621,8 @@ export class McpHub {
 
 	// Initialize project-level MCP servers
 	private async initializeProjectMcpServers(): Promise<void> {
+		// L0: do not read/connect project MCP in VS Code restricted mode.
+		if (this.getTrustService()?.isRestrictedMode()) return
 		await this.initializeMcpServers("project")
 	}
 
@@ -603,6 +634,11 @@ export class McpHub {
 	 * @param reason The reason for creating a placeholder (mcpDisabled or serverDisabled)
 	 * @returns A placeholder DisconnectedMcpConnection object
 	 */
+	private getTrustService(): WorkspaceTrustService | null {
+		const context = this.providerRef.deref()?.context
+		return context ? WorkspaceTrustService.getInstance(context) : null
+	}
+
 	private createPlaceholderConnection(
 		name: string,
 		config: z.infer<typeof ServerConfigSchema>,
@@ -667,6 +703,33 @@ export class McpHub {
 			return
 		}
 
+		// L1: require explicit user approval before starting a project-scoped stdio
+		// server. Project `.roo/mcp.json` is attacker-controllable content, so the
+		// configured command must not launch a local process without consent. Global
+		// servers (user-configured) and non-stdio project servers are not gated.
+		if (source === "project" && config.type === "stdio") {
+			const cwd = config.cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? ""
+			const trust = this.getTrustService()
+			if (trust) {
+				const approved = await trust.ensureMcpServerApproved(cwd, name, {
+					command: config.command,
+					args: config.args,
+					cwd,
+				})
+				if (!approved) {
+					const connection = this.createPlaceholderConnection(
+						name,
+						config,
+						source,
+						DisableReason.NOT_APPROVED,
+					)
+					this.connections.push(connection)
+					await this.notifyWebviewOfServerChanges()
+					return
+				}
+			}
+		}
+
 		// Set up file watchers for enabled servers
 		this.setupFileWatcher(name, config, source)
 
@@ -684,7 +747,7 @@ export class McpHub {
 			let transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
 
 			// Inject variables to the config (environment, magic variables,...)
-			const configInjected = (await injectVariables(config, {
+			const configInjected = (await injectVariables(config as any, {
 				env: process.env,
 				workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "",
 			})) as typeof config
@@ -712,6 +775,7 @@ export class McpHub {
 					cwd: configInjected.cwd,
 					env: {
 						...getDefaultEnvironment(),
+						...(isJetbrainsPlatform() ? getIdeaShellEnvWithUpdatePath(process.env) : {}),
 						...(configInjected.env || {}),
 					},
 					stderr: "pipe",
@@ -961,16 +1025,30 @@ export class McpHub {
 	 * Find a connection by sanitized server name.
 	 * This is used when parsing MCP tool responses where the server name has been
 	 * sanitized (e.g., hyphens replaced with underscores) for API compliance.
+	 * Uses fuzzy matching to handle cases where models convert hyphens to underscores.
 	 * @param sanitizedServerName The sanitized server name from the API tool call
 	 * @returns The original server name if found, or null if no match
 	 */
 	public findServerNameBySanitizedName(sanitizedServerName: string): string | null {
+		// First, check for an exact match
 		const exactMatch = this.connections.find((conn) => conn.server.name === sanitizedServerName)
 		if (exactMatch) {
 			return exactMatch.server.name
 		}
 
-		return this.sanitizedNameRegistry.get(sanitizedServerName) ?? null
+		// Check the registry for sanitized name mapping
+		const registryMatch = this.sanitizedNameRegistry.get(sanitizedServerName)
+		if (registryMatch) {
+			return registryMatch
+		}
+
+		// Use fuzzy matching: treat hyphens and underscores as equivalent
+		const fuzzyMatch = this.connections.find((conn) => toolNamesMatch(conn.server.name, sanitizedServerName))
+		if (fuzzyMatch) {
+			return fuzzyMatch.server.name
+		}
+
+		return null
 	}
 
 	private async fetchToolsList(serverName: string, source?: "global" | "project"): Promise<McpTool[]> {
@@ -1021,10 +1099,13 @@ export class McpHub {
 				// Continue with empty configs
 			}
 
+			// Check if wildcard "*" is in the alwaysAllow config
+			const hasWildcard = alwaysAllowConfig.includes("*")
+
 			// Mark tools as always allowed and enabled for prompt based on settings
 			const tools = (response?.tools || []).map((tool) => ({
 				...tool,
-				alwaysAllow: alwaysAllowConfig.includes(tool.name),
+				alwaysAllow: hasWildcard || alwaysAllowConfig.includes(tool.name),
 				enabledForPrompt: !disabledToolsList.includes(tool.name),
 			}))
 
@@ -1614,7 +1695,7 @@ export class McpHub {
 		}
 		this.isProgrammaticUpdate = true
 		try {
-			await safeWriteJson(configPath, updatedConfig)
+			await safeWriteJson(configPath, updatedConfig, { prettyPrint: true })
 			if (configUpdate.timeout != null && connection?.server?.config) {
 				const config = JSON.parse(connection.server.config)
 				config.timeout = configUpdate.timeout
@@ -1704,7 +1785,7 @@ export class McpHub {
 					mcpServers: config.mcpServers,
 				}
 
-				await safeWriteJson(configPath, updatedConfig)
+				await safeWriteJson(configPath, updatedConfig, { prettyPrint: true })
 
 				// Update server connections with the correct source
 				await this.updateServerConnections(config.mcpServers, serverSource)
@@ -1738,12 +1819,101 @@ export class McpHub {
 		)
 	}
 
+	/**
+	 * Read the raw connection config for a server and check whether `toolName`
+	 * appears in its `disabledTools` array. Independent of `enabledForPrompt`
+	 * (which also drives prompt visibility, see design §5.6).
+	 */
+	async isToolDisabled(serverName: string, toolName: string, source?: "global" | "project"): Promise<boolean> {
+		const connection = this.findConnection(serverName, source)
+		if (!connection) return false
+		try {
+			const raw = JSON.parse(connection.server.config) as { disabledTools?: string[] }
+			return Array.isArray(raw.disabledTools) && raw.disabledTools.includes(toolName)
+		} catch {
+			return false
+		}
+	}
+
+	/**
+	 * Return the per-tool asyncPolling config for `toolName` on `serverName`,
+	 * or undefined when no asyncPolling is configured for that tool.
+	 */
+	async getAsyncPollingConfig(
+		serverName: string,
+		toolName: string,
+		source?: "global" | "project",
+	): Promise<import("@roo-code/types").AsyncPollingToolConfig | undefined> {
+		const connection = this.findConnection(serverName, source)
+		if (!connection) return undefined
+		try {
+			const parsed = ServerConfigSchema.parse(JSON.parse(connection.server.config))
+			return parsed.asyncPolling?.tools?.[toolName]
+		} catch {
+			return undefined
+		}
+	}
+
+	private getAsyncStorageRoot(): string {
+		if (!this.asyncStorageRoot) {
+			const provider = this.providerRef.deref()
+			const storageUri = provider?.context?.globalStorageUri
+			this.asyncStorageRoot = storageUri
+				? path.join(storageUri.fsPath, "mcpAsyncTasks")
+				: path.join(require("os").tmpdir(), "costrict-mcp-async-tasks")
+		}
+		return this.asyncStorageRoot
+	}
+
+	private getOrCreateAsyncTaskStore(): McpAsyncTaskStore {
+		if (!this.asyncTaskStore) {
+			this.asyncTaskStore = new McpAsyncTaskStore({
+				rootDir: this.getAsyncStorageRoot(),
+				workspacePath: getWorkspacePath(),
+			})
+		}
+		return this.asyncTaskStore
+	}
+
+	async getAsyncTaskRecords(): Promise<import("@roo-code/types").McpAsyncTaskSummary[]> {
+		const store = this.getOrCreateAsyncTaskStore()
+		const records = await store.list()
+		const { summarizeRecord } = await import("@roo-code/types")
+		return records.map(summarizeRecord)
+	}
+
+	getAsyncTaskStore(): McpAsyncTaskStore {
+		return this.getOrCreateAsyncTaskStore()
+	}
+
+	getAsyncExecutionService(): McpAsyncExecutionService {
+		if (!this.asyncExecutionService) {
+			const store = this.getOrCreateAsyncTaskStore()
+			this.asyncExecutionService = new McpAsyncExecutionService(
+				{
+					callTool: (serverName, toolName, args, source, options) =>
+						this.callTool(serverName, toolName, args, source, options),
+					isToolDisabled: (serverName, toolName, source) => this.isToolDisabled(serverName, toolName, source),
+					getAsyncPollingConfig: (serverName, toolName, source) =>
+						this.getAsyncPollingConfig(serverName, toolName, source),
+				},
+				{ store },
+			)
+		}
+		return this.asyncExecutionService
+	}
+
 	async callTool(
 		serverName: string,
 		toolName: string,
 		toolArguments?: Record<string, unknown>,
 		source?: "global" | "project",
+		options?: { timeoutMs?: number; signal?: AbortSignal },
 	): Promise<McpToolCallResponse> {
+		if (options?.signal?.aborted) {
+			throw new Error(`callTool aborted before request: ${serverName}/${toolName}`)
+		}
+
 		const connection = this.findConnection(serverName, source)
 		if (!connection || connection.type !== "connected") {
 			throw new Error(
@@ -1755,27 +1925,28 @@ export class McpHub {
 		}
 
 		let timeout: number
-		try {
-			const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
-			timeout = (parsedConfig.timeout ?? 60) * 1000
-		} catch (error) {
-			console.error("Failed to parse server config for timeout:", error)
-			// Default to 60 seconds if parsing fails
-			timeout = 60 * 1000
+		if (typeof options?.timeoutMs === "number") {
+			timeout = options.timeoutMs
+		} else {
+			try {
+				const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
+				timeout = (parsedConfig.timeout ?? 60) * 1000
+			} catch (error) {
+				console.error("Failed to parse server config for timeout:", error)
+				timeout = 60 * 1000
+			}
 		}
+
+		const reqOptions: { timeout: number; signal?: AbortSignal } = { timeout }
+		if (options?.signal) reqOptions.signal = options.signal
 
 		return await connection.client.request(
 			{
 				method: "tools/call",
-				params: {
-					name: toolName,
-					arguments: toolArguments,
-				},
+				params: { name: toolName, arguments: toolArguments },
 			},
 			CallToolResultSchema,
-			{
-				timeout,
-			},
+			reqOptions,
 		)
 	}
 
@@ -1855,7 +2026,7 @@ export class McpHub {
 		}
 		this.isProgrammaticUpdate = true
 		try {
-			await safeWriteJson(normalizedPath, config)
+			await safeWriteJson(normalizedPath, config, { prettyPrint: true })
 		} finally {
 			// Reset flag after watcher debounce period (non-blocking)
 			this.flagResetTimer = setTimeout(() => {
@@ -1960,16 +2131,16 @@ export class McpHub {
 	async dispose(): Promise<void> {
 		// Prevent multiple disposals
 		if (this.isDisposed) {
-			console.log("McpHub: Already disposed.")
 			return
 		}
-		console.log("McpHub: Disposing...")
+
 		this.isDisposed = true
 
 		// Clear all debounce timers
 		for (const timer of this.configChangeDebounceTimers.values()) {
 			clearTimeout(timer)
 		}
+
 		this.configChangeDebounceTimers.clear()
 
 		// Clear flag reset timer and reset programmatic update flag
@@ -1977,9 +2148,10 @@ export class McpHub {
 			clearTimeout(this.flagResetTimer)
 			this.flagResetTimer = undefined
 		}
-		this.isProgrammaticUpdate = false
 
+		this.isProgrammaticUpdate = false
 		this.removeAllFileWatchers()
+
 		for (const connection of this.connections) {
 			try {
 				await this.deleteConnection(connection.server.name, connection.server.source)
@@ -1987,15 +2159,19 @@ export class McpHub {
 				console.error(`Failed to close connection for ${connection.server.name}:`, error)
 			}
 		}
+
 		this.connections = []
+
 		if (this.settingsWatcher) {
 			this.settingsWatcher.dispose()
 			this.settingsWatcher = undefined
 		}
+
 		if (this.projectMcpWatcher) {
 			this.projectMcpWatcher.dispose()
 			this.projectMcpWatcher = undefined
 		}
+
 		this.disposables.forEach((d) => d.dispose())
 	}
 }

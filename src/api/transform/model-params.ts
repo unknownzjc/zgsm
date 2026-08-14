@@ -26,7 +26,7 @@ import {
 	getOpenRouterReasoning,
 } from "./reasoning"
 
-type Format = "anthropic" | "openai" | "gemini" | "openrouter" | "zgsm"
+type Format = "anthropic" | "openai" | "gemini" | "openrouter" | "costrict"
 
 type GetModelParamsOptions<T extends Format> = {
 	format: T
@@ -65,9 +65,9 @@ type OpenRouterModelParams = {
 	reasoning: OpenRouterReasoningParams | undefined
 } & BaseModelParams
 
-type ZgsmModelParams = (
+type CostrictModelParams = (
 	| {
-			format: "zgsm"
+			format: "costrict"
 			reasoning:
 				| AnthropicModelParams["reasoning"]
 				| OpenAiModelParams["reasoning"]
@@ -86,20 +86,20 @@ export type ModelParams =
 	| OpenAiModelParams
 	| GeminiModelParams
 	| OpenRouterModelParams
-	| ZgsmModelParams
+	| CostrictModelParams
 
 // Function overloads for specific return types
 export function getModelParams(options: GetModelParamsOptions<"anthropic">): AnthropicModelParams
 export function getModelParams(options: GetModelParamsOptions<"openai">): OpenAiModelParams
 export function getModelParams(options: GetModelParamsOptions<"gemini">): GeminiModelParams
 export function getModelParams(options: GetModelParamsOptions<"openrouter">): OpenRouterModelParams
-export function getModelParams(options: GetModelParamsOptions<"zgsm">): ZgsmModelParams
+export function getModelParams(options: GetModelParamsOptions<"costrict">): CostrictModelParams
 export function getModelParams({
 	format,
 	modelId,
 	model,
 	settings,
-	defaultTemperature = 0,
+	defaultTemperature,
 }: GetModelParamsOptions<Format>): ModelParams {
 	const {
 		modelMaxTokens: customMaxTokens,
@@ -185,7 +185,7 @@ export function getModelParams({
 			format,
 			...params,
 			reasoning: getOpenAiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
-			tools: model.supportsNativeTools,
+			// Whether tools are included is determined by whether the caller provided tool definitions.
 		}
 	} else if (format === "gemini") {
 		return {
@@ -193,7 +193,7 @@ export function getModelParams({
 			...params,
 			reasoning: getGeminiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
 		}
-	} else if (format === "zgsm") {
+	} else if (format === "costrict") {
 		// Special case for o1 and o3-mini, which don't support temperature.
 		// TODO: Add a `supportsTemperature` field to the model info.
 		if (modelId.startsWith("o1") || modelId.startsWith("o3-mini")) {

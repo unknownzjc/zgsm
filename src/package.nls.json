@@ -1,7 +1,7 @@
 {
 	"extension.displayName": "CoStrict",
-	"extension.displayName.long": "CoStrict (prev. Cline / RooCode with Code Review AI Coding Agent)",
-	"extension.description": "CoStrict (prev. Cline / RooCode with Code Review AI Coding Agent)",
+	"extension.displayName.long": "CoStrict",
+	"extension.description": "CoStrict - strict AI coder for enterprises, quality first, including AI Agent, AI CodeReview, AI Completion.",
 	"views.contextMenu.label": "CoStrict",
 	"views.terminalMenu.label": "CoStrict",
 	"views.activitybar.title": "CoStrict",
@@ -27,8 +27,8 @@
 	"command.acceptInput.title": "Accept Input/Suggestion",
 	"command.shortKeyCut.title": "CoStrict Code Completion Shortcut",
 	"command.codeReview.title": "Code Review",
-	"command.reviewRepo.title": "Review Repo",
-	"command.reviewCommit.title": "Review Changes",
+	"command.securityReview.title": "Security Review",
+	"command.reviewCommit.title": "CoStrict Review",
 	"command.addComment.title": "Add Comments",
 	"command.addTests.title": "Generate Unit Tests",
 	"command.explain.title": "Explain Code",
@@ -41,6 +41,7 @@
 	"command.addFileToContext.title": "Add To Context",
 	"command.toggleAutoApprove.title": "Toggle Auto-Approve",
 	"command.generateCommitMessage.title": "Generate Commit Message With CoStrict",
+	"command.reloadWebview.title": "Reload Webview UI",
 	"command.askReviewSuggestionWithAI.title": "Fix Code",
 
 	"intelligentCodeCompletion.enabled.description": "Enable intelligent code completion",
@@ -77,5 +78,8 @@
 	"settings.commit.language.description": "Language for commit message generation (auto = use system language)",
 	"settings.toolProtocol.description": "Tool protocol to use for AI interactions. XML is the default and recommended protocol. Native is experimental and may not work with all providers.",
 	"settings.codeIndex.embeddingBatchSize.description": "The batch size for embedding operations during code indexing. Adjust this based on your API provider's limits. Default is 60.",
-	"settings.debug.description": "Enable debug mode to show additional buttons for viewing API conversation history and UI messages as prettified JSON in temporary files."
+	"settings.debug.description": "Enable debug mode to show additional buttons for viewing API conversation history and UI messages as prettified JSON in temporary files.",
+	"settings.debugProxy.enabled.description": "**Enable Debug Proxy** — Route all outbound network requests through a proxy for MITM debugging. Only active when running in debug mode (F5).",
+	"settings.debugProxy.serverUrl.description": "Proxy URL (e.g., `http://127.0.0.1:8888`). Only used when **Debug Proxy** is enabled.",
+	"settings.debugProxy.tlsInsecure.description": "Accept self-signed certificates from the proxy. **Required for MITM inspection.** ⚠️ Insecure — only use for local debugging."
 }

@@ -7,9 +7,8 @@ import pWaitFor from "p-wait-for"
 import delay from "delay"
 
 import type { ExperimentId } from "@roo-code/types"
-import { DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT, MAX_WORKSPACE_FILES } from "@roo-code/types"
+import { MAX_WORKSPACE_FILES } from "@roo-code/types"
 
-import { resolveToolProtocol } from "../../utils/resolveToolProtocol"
 import { EXPERIMENT_IDS, experiments as Experiments } from "../../shared/experiments"
 import { formatLanguage } from "../../shared/language"
 import { defaultModeSlug, getFullModeDetails } from "../../shared/modes"
@@ -24,7 +23,7 @@ import { getGitStatus } from "../../utils/git"
 import { Task } from "../task/Task"
 import { formatReminderSection } from "./reminder"
 import { getShell, getWindowsTerminalInfo } from "../../utils/shell"
-import { getOperatingSystem } from "../../utils/zgsmUtils"
+import { getOperatingSystem } from "../../utils/costrictUtils"
 import { defaultLang } from "../../utils/language"
 
 export async function getEnvironmentDetails(cline: Task, includeFileDetails: boolean = false) {
@@ -32,12 +31,12 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	const clineProvider = cline.providerRef.deref()
 	const state = await clineProvider?.getState()
 	const {
-		terminalOutputLineLimit = 500,
-		terminalOutputCharacterLimit = DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 		maxWorkspaceFiles = MAX_WORKSPACE_FILES,
 		terminalShellIntegrationDisabled,
+		maxOpenTabsContext,
 	} = state ?? {}
 	const shell = getShell(terminalShellIntegrationDisabled)
+	const maxTabs = maxOpenTabsContext ?? 20
 
 	// It could be useful for cline to know if the user went from one or no
 	// file to another between messages, so we always include this context.
@@ -45,17 +44,37 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		.map((editor) => editor.document?.uri)
 		.filter(Boolean)
 
-	const existingVisibleFilePaths = await Promise.all(
-		visibleTabFilePaths.map(async (uri) => {
-			try {
-				await fs.stat(uri.fsPath)
-				const absolutePath = uri.fsPath
-				return path.relative(cline.cwd, absolutePath).toPosix()
-			} catch (error) {
-				return null
-			}
-		}),
-	)
+	const tabUris = (vscode.window.tabGroups?.all || [])
+		.flatMap((group) => group.tabs)
+		.filter((tab) => tab.input instanceof vscode.TabInputText)
+		.map((tab) => (tab.input as vscode.TabInputText).uri)
+		.filter(Boolean)
+
+	const [existingVisibleFilePaths, existingTabPaths] = await Promise.all([
+		Promise.all(
+			visibleTabFilePaths.map(async (uri) => {
+				try {
+					await fs.stat(uri.fsPath)
+					const absolutePath = uri.fsPath
+					return path.relative(cline.cwd, absolutePath).toPosix()
+				} catch (error) {
+					return null
+				}
+			}),
+		),
+		Promise.all(
+			tabUris.map(async (uri) => {
+				try {
+					await fs.stat(uri.fsPath)
+					const absolutePath = uri.fsPath
+					return path.relative(cline.cwd, absolutePath).toPosix()
+				} catch (error) {
+					return null
+				}
+			}),
+		),
+	])
+
 	const visibleFilePaths = existingVisibleFilePaths.filter((path) => path !== null).slice(0, maxWorkspaceFiles)
 
 	// Filter paths through rooIgnoreController
@@ -63,44 +82,17 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		? cline.rooIgnoreController.filterPaths(visibleFilePaths)
 		: visibleFilePaths.map((p) => p.toPosix()).join("\n")
 
-	if (allowedVisibleFiles) {
-		details += "\n\n# VSCode Visible Files"
-		details += `\n${allowedVisibleFiles}`
-	}
-
-	const { maxOpenTabsContext } = state ?? {}
-	const maxTabs = maxOpenTabsContext ?? 20
-
-	// 获取所有文本编辑器标签的文件路径
-	const tabUris = (vscode.window.tabGroups?.all || [])
-		.flatMap((group) => group.tabs)
-		.filter((tab) => tab.input instanceof vscode.TabInputText)
-		.map((tab) => (tab.input as vscode.TabInputText).uri)
-		.filter(Boolean)
-
-	// 使用 Promise.all 并行检查文件是否存在
-	const existingTabPaths = await Promise.all(
-		tabUris.map(async (uri) => {
-			try {
-				// 检查文件是否存在
-				await fs.stat(uri.fsPath)
-				// 文件存在，返回相对路径
-				const absolutePath = uri.fsPath
-				return path.relative(cline.cwd, absolutePath).toPosix()
-			} catch (error) {
-				// 文件不存在或无法访问，返回 null
-				return null
-			}
-		}),
-	)
-
-	// 过滤掉 null 值（不存在的文件）并限制数量
 	const openTabPaths = existingTabPaths.filter((path) => path !== null).slice(0, maxTabs)
 
 	// Filter paths through rooIgnoreController
 	const allowedOpenTabs = cline.rooIgnoreController
 		? cline.rooIgnoreController.filterPaths(openTabPaths)
 		: openTabPaths.map((p) => p.toPosix()).join("\n")
+
+	if (allowedVisibleFiles) {
+		details += "\n\n# VSCode Visible Files"
+		details += `\n${allowedVisibleFiles}`
+	}
 
 	if (allowedOpenTabs) {
 		details += "\n\n# VSCode Open Tabs"
@@ -124,7 +116,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		}
 
 		// Wait for terminals to cool down.
-		await pWaitFor(() => busyTerminals.every((t) => !TerminalRegistry.isProcessHot(t.id)), {
+		await pWaitFor(() => busyTerminals?.every?.((t) => !TerminalRegistry.isProcessHot(t.id)), {
 			interval: 100,
 			timeout: 5_000,
 		}).catch(() => {})
@@ -149,11 +141,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			let newOutput = TerminalRegistry.getUnretrievedOutput(busyTerminal.id)
 
 			if (newOutput) {
-				newOutput = Terminal.compressTerminalOutput(
-					newOutput,
-					terminalOutputLineLimit,
-					terminalOutputCharacterLimit,
-				)
+				newOutput = Terminal.compressTerminalOutput(newOutput)
 				terminalDetails += `\n### New Output\n${newOutput}`
 			}
 		}
@@ -181,11 +169,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 				let output = process.getUnretrievedOutput()
 
 				if (output) {
-					output = Terminal.compressTerminalOutput(
-						output,
-						terminalOutputLineLimit,
-						terminalOutputCharacterLimit,
-					)
+					output = Terminal.compressTerminalOutput(output)
 					terminalOutputs.push(`Command: \`${process.command}\`\n${output}`)
 				}
 			}
@@ -220,7 +204,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	}
 
 	// Get settings for time and cost display
-	const { includeCurrentTime = true, includeCurrentCost = true, maxGitStatusFiles = 0 } = state ?? {}
+	const { includeCurrentTime = false, includeCurrentCost = true, maxGitStatusFiles = 0 } = state ?? {}
 
 	// Add current time information with timezone (if enabled).
 	if (includeCurrentTime) {
@@ -289,57 +273,18 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			details += `\n\n## Shell Support Syntax\n${formatUnsupport(features)}`
 		}
 	}
-	// Resolve and add tool protocol information
-	const modelInfo = cline.api.getModel().info
-	const toolProtocol = resolveToolProtocol(state?.apiConfiguration ?? {}, modelInfo)
 
 	details += `\n\n# Current Mode\n`
 	details += `<slug>${currentMode}</slug>\n`
 	details += `<name>${modeDetails.name}</name>\n`
 	details += `<model>${modelId}</model>\n`
-	details += `<tool_format>${toolProtocol}</tool_format>\n`
 
-	if (Experiments.isEnabled(experiments ?? {}, EXPERIMENT_IDS.POWER_STEERING)) {
-		details += `<role>${modeDetails.roleDefinition}</role>\n`
+	const useKPTtree =
+		apiConfiguration?.apiProvider === "costrict" &&
+		(Experiments.isEnabled(experiments ?? {}, EXPERIMENT_IDS.USE_KPT_TREE) ?? true)
 
-		if (modeDetails.customInstructions) {
-			details += `<custom_instructions>${modeDetails.customInstructions}</custom_instructions>\n`
-		}
-	}
-
-	// Add browser session status - Only show when active to prevent cluttering context
-	const isBrowserActive = cline.browserSession.isSessionActive()
-
-	if (isBrowserActive) {
-		// Build viewport info for status (prefer actual viewport if available, else fallback to configured setting)
-		const configuredViewport = (state?.browserViewportSize as string | undefined) ?? "900x600"
-		let configuredWidth: number | undefined
-		let configuredHeight: number | undefined
-		if (configuredViewport.includes("x")) {
-			const parts = configuredViewport.split("x").map((v) => Number(v))
-			configuredWidth = parts[0]
-			configuredHeight = parts[1]
-		}
-
-		let actualWidth: number | undefined
-		let actualHeight: number | undefined
-		const vp = cline.browserSession.getViewportSize?.()
-		if (vp) {
-			actualWidth = vp.width
-			actualHeight = vp.height
-		}
-
-		const width = actualWidth ?? configuredWidth
-		const height = actualHeight ?? configuredHeight
-		const viewportInfo = width && height ? `\nCurrent viewport size: ${width}x${height} pixels.` : ""
-
-		details += `\n# Browser Session Status\nActive - A browser session is currently open and ready for browser_action commands${viewportInfo}\n`
-	}
-	const alwaysIncludeFileDetails =
-		Experiments.isEnabled(experiments ?? {}, EXPERIMENT_IDS.ALWAYS_INCLUDE_FILE_DETAILS) ??
-		apiConfiguration?.apiProvider === "zgsm"
-	if (includeFileDetails || alwaysIncludeFileDetails) {
-		details += `\n\n# Current Workspace Directory (${cline.cwd.toPosix()}) Files${alwaysIncludeFileDetails ? " (Directory Tree KPT Format: Use 1 to represent files and objects to represent directories)" : ""}\n`
+	if (includeFileDetails) {
+		details += `\n\n# Current Workspace Directory (${cline.cwd.toPosix()}) Files${useKPTtree ? " (Directory Tree KPT Format: Use 1 to represent files and objects to represent directories)" : ""}\n`
 		const isDesktop = arePathsEqual(cline.cwd, path.join(os.homedir(), "Desktop"))
 
 		if (isDesktop) {
@@ -353,11 +298,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			if (maxFiles === 0) {
 				details += "(Workspace files context disabled. Use list_files to explore if needed.)"
 			} else {
-				const [files, didHitLimit] = await listFiles(
-					cline.cwd,
-					true,
-					(alwaysIncludeFileDetails ? 3 : 1) * maxFiles,
-				)
+				const [files, didHitLimit] = await listFiles(cline.cwd, true, (useKPTtree ? 2 : 1) * maxFiles)
 				const { showRooIgnoredFiles = false } = state ?? {}
 
 				const result = formatResponse.formatFilesList(
@@ -367,7 +308,7 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 					cline.rooIgnoreController,
 					showRooIgnoredFiles,
 					undefined,
-					alwaysIncludeFileDetails,
+					useKPTtree,
 				)
 
 				details += result
